@@ -1,7 +1,5 @@
 # WeTrim
 
-微信公众号文章手动清洗 Web 工具。方案见 `mvp.md`。
-
 ## Agent skills
 
 ### Issue tracker

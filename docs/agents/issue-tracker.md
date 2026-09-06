@@ -1,12 +1,5 @@
 # Issue 追踪：GitHub
 
-本仓库的 issue 与 spec 都存放在 GitHub Issues。所有操作使用 `gh` CLI。
-
-## 当前仓库状态（重要）
-
-本目录**尚未 `git init`，也没有关联任何 remote**，因此 `gh` 无法自动推断仓库。
-
-在完成 `git init` 并关联 GitHub remote 之前，下文所有 `gh` 命令都必须显式加上 `--repo <owner>/<repo>`。一旦仓库建好并有了 remote，即可省略该参数——`gh` 会自动从 `git remote -v` 推断。
 
 ## 约定
 
