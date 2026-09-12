@@ -76,10 +76,10 @@ export interface CandidateRecord {
 }
 
 export type CaptureResult =
-  | { kind: 'article'; source: ArticleSource; contentHtml: string; unstable: boolean }
-  | { kind: 'wechatNotice'; noticeText: string }
-  | { kind: 'captcha'; articleUrl: string | null }
-  | { kind: 'noArticle' };
+  | { kind: 'article'; source: ArticleSource; contentHtml: string; unstable: boolean; tabId?: number }
+  | { kind: 'wechatNotice'; noticeText: string; articleUrl?: string | null; tabId?: number }
+  | { kind: 'captcha'; articleUrl: string | null; tabId?: number }
+  | { kind: 'noArticle'; tabId?: number };
 
 export interface PendingCapture {
   capturedAt: string;

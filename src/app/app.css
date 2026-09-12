@@ -301,3 +301,292 @@ body {
   color: var(--prussian-blue);
   font-weight: 500;
 }
+
+/* ==========================================================================
+   Issue #16 UI 状态样式：夹签、审读签条、退单与键盘可达
+   ========================================================================== */
+
+/* 1. 页边浮贴夹签 (Margin Clip Note) */
+.margin-clip-note {
+  position: fixed;
+  top: 24px;
+  right: 32px;
+  z-index: 100;
+  max-width: 380px;
+  background-color: var(--vermilion-subtle);
+  border: 1px solid rgba(200, 53, 43, 0.35);
+  border-left: 4px solid var(--vermilion);
+  box-shadow: 0 4px 16px rgba(200, 53, 43, 0.12), 0 1px 3px rgba(0, 0, 0, 0.05);
+  border-radius: 2px;
+  animation: slideInNote 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideInNote {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.clip-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  gap: 12px;
+}
+
+.clip-text {
+  font-size: 13px;
+  color: var(--ink-primary);
+  line-height: 1.5;
+  font-weight: 500;
+}
+
+.clip-close-btn {
+  background: none;
+  border: none;
+  font-size: 16px;
+  color: var(--ink-secondary);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 2px;
+  line-height: 1;
+  transition: color 0.15s, background-color 0.15s;
+}
+
+.clip-close-btn:hover {
+  color: var(--vermilion);
+  background-color: rgba(200, 53, 43, 0.1);
+}
+
+/* 2. 稿件审读签条 (Manuscript Slip) */
+.manuscript-slip {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  animation: fadeInSlip 0.2s ease-out;
+}
+
+@keyframes fadeInSlip {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.slip-header {
+  border-bottom: 1px solid var(--sheet-border);
+  padding-bottom: 18px;
+}
+
+.slip-kicker {
+  display: inline-block;
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: var(--vermilion);
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.slip-title {
+  font-size: 24px;
+  line-height: 1.4;
+  font-weight: 700;
+  color: var(--ink-primary);
+  margin-bottom: 12px;
+  word-break: break-word;
+}
+
+.slip-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 13px;
+  color: var(--ink-secondary);
+}
+
+.meta-item strong {
+  color: var(--ink-primary);
+  font-weight: 600;
+}
+
+/* 批注夹签 (Unstable Note) */
+.unstable-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background-color: var(--prussian-blue-subtle);
+  border: 1px solid rgba(47, 95, 168, 0.3);
+  border-left: 3px solid var(--prussian-blue);
+  padding: 8px 14px;
+  border-radius: 2px;
+  font-size: 13px;
+  color: var(--ink-primary);
+  line-height: 1.5;
+}
+
+.note-badge {
+  background-color: var(--prussian-blue);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 2px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+/* 体量概览网格 */
+.volume-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+.stat-card {
+  background: #fff;
+  border: 1px solid var(--sheet-border);
+  padding: 12px 16px;
+  border-radius: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stat-label {
+  font-size: 11px;
+  color: var(--ink-tertiary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.stat-value {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--ink-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 操作按钮行 */
+.slip-actions,
+.notice-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.action-btn {
+  appearance: none;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 8px 18px;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+
+.action-return {
+  background-color: #fff;
+  border: 1px solid var(--sheet-border);
+  color: var(--ink-primary);
+}
+
+.action-return:hover {
+  border-color: var(--ink-secondary);
+  background-color: #f7f9f7;
+}
+
+.action-retry {
+  background-color: var(--vermilion);
+  border: 1px solid var(--vermilion);
+  color: #fff;
+}
+
+.action-retry:hover {
+  background-color: #b52e25;
+  border-color: #b52e25;
+}
+
+.action-btn:focus-visible,
+.clip-close-btn:focus-visible {
+  outline: 2px solid var(--vermilion);
+  outline-offset: 2px;
+}
+
+/* 占位提示 */
+.content-outline-placeholder {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  background: rgba(0, 0, 0, 0.02);
+  border: 1px dashed var(--sheet-border);
+  border-radius: 2px;
+  font-size: 12px;
+  color: var(--ink-secondary);
+}
+
+.outline-bar {
+  width: 3px;
+  height: 16px;
+  background-color: var(--sheet-border);
+}
+
+/* 3. 审校退单 (Return Notice Card) */
+.return-notice-card {
+  background: #fff;
+  border: 1px solid var(--sheet-border);
+  border-left: 4px solid var(--vermilion);
+  border-radius: 2px;
+  padding: 32px 36px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.notice-stamp {
+  position: absolute;
+  top: 24px;
+  right: 28px;
+  border: 2px solid var(--vermilion);
+  color: var(--vermilion);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 2px;
+  transform: rotate(6deg);
+  opacity: 0.8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.notice-sub {
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: var(--ink-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.notice-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--ink-primary);
+  margin-top: 4px;
+}
+
+.notice-verbatim-quote {
+  background-color: #fbfbf9;
+  border-left: 3px solid var(--sheet-border);
+  padding: 14px 18px;
+  font-size: 15px;
+  color: var(--ink-primary);
+  line-height: 1.6;
+  font-style: normal;
+  border-radius: 2px;
+}
+
