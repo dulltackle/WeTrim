@@ -1,0 +1,303 @@
+:root {
+  --canvas-bg: #eef1ef;
+  --sheet-bg: #fafbf9;
+  --sheet-border: #d4dad4;
+  --ink-primary: #1a1a18;
+  --ink-secondary: #585d56;
+  --ink-tertiary: #8a9088;
+  --vermilion: #c8352b;
+  --vermilion-subtle: #faeceb;
+  --prussian-blue: #2f5fa8;
+  --prussian-blue-subtle: #ebf1fa;
+  --registration-hairline: #c4cdc4;
+  --margin-track-width: 84px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  background-color: var(--canvas-bg);
+  color: var(--ink-primary);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 32px 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 顶部工作台状态条 */
+.workbench-header {
+  width: 100%;
+  max-width: 840px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  font-size: 12px;
+  color: var(--ink-secondary);
+}
+
+.ticket-slug {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.ticket-tag {
+  background-color: var(--vermilion);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 2px;
+  letter-spacing: 0.05em;
+}
+
+.system-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: var(--prussian-blue);
+}
+
+/* 主校样纸张 */
+.proof-sheet {
+  width: 100%;
+  max-width: 840px;
+  background: var(--sheet-bg);
+  border: 1px solid var(--sheet-border);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.02);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border-radius: 2px;
+}
+
+/* 套版色标条与顶端校对标 */
+.registration-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--sheet-border);
+  background-color: rgba(0, 0, 0, 0.01);
+}
+
+.cmyk-swatches {
+  display: flex;
+  gap: 4px;
+}
+
+.cmyk-swatch {
+  width: 14px;
+  height: 8px;
+  border-radius: 1px;
+}
+
+.proof-marks-info {
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: var(--ink-tertiary);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* 套准十字线 */
+.reg-cross {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  pointer-events: none;
+}
+
+.reg-cross::before,
+.reg-cross::after {
+  content: "";
+  position: absolute;
+  background-color: var(--registration-hairline);
+}
+
+.reg-cross::before {
+  top: 9px;
+  left: 0;
+  width: 20px;
+  height: 1px;
+}
+
+.reg-cross::after {
+  top: 0;
+  left: 9px;
+  width: 1px;
+  height: 20px;
+}
+
+.reg-top-left { top: -10px; left: -10px; }
+.reg-top-right { top: -10px; right: -10px; }
+.reg-bottom-left { bottom: -10px; left: -10px; }
+.reg-bottom-right { bottom: -10px; right: -10px; }
+
+/* 校样两栏工作布局：左侧预留批注栏，右侧正文版心 */
+.sheet-body {
+  display: flex;
+  min-height: 540px;
+}
+
+/* 左侧页边批注栏 */
+.margin-track {
+  width: var(--margin-track-width);
+  flex-shrink: 0;
+  border-right: 1px dashed var(--sheet-border);
+  padding: 24px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  background-color: rgba(0, 0, 0, 0.005);
+}
+
+.track-header {
+  font-size: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: var(--ink-tertiary);
+  letter-spacing: 0.1em;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+}
+
+.track-stub {
+  width: 100%;
+  height: 1px;
+  background-color: var(--sheet-border);
+}
+
+.line-numbers {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  color: var(--ink-tertiary);
+}
+
+/* 右侧版心 */
+.main-bed {
+  flex: 1;
+  padding: 48px 48px 64px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.empty-headline {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-bottom: 24px;
+  color: var(--ink-primary);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.empty-headline-accent {
+  display: inline-block;
+  width: 4px;
+  height: 22px;
+  background-color: var(--vermilion);
+  border-radius: 1px;
+}
+
+/* 渲染的三步指引 Markdown 内容 */
+.steps-container {
+  background-color: #fff;
+  border: 1px solid var(--sheet-border);
+  border-radius: 3px;
+  padding: 24px 28px;
+  position: relative;
+}
+
+.steps-container::before {
+  content: "清洗前置指引";
+  position: absolute;
+  top: -10px;
+  left: 20px;
+  background: var(--sheet-bg);
+  padding: 0 8px;
+  font-size: 11px;
+  color: var(--ink-secondary);
+  font-weight: 500;
+}
+
+.rendered-steps ol {
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.rendered-steps li {
+  color: var(--ink-primary);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.rendered-steps li strong {
+  color: var(--ink-primary);
+  font-weight: 600;
+}
+
+.icon-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  vertical-align: middle;
+  background-color: var(--vermilion-subtle);
+  border: 1px solid rgba(200, 53, 43, 0.25);
+  color: var(--vermilion);
+  padding: 1px 8px;
+  border-radius: 3px;
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0 4px;
+}
+
+.icon-badge img {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+
+/* 底部防差错与自检证明栏 */
+.proof-footer {
+  padding: 12px 20px;
+  border-top: 1px solid var(--sheet-border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: var(--ink-tertiary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.proof-stamp {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--prussian-blue);
+  font-weight: 500;
+}

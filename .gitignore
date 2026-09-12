@@ -4,6 +4,9 @@ output/
 # 导出的 zip 包
 *.zip
 
+# 构建产物
+dist/
+
 # 依赖（本项目零依赖，此项为防御性保留）
 node_modules/
 
