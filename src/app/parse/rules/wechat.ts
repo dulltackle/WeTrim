@@ -1,4 +1,5 @@
 import type TurndownService from 'turndown';
+import { registerCodeRules } from './code';
 
 export interface WechatRulesOptions {
   baseUrl?: string;
@@ -95,6 +96,9 @@ export function registerWechatRules(
       return `[${content}](${href}${titlePart})`;
     },
   });
+
+  // 4. 代码块规则：官方 .code-snippet__fix 形态与第三方 pre > code 形态（docs/conversion-rules.md §4.4）
+  registerCodeRules(service);
 
   // 注：富媒体元素（mp-common-profile, mp-common-miniprogram, mpvoice, video_iframe 等）
   // 因无文本子节点会被 Turndown isBlank 提前丢弃，统一由 convert.ts 中的 prepareRichMediaPlaceholders

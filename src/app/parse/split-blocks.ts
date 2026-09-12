@@ -152,6 +152,12 @@ function unitType(el: Element): BlockType | 'noise' | null {
     return isBlockLevelFormula(el) ? 'formula' : null;
   }
 
+  const cls = (typeof el.className === 'string' ? el.className : '') || '';
+  // 行号容器不是内容列表（docs/conversion-rules.md §4.5），直接排噪
+  if (cls.includes('code-snippet__line-index')) {
+    return 'noise';
+  }
+
   const tag = el.tagName.toLowerCase();
   if (HEADINGS.has(tag)) return 'heading';
   if (tag === 'ul' || tag === 'ol') return 'list';
@@ -159,7 +165,6 @@ function unitType(el: Element): BlockType | 'noise' | null {
   if (tag === 'table') return 'table';
   if (tag === 'hr') return 'divider';
 
-  const cls = (typeof el.className === 'string' ? el.className : '') || '';
   if (tag === 'pre' || /code-snippet|code_snippet|hljs|prettyprint/.test(cls)) {
     return 'code';
   }

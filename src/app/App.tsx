@@ -9,6 +9,7 @@ import {
   convertBlocks,
   createTurndown,
 } from './parse/convert';
+import { splitBlocks } from './parse/split-blocks';
 import { BlockList } from './components/BlockList';
 import { renderMarkdown } from './preview/render';
 import './app.css';
@@ -53,6 +54,7 @@ export const App: React.FC = () => {
           convertBlock,
           convertBlocks,
           createTurndown,
+          splitBlocks,
         };
       }
     } catch (err) {
