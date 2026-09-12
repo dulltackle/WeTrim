@@ -30,6 +30,24 @@ body {
   padding: 32px 16px;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+#root {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+}
+
+.app-container {
+  width: 100%;
+  max-width: 840px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
 }
 
 /* 顶部工作台状态条 */
@@ -42,6 +60,7 @@ body {
   margin-bottom: 16px;
   font-size: 12px;
   color: var(--ink-secondary);
+  min-width: 0;
 }
 
 .ticket-slug {
@@ -75,7 +94,7 @@ body {
   background-color: var(--prussian-blue);
 }
 
-/* 主校样纸张 */
+/* 主校验纸张 */
 .proof-sheet {
   width: 100%;
   max-width: 840px;
@@ -86,6 +105,7 @@ body {
   display: flex;
   flex-direction: column;
   border-radius: 2px;
+  min-width: 0;
 }
 
 /* 套版色标条与顶端校对标 */
@@ -151,10 +171,12 @@ body {
 .reg-bottom-left { bottom: -10px; left: -10px; }
 .reg-bottom-right { bottom: -10px; right: -10px; }
 
-/* 校样两栏工作布局：左侧预留批注栏，右侧正文版心 */
+/* 校验两栏工作布局：左侧预留批注栏，右侧正文版心 */
 .sheet-body {
   display: flex;
   min-height: 540px;
+  min-width: 0;
+  width: 100%;
 }
 
 /* 左侧页边批注栏 */
@@ -200,7 +222,13 @@ body {
   padding: 48px 48px 64px;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
+  min-width: 0;
+}
+
+.empty-state-view {
+  margin: auto 0;
+  min-width: 0;
 }
 
 .empty-headline {
@@ -370,6 +398,8 @@ body {
   flex-direction: column;
   gap: 24px;
   animation: fadeInSlip 0.2s ease-out;
+  min-width: 0;
+  width: 100%;
 }
 
 @keyframes fadeInSlip {
@@ -380,6 +410,7 @@ body {
 .slip-header {
   border-bottom: 1px solid var(--sheet-border);
   padding-bottom: 18px;
+  min-width: 0;
 }
 
 .slip-kicker {
@@ -400,6 +431,7 @@ body {
   color: var(--ink-primary);
   margin-bottom: 12px;
   word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .slip-meta {
@@ -428,6 +460,7 @@ body {
   font-size: 13px;
   color: var(--ink-primary);
   line-height: 1.5;
+  min-width: 0;
 }
 
 .note-badge {
@@ -438,13 +471,16 @@ body {
   padding: 1px 6px;
   border-radius: 2px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  flex-shrink: 0;
 }
 
 /* 体量概览网格 */
 .volume-stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
   gap: 12px;
+  min-width: 0;
+  width: 100%;
 }
 
 .stat-card {
@@ -455,6 +491,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-width: 0;
 }
 
 .stat-label {
@@ -547,6 +584,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: 20px;
+  min-width: 0;
+  width: 100%;
 }
 
 .notice-stamp {
@@ -577,6 +616,7 @@ body {
   font-weight: 600;
   color: var(--ink-primary);
   margin-top: 4px;
+  word-break: break-word;
 }
 
 .notice-verbatim-quote {
@@ -588,6 +628,8 @@ body {
   line-height: 1.6;
   font-style: normal;
   border-radius: 2px;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 /* 4. 整篇级失败卡片 (Article Failure Card) */
@@ -601,6 +643,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: 20px;
+  min-width: 0;
+  width: 100%;
 }
 
 .error-stamp {
@@ -617,6 +661,8 @@ body {
   flex-direction: column;
   gap: 16px;
   margin-top: 8px;
+  min-width: 0;
+  width: 100%;
 }
 
 .block-list-summary-bar {
@@ -627,6 +673,7 @@ body {
   border: 1px solid var(--sheet-border);
   padding: 14px 18px;
   border-radius: 2px;
+  min-width: 0;
 }
 
 .summary-title {
@@ -635,6 +682,7 @@ body {
   justify-content: space-between;
   font-size: 13px;
   color: var(--ink-primary);
+  min-width: 0;
 }
 
 .summary-heading {
@@ -652,6 +700,7 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  min-width: 0;
 }
 
 .summary-chip {
@@ -683,6 +732,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-width: 0;
+  width: 100%;
 }
 
 .block-item {
@@ -694,6 +745,8 @@ body {
   flex-direction: column;
   gap: 6px;
   transition: border-color 0.15s ease;
+  min-width: 0;
+  width: 100%;
 }
 
 .block-item:hover {
@@ -705,6 +758,7 @@ body {
   align-items: center;
   gap: 8px;
   font-size: 11px;
+  min-width: 0;
 }
 
 .block-order-badge {
@@ -751,10 +805,18 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--ink-secondary);
+  min-width: 0;
+  max-width: 100%;
 }
 
 .block-html-summary code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  max-width: 100%;
 }
 
 
