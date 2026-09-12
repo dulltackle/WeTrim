@@ -1,9 +1,14 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import type { CaptureResult, Block } from '../shared/types';
+import type { CaptureResult, Block, ArticleSnapshot, CandidateRecord } from '../shared/types';
 import { STORAGE_KEYS } from '../shared/storage-keys';
 import { PENDING_CAPTURE_MESSAGE_TYPE } from '../shared/messages';
-import { verifyTurndownTable } from './parse/convert';
-import { splitBlocks } from './parse/split-blocks';
+import {
+  verifyTurndownTable,
+  buildArticleSnapshot,
+  convertBlock,
+  convertBlocks,
+  createTurndown,
+} from './parse/convert';
 import { BlockList } from './components/BlockList';
 import { renderMarkdown } from './preview/render';
 import './app.css';
@@ -40,6 +45,16 @@ export const App: React.FC = () => {
           tableMd
       );
       setSelfTestPassed(true);
+
+      // 暴露测试辅助钩子（仅用于自动化测试验证）
+      if (typeof window !== 'undefined') {
+        (window as unknown as Record<string, unknown>).__wetrim = {
+          buildArticleSnapshot,
+          convertBlock,
+          convertBlocks,
+          createTurndown,
+        };
+      }
     } catch (err) {
       console.error('[WeTrim Self-Test] Evaluation failed:', err);
     }
@@ -103,20 +118,49 @@ export const App: React.FC = () => {
     }
   }, [marginClipNote]);
 
-  // 切块处理：从正文 HTML 切出内容块流
-  // ARCHITECTURE.md §6.2: 若发生整篇级失败，不写 candidateSnapshot、不动 currentSession，走通用提示 + 重试
-  const blocks: Block[] | null = useMemo(() => {
-    if (!activeArticle) return null;
+  // 转换与快照组装：切块 -> 逐块独立转换 -> 收集图片 -> 组装 ArticleSnapshot
+  // ARCHITECTURE.md §4.5、§6.2:
+  // - 组装 ArticleSnapshot 并写入 candidateSnapshot
+  // - 若发生整篇级失败（如切块器整体抛错），不写 candidateSnapshot、不动 currentSession，走通用提示 + 重试
+  // - 单块级失败降级为 unknown 块，候选照常写入
+  const [snapshot, setSnapshot] = useState<ArticleSnapshot | null>(null);
+
+  useEffect(() => {
+    if (!activeArticle) {
+      setSnapshot(null);
+      setSplitError(null);
+      return;
+    }
+
     try {
-      const parsedBlocks = splitBlocks(activeArticle.contentHtml);
-      return parsedBlocks;
+      const articleSnapshot = buildArticleSnapshot(activeArticle);
+      setSnapshot(articleSnapshot);
+      setSplitError(null);
+
+      // 先落盘，写入 candidateSnapshot（ARCHITECTURE.md §4.5）
+      if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+        const candidateRecord: CandidateRecord = {
+          schemaVersion: 1,
+          snapshot: articleSnapshot,
+          savedAt: new Date().toISOString(),
+        };
+        chrome.storage.local
+          .set({
+            [STORAGE_KEYS.CANDIDATE_SNAPSHOT]: candidateRecord,
+          })
+          .catch((err: unknown) => {
+            console.error('[WeTrim] Failed to persist candidateSnapshot:', err);
+          });
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error('[WeTrim] splitBlocks error:', err);
+      console.error('[WeTrim] buildArticleSnapshot error:', err);
       setSplitError(msg);
-      return null;
+      setSnapshot(null);
     }
   }, [activeArticle]);
+
+  const blocks: Block[] | null = snapshot?.blocks || null;
 
   // 计算文章体量概览（字数、HTML 体积 KB、图片数）
   const volumeStats = useMemo(() => {
