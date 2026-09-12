@@ -1,6 +1,7 @@
 import type TurndownService from 'turndown';
 import { registerCodeRules } from './code';
 import { registerListRules } from './list';
+import { registerQuoteRules } from './quote';
 
 
 export interface WechatRulesOptions {
@@ -104,6 +105,9 @@ export function registerWechatRules(
 
   // 5. 列表规则：li > p 行内处理，避免多余空行破坏列表（docs/conversion-rules.md §4.5）
   registerListRules(service);
+
+  // 6. 引用块规则：多段落引用、引用套列表与图片随块呈现（docs/conversion-rules.md §4.6 与 Issue #21）
+  registerQuoteRules(service);
 
 
   // 注：富媒体元素（mp-common-profile, mp-common-miniprogram, mpvoice, video_iframe 等）

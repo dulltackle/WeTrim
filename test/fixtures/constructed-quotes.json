@@ -1,0 +1,61 @@
+[
+  {
+    "id": "single-paragraph-with-inline",
+    "description": "单段落引用：包含粗体、斜体、行内代码与带参数链接及相对链接",
+    "evidenceLevel": "🔧 构造（行内格式与链接保留）",
+    "html": "<blockquote class=\"js_blockquote_wrap\"><p><span leaf=\"\">这是包含 <strong>粗体重点</strong>、<em>斜体强调</em>、<code>const answer = 42;</code> 和 <a href=\"/article/123?from=quote&amp;tag=spec#heading\">相对链接</a> 的单段落引用。</span></p></blockquote>",
+    "baseUrl": "https://mp.weixin.qq.com/s/sample-article",
+    "expectedBlockType": "quote",
+    "expectedBlocksCount": 1,
+    "expectedMarkdown": "> 这是包含 **粗体重点**、*斜体强调*、`const answer = 42;` 和 [相对链接](https://mp.weixin.qq.com/article/123?from=quote&tag=spec#heading) 的单段落引用。"
+  },
+  {
+    "id": "multi-paragraph-with-spacing",
+    "description": "多段落引用：段落间 > 前缀正确，段落由 section 包装且包含 <p><br></p> 占位",
+    "evidenceLevel": "🔧 构造（无真实多段落引用样本，构造验证）",
+    "html": "<blockquote class=\"js_blockquote_wrap\"><section><p><span leaf=\"\">第一段：引述背景与核心论点。</span></p></section><p><br></p><section><p><span leaf=\"\">第二段：深入阐述论据与推理过程。</span></p></section><section><p><span leaf=\"\">第三段：总结结论与未来展望。</span></p></section></blockquote>",
+    "expectedBlockType": "quote",
+    "expectedBlocksCount": 1,
+    "expectedMarkdown": "> 第一段：引述背景与核心论点。\n> \n> 第二段：深入阐述论据与推理过程。\n> \n> 第三段：总结结论与未来展望。"
+  },
+  {
+    "id": "quote-wrapping-list",
+    "description": "引用套列表：引用内多段落 + 嵌套列表 + 有序列表，内部列表在引用内正确缩进",
+    "evidenceLevel": "🔧 构造（无真实引用套列表样本，构造验证）",
+    "html": "<blockquote class=\"js_blockquote_wrap\"><section><p><span leaf=\"\">引用的第一段，说明下面这几条的来源。</span></p></section><ul class=\"list-paddingleft-1\"><li><p><span leaf=\"\">引用里的第一条</span></p></li><li><p><span leaf=\"\">引用里的第二条，包含二级列表：</span></p><ul class=\"list-paddingleft-2\"><li><p><span leaf=\"\">二级嵌套细则 A</span></p></li><li><p><span leaf=\"\">二级嵌套细则 B</span></p></li></ul></li></ul><ol class=\"list-paddingleft-1\" style=\"list-style-type: decimal;\"><li><p><span leaf=\"\">有序步骤一</span></p></li><li><p><span leaf=\"\">有序步骤二</span></p></li></ol><section><p><span leaf=\"\">引用的收尾一段。</span></p></section></blockquote>",
+    "expectedBlockType": "quote",
+    "expectedBlocksCount": 1,
+    "expectedMarkdown": "> 引用的第一段，说明下面这几条的来源。\n> \n> -   引用里的第一条\n> -   引用里的第二条，包含二级列表：\n>     -   二级嵌套细则 A\n>     -   二级嵌套细则 B\n> \n> 1.  有序步骤一\n> 2.  有序步骤二\n> \n> 引用的收尾一段。"
+  },
+  {
+    "id": "quote-wrapping-flat-list",
+    "description": "引用套平铺列表（假设 B）：引用内平铺兄弟列表在切块前合并，并在引用内生成正确缩进的嵌套列表",
+    "evidenceLevel": "🔧 构造（平铺嵌套列表在引用内的降级与合并验证）",
+    "html": "<blockquote class=\"js_blockquote_wrap\"><p><span leaf=\"\">平铺列表说明：</span></p><ul class=\"list-paddingleft-1\"><li><p><span leaf=\"\">一级项 1</span></p></li></ul><ul class=\"list-paddingleft-2\"><li><p><span leaf=\"\">二级子项 1.1</span></p></li></ul><ul class=\"list-paddingleft-1\"><li><p><span leaf=\"\">一级项 2</span></p></li></ul></blockquote>",
+    "expectedBlockType": "quote",
+    "expectedBlocksCount": 1,
+    "expectedMarkdown": "> 平铺列表说明：\n> \n> -   一级项 1\n>     -   二级子项 1.1\n> -   一级项 2"
+  },
+  {
+    "id": "quote-with-images",
+    "description": "引用内部包含图片：随块呈现，不产生独立的图片块，保留图片属性并在 Markdown 中正确呈现",
+    "evidenceLevel": "🔧 构造（图片随块呈现验证）",
+    "html": "<blockquote class=\"js_blockquote_wrap\"><p><span leaf=\"\">前置引述说明：</span></p><p><img data-src=\"https://mmbiz.qpic.cn/mmbiz_png/quote_test/0?wx_fmt=png\" alt=\"架构示意图\" title=\"核心架构\"></p><p><span leaf=\"\">后置分析说明。</span></p></blockquote>",
+    "baseUrl": "https://mp.weixin.qq.com/s/sample-article",
+    "expectedBlockType": "quote",
+    "expectedBlocksCount": 1,
+    "expectedMarkdown": "> 前置引述说明：\n> \n> ![架构示意图](https://mmbiz.qpic.cn/mmbiz_png/quote_test/0?wx_fmt=png \"核心架构\")\n> \n> 后置分析说明。",
+    "expectedImageAssets": [
+      "https://mmbiz.qpic.cn/mmbiz_png/quote_test/0?wx_fmt=png"
+    ]
+  },
+  {
+    "id": "nested-quotes",
+    "description": "多重嵌套引用：blockquote 内部嵌套 blockquote，逐级添加 > 前缀",
+    "evidenceLevel": "🔧 构造（嵌套引用语义验证）",
+    "html": "<blockquote><p>外层引用文本内容</p><blockquote><p>内层嵌套引用文本内容</p></blockquote><p>外层引用收尾</p></blockquote>",
+    "expectedBlockType": "quote",
+    "expectedBlocksCount": 1,
+    "expectedMarkdown": "> 外层引用文本内容\n> \n> > 内层嵌套引用文本内容\n> \n> 外层引用收尾"
+  }
+]

@@ -288,20 +288,27 @@ export function splitBlocks(input: string | Document | Element): Block[] {
       throw new Error('splitBlocks: Cannot find #js_content in full page HTML');
     }
 
-    const candidate = jsContent || doc.body.firstElementChild || doc.body;
+    const candidate = jsContent || doc.body;
     if (!candidate) {
       throw new Error('splitBlocks: Failed to find content root');
     }
     root = candidate;
   } else if (input instanceof Document) {
     const jsContent = input.querySelector('#js_content');
-    const candidate = jsContent || input.body.firstElementChild || input.body;
+    const candidate = jsContent || input.body;
     if (!candidate) {
       throw new Error('splitBlocks: Failed to find content root in Document');
     }
     root = candidate.cloneNode(true) as Element;
   } else if (input instanceof Element) {
-    root = input.cloneNode(true) as Element;
+    const jsContent = input.id === 'js_content' ? input : input.querySelector('#js_content');
+    if (jsContent) {
+      root = jsContent.cloneNode(true) as Element;
+    } else {
+      const wrapper = input.ownerDocument.createElement('div');
+      wrapper.appendChild(input.cloneNode(true));
+      root = wrapper;
+    }
   } else {
     throw new Error('splitBlocks: Invalid input type');
   }
@@ -312,7 +319,6 @@ export function splitBlocks(input: string | Document | Element): Block[] {
   const rawBlocks: RawBlockEmission[] = [];
 
   const visit = (node: Node) => {
-
     for (const child of Array.from(node.childNodes)) {
       // 穿透容器时保留直接文本节点
       if (child.nodeType === Node.TEXT_NODE) {
