@@ -1,8 +1,10 @@
 import type { Block, BlockType } from '../../shared/types';
+import { mergeAdjacentLists } from './rules/list';
 
 const HEADINGS = new Set(['h1', 'h2', 'h3', 'h4', 'h5', 'h6']);
 
 // 排版容器标签：不识别为完整单元时穿透
+
 const PASSTHROUGH = new Set([
   'section',
   'div',
@@ -105,8 +107,9 @@ function isRichMedia(el: Element): boolean {
 /**
  * 噪声判据：script、style、无文本的 pre[class*="js_darkmode"]、.qr_code_pc、.reward_area
  */
-function isKnownNoise(el: Element): boolean {
+export function isKnownNoise(el: Element): boolean {
   const tag = el.tagName.toLowerCase();
+
   if (tag === 'script' || tag === 'style') return true;
 
   const cls = (typeof el.className === 'string' ? el.className : '') || '';
@@ -296,16 +299,20 @@ export function splitBlocks(input: string | Document | Element): Block[] {
     if (!candidate) {
       throw new Error('splitBlocks: Failed to find content root in Document');
     }
-    root = candidate;
+    root = candidate.cloneNode(true) as Element;
   } else if (input instanceof Element) {
-    root = input;
+    root = input.cloneNode(true) as Element;
   } else {
     throw new Error('splitBlocks: Invalid input type');
   }
 
+  // 假设 B（平铺兄弟 + list-paddingleft-N）：在切块前合并相邻兄弟列表为嵌套树（docs/conversion-rules.md §4.5）
+  mergeAdjacentLists(root);
+
   const rawBlocks: RawBlockEmission[] = [];
 
   const visit = (node: Node) => {
+
     for (const child of Array.from(node.childNodes)) {
       // 穿透容器时保留直接文本节点
       if (child.nodeType === Node.TEXT_NODE) {
