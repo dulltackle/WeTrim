@@ -21,3 +21,5 @@ node_modules/
 .codex/
 
 .impeccable/
+
+.vite.log

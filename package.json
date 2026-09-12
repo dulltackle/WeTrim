@@ -4,7 +4,9 @@
   "description": "手动清洗微信公众号文章，导出 Markdown 和图片。",
   "type": "module",
   "scripts": {
+    "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
     "test": "node test/verify-csp.mjs",
     "typecheck": "tsc --noEmit"
   },

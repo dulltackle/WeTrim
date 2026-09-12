@@ -44,6 +44,7 @@ export const App: React.FC = () => {
   // 消费 pendingCapture 逻辑：读到后必须立即删除该 key，防止重复消费
   const checkPendingCapture = async () => {
     try {
+      if (typeof chrome === 'undefined' || !chrome.storage?.local) return;
       const data = await chrome.storage.local.get(STORAGE_KEYS.PENDING_CAPTURE);
       const pending = data[STORAGE_KEYS.PENDING_CAPTURE] as { result: CaptureResult } | undefined;
       if (pending && pending.result) {
@@ -69,6 +70,10 @@ export const App: React.FC = () => {
   // 挂载检查以及监听来自 background 的叫醒消息
   useEffect(() => {
     checkPendingCapture();
+
+    if (typeof chrome === 'undefined' || !chrome.runtime?.onMessage) {
+      return;
+    }
 
     const messageListener = (msg: unknown) => {
       if (msg && typeof msg === 'object' && (msg as { type?: string }).type === PENDING_CAPTURE_MESSAGE_TYPE) {
@@ -107,11 +112,11 @@ export const App: React.FC = () => {
 
   // 「回到原文看看」：优先聚焦原标签页；若已关闭则打开原 URL
   const handleReturnToOriginal = async (tabId?: number, url?: string | null) => {
-    if (typeof tabId === 'number') {
+    if (typeof chrome !== 'undefined' && chrome.tabs && typeof tabId === 'number') {
       try {
         await chrome.tabs.update(tabId, { active: true });
         const tab = await chrome.tabs.get(tabId);
-        if (tab.windowId !== undefined) {
+        if (tab.windowId !== undefined && chrome.windows) {
           await chrome.windows.update(tab.windowId, { focused: true });
         }
         return;
@@ -120,12 +125,17 @@ export const App: React.FC = () => {
       }
     }
     if (url) {
-      await chrome.tabs.create({ url });
+      if (typeof chrome !== 'undefined' && chrome.tabs) {
+        await chrome.tabs.create({ url });
+      } else {
+        window.open(url, '_blank');
+      }
     }
   };
 
   // 「重试」：通知 background 对目标标签页发起重新抓取探测
   const handleRetry = async (tabId?: number) => {
+    if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) return;
     try {
       await chrome.runtime.sendMessage({ type: 'retry-capture', tabId });
     } catch (err) {
