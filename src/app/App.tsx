@@ -1,29 +1,33 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import type { CaptureResult } from '../shared/types';
+import type { CaptureResult, Block } from '../shared/types';
 import { STORAGE_KEYS } from '../shared/storage-keys';
 import { PENDING_CAPTURE_MESSAGE_TYPE } from '../shared/messages';
 import { verifyTurndownTable } from './parse/convert';
+import { splitBlocks } from './parse/split-blocks';
+import { BlockList } from './components/BlockList';
 import { renderMarkdown } from './preview/render';
 import './app.css';
 
 /**
- * 依据 ARCHITECTURE.md §4.1 ~ §4.3 与 output/tmp/issue16-brief.md：
- * 视觉世界：校样与校对符号 · Operate 模式
+ * 依据 ARCHITECTURE.md §4.1 ~ §4.4、§6.2，ADR-0001 与 docs/conversion-rules.md：
+ * 视觉世界：校验与校对符号 · Operate 模式
  *
- * 全页四种呈现状态：
+ * 全页状态呈现：
  * 1. 空状态 (3 步指引，待稿)
- * 2. 稿件审读签条 (kind === 'article'，含元数据、体量统计、unstable 批注夹签)
- * 3. 审校退单 (kind === 'wechatNotice' | 'captcha'，原样转述文案，配「回到原文看看」与「重试」)
- * 4. 页边浮贴夹签 (kind === 'noArticle'，受限页误触，非模态提示「刚才那个页面上没有公众号文章，你的进度没有被动过」)
+ * 2. 稿件审读签条 (kind === 'article'，含元数据、体量统计、切块列表展示)
+ * 3. 整篇级失败状态 (切块器抛错 / 无法解析 DOM / 找不到 #js_content，通用提示 + 重试，不写 candidateSnapshot)
+ * 4. 审校退单 (kind === 'wechatNotice' | 'captcha'，原样转述文案，配「回到原文看看」与「重试」)
+ * 5. 页边浮贴夹签 (kind === 'noArticle'，受限页误触，非模态提示「刚才那个页面上没有公众号文章，你的进度没有被动过」)
  */
 export const App: React.FC = () => {
   const [selfTestPassed, setSelfTestPassed] = useState(false);
   const [activeArticle, setActiveArticle] = useState<Extract<CaptureResult, { kind: 'article' }> | null>(null);
   const [activeNotice, setActiveNotice] = useState<Extract<CaptureResult, { kind: 'wechatNotice' | 'captcha' }> | null>(null);
   const [marginClipNote, setMarginClipNote] = useState<string | null>(null);
+  const [splitError, setSplitError] = useState<string | null>(null);
 
   // 1. marked + DOMPurify 真实渲染三步文案（Markdown 源格式）
-  const stepsMarkdown = `1. **用浏览器打开一篇公众号文章**\n2. **等它显示完**\n3. **点工具栏上的 WeTrim 图标** 开始清洗`;
+  const stepsMarkdown = `1. **用浏览器打开一篇公众号文章**\\n2. **等它显示完**\\n3. **点工具栏上的 WeTrim 图标** 开始清洗`;
   const renderedStepsHtml = renderMarkdown(stepsMarkdown);
 
   // 自检验证（CSP 与 eval 约束验证）
@@ -31,8 +35,8 @@ export const App: React.FC = () => {
     try {
       const tableMd = verifyTurndownTable();
       console.log(
-        '[WeTrim Self-Test] Production CSP & eval verification passed: React 19, Turndown, turndown-plugin-gfm, marked, DOMPurify OK.\n' +
-          'Table conversion fixture result:\n' +
+        '[WeTrim Self-Test] Production CSP & eval verification passed: React 19, Turndown, turndown-plugin-gfm, marked, DOMPurify OK.\\n' +
+          'Table conversion fixture result:\\n' +
           tableMd
       );
       setSelfTestPassed(true);
@@ -55,9 +59,11 @@ export const App: React.FC = () => {
         if (res.kind === 'article') {
           setActiveArticle(res);
           setActiveNotice(null);
+          setSplitError(null);
         } else if (res.kind === 'wechatNotice' || res.kind === 'captcha') {
           setActiveNotice(res);
           setActiveArticle(null);
+          setSplitError(null);
         } else if (res.kind === 'noArticle') {
           setMarginClipNote('刚才那个页面上没有公众号文章，你的进度没有被动过');
         }
@@ -96,6 +102,21 @@ export const App: React.FC = () => {
       return () => clearTimeout(timer);
     }
   }, [marginClipNote]);
+
+  // 切块处理：从正文 HTML 切出内容块流
+  // ARCHITECTURE.md §6.2: 若发生整篇级失败，不写 candidateSnapshot、不动 currentSession，走通用提示 + 重试
+  const blocks: Block[] | null = useMemo(() => {
+    if (!activeArticle) return null;
+    try {
+      const parsedBlocks = splitBlocks(activeArticle.contentHtml);
+      return parsedBlocks;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[WeTrim] splitBlocks error:', err);
+      setSplitError(msg);
+      return null;
+    }
+  }, [activeArticle]);
 
   // 计算文章体量概览（字数、HTML 体积 KB、图片数）
   const volumeStats = useMemo(() => {
@@ -137,6 +158,7 @@ export const App: React.FC = () => {
   const handleRetry = async (tabId?: number) => {
     if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) return;
     try {
+      setSplitError(null);
       await chrome.runtime.sendMessage({ type: 'retry-capture', tabId });
     } catch (err) {
       console.warn('[WeTrim] Retry request failed:', err);
@@ -161,10 +183,24 @@ export const App: React.FC = () => {
           <span
             className="status-dot"
             style={{
-              backgroundColor: activeArticle ? '#07c160' : activeNotice ? '#fa9d3b' : '#2f5fa8',
+              backgroundColor: splitError
+                ? '#c8352b'
+                : activeArticle
+                ? '#07c160'
+                : activeNotice
+                ? '#fa9d3b'
+                : '#2f5fa8',
             }}
           ></span>
-          <span>{activeArticle ? '校对就绪' : activeNotice ? '等待处置' : '工作台就绪'}</span>
+          <span>
+            {splitError
+              ? '整篇解析异常'
+              : activeArticle
+              ? '切块就绪'
+              : activeNotice
+              ? '等待处置'
+              : '工作台就绪'}
+          </span>
         </div>
       </header>
 
@@ -224,8 +260,40 @@ export const App: React.FC = () => {
 
           {/* 右侧版心 */}
           <section className="main-bed">
-            {/* 状态 1: 抓取成功 - 稿件审读签条 (Manuscript Slip) */}
-            {activeArticle && (
+            {/* 状态 1: 整篇级失败（ARCHITECTURE.md §6.2：通用提示 + 重试，不写候选快照） */}
+            {splitError && activeArticle && (
+              <div className="article-failure-card" data-testid="article-failure-card">
+                <div className="notice-stamp error-stamp" aria-hidden="true">
+                  <span>异常</span>
+                </div>
+                <div className="notice-header">
+                  <span className="notice-sub">整篇级失败</span>
+                  <h2 className="notice-title">无法切分文章正文块</h2>
+                </div>
+                <blockquote className="notice-verbatim-quote">
+                  无法从当前页面解析出正文内容（{splitError}）。请回到原文看看页面是否完整加载，然后重试。
+                </blockquote>
+                <div className="notice-actions">
+                  <button
+                    type="button"
+                    className="action-btn action-return"
+                    onClick={() => handleReturnToOriginal(activeArticle.tabId, activeArticle.source.url)}
+                  >
+                    回到原文看看
+                  </button>
+                  <button
+                    type="button"
+                    className="action-btn action-retry"
+                    onClick={() => handleRetry(activeArticle.tabId)}
+                  >
+                    重试
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* 状态 2: 抓取成功且切块成功 - 稿件审读签条 (Manuscript Slip) */}
+            {!splitError && activeArticle && (
               <div className="manuscript-slip" data-testid="manuscript-slip">
                 {/* 稳定探测超时标注夹签 */}
                 {activeArticle.unstable && (
@@ -254,7 +322,7 @@ export const App: React.FC = () => {
                   </div>
                 </div>
 
-                {/* 体量概览 */}
+                {/* 体量与切块概览 */}
                 {volumeStats && (
                   <div className="volume-stats-grid">
                     <div className="stat-card">
@@ -269,10 +337,16 @@ export const App: React.FC = () => {
                       <span className="stat-label">预加载图片</span>
                       <span className="stat-value">{volumeStats.imgCount} 张图片</span>
                     </div>
+                    {blocks && (
+                      <div className="stat-card" data-testid="blocks-stat-card">
+                        <span className="stat-label">内容块数</span>
+                        <span className="stat-value">{blocks.length} 块</span>
+                      </div>
+                    )}
                   </div>
                 )}
 
-                {/* 底部操作与切块待命说明 */}
+                {/* 底部操作行 */}
                 <div className="slip-actions">
                   <button
                     type="button"
@@ -290,14 +364,12 @@ export const App: React.FC = () => {
                   </button>
                 </div>
 
-                <div className="content-outline-placeholder">
-                  <div className="outline-bar"></div>
-                  <span>正文抓取完成，已安全落盘。正文块流将在后续工序切分展开。</span>
-                </div>
+                {/* 正文块流列表：ADR-0005 唯一渲染入口 */}
+                {blocks && <BlockList blocks={blocks} />}
               </div>
             )}
 
-            {/* 状态 2: 微信提示页或验证页 - 审校退单 (Block / Return Notice) */}
+            {/* 状态 3: 微信提示页或验证页 - 审校退单 (Block / Return Notice) */}
             {activeNotice && (
               <div className="return-notice-card" data-testid="return-notice-card">
                 <div className="notice-stamp" aria-hidden="true">
@@ -335,7 +407,7 @@ export const App: React.FC = () => {
               </div>
             )}
 
-            {/* 状态 3: 空状态 - 3 步指引 */}
+            {/* 状态 4: 空状态 - 3 步指引 */}
             {!activeArticle && !activeNotice && (
               <div className="empty-state-view" data-testid="empty-state-view">
                 <h1 className="empty-headline">

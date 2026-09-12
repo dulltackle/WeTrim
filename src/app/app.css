@@ -590,3 +590,171 @@ body {
   border-radius: 2px;
 }
 
+/* 4. 整篇级失败卡片 (Article Failure Card) */
+.article-failure-card {
+  background: #fff;
+  border: 1px solid var(--sheet-border);
+  border-left: 4px solid var(--vermilion);
+  border-radius: 2px;
+  padding: 32px 36px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.error-stamp {
+  border-color: var(--vermilion);
+  color: var(--vermilion);
+}
+
+/* ==========================================================================
+   Issue #17: 切块列表展示样式 (BlockList & BlockItem)
+   ========================================================================== */
+
+.block-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.block-list-summary-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background-color: #fff;
+  border: 1px solid var(--sheet-border);
+  padding: 14px 18px;
+  border-radius: 2px;
+}
+
+.summary-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--ink-primary);
+}
+
+.summary-heading {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.summary-total {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  color: var(--ink-secondary);
+}
+
+.summary-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.summary-chip {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 2px;
+  border: 1px solid var(--sheet-border);
+  background-color: #f7f9f7;
+  color: var(--ink-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.chip-paragraph { border-color: #d1d5db; color: #374151; }
+.chip-heading   { border-color: #93c5fd; background-color: #eff6ff; color: #1d4ed8; }
+.chip-image     { border-color: #86efac; background-color: #f0fdf4; color: #15803d; }
+.chip-code      { border-color: #fde047; background-color: #fefce8; color: #854d0e; }
+.chip-list      { border-color: #c4b5fd; background-color: #f5f3ff; color: #6d28d9; }
+.chip-quote     { border-color: #fdba74; background-color: #fff7ed; color: #c2410c; }
+.chip-table     { border-color: #67e8f9; background-color: #ecfeff; color: #0e7490; }
+.chip-divider   { border-color: #cbd5e1; color: #64748b; }
+.chip-formula   { border-color: #f472b6; background-color: #fdf2f8; color: #be185d; }
+.chip-richMedia { border-color: #fca5a5; background-color: #fef2f2; color: #b91c1c; }
+.chip-unknown   { border-color: #e5e7eb; background-color: #f9fafb; color: #9ca3af; }
+
+.block-items-stream {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.block-item {
+  background-color: #fff;
+  border: 1px solid var(--sheet-border);
+  border-radius: 2px;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: border-color 0.15s ease;
+}
+
+.block-item:hover {
+  border-color: var(--ink-secondary);
+}
+
+.block-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.block-order-badge {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: 600;
+  color: var(--ink-tertiary);
+  min-width: 32px;
+}
+
+.block-type-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 2px;
+  border: 1px solid transparent;
+}
+
+.block-type-paragraph { background-color: #f3f4f6; color: #374151; }
+.block-type-heading   { background-color: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+.block-type-image     { background-color: #f0fdf4; color: #15803d; border-color: #bbf7d0; }
+.block-type-code      { background-color: #fefce8; color: #854d0e; border-color: #fef08a; }
+.block-type-list      { background-color: #f5f3ff; color: #6d28d9; border-color: #ddd6fe; }
+.block-type-quote     { background-color: #fff7ed; color: #c2410c; border-color: #fed7aa; }
+.block-type-table     { background-color: #ecfeff; color: #0e7490; border-color: #a5f3fc; }
+.block-type-divider   { background-color: #f1f5f9; color: #64748b; }
+.block-type-formula   { background-color: #fdf2f8; color: #be185d; border-color: #fbcfe8; }
+.block-type-richMedia { background-color: #fef2f2; color: #b91c1c; border-color: #fecaca; }
+.block-type-unknown   { background-color: #f9fafb; color: #9ca3af; }
+
+.block-status-tag {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--ink-tertiary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.block-html-summary {
+  font-size: 11px;
+  background-color: #fbfbf9;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  padding: 6px 10px;
+  border-radius: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-secondary);
+}
+
+.block-html-summary code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+
