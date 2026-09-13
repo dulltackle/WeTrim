@@ -1,4 +1,12 @@
-import React, { forwardRef, memo, useCallback, useEffect, useRef, useState } from 'react';
+import React, {
+  forwardRef,
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import { currentMarkdown, type Block } from '../../shared/types';
 import { truncateGraphemes } from '../../shared/grapheme';
 import { renderMarkdown } from '../preview/render';
@@ -106,6 +114,16 @@ export const BlockItem = memo(
       };
     }, [flushSave]);
 
+    // 编辑区随内容自动增高：rows 只能按显式换行符计数，无法反映自动折行占用的视觉行数，
+    // 需要按 scrollHeight 撑高文本框，避免折行内容被压缩进过矮的编辑区
+    useLayoutEffect(() => {
+      const el = textareaRef.current;
+      if (isEditing && el) {
+        el.style.height = 'auto';
+        el.style.height = `${el.scrollHeight}px`;
+      }
+    }, [isEditing, localValue]);
+
     // 文本框输入事件
     const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       const nextVal = e.target.value;
@@ -186,6 +204,17 @@ export const BlockItem = memo(
     const typeLabel = BLOCK_TYPE_LABELS[block.type] || block.type;
     const levelText =
       block.type === 'heading' && block.headingLevel ? ` H${block.headingLevel}` : '';
+
+    // 编辑区字号随块类型贴近渲染态量级，避免标题块切入编辑态时字号骤降
+    const HEADING_EDITOR_FONT_SIZE: Record<number, string> = {
+      1: '20px',
+      2: '18px',
+      3: '16px',
+    };
+    const editorFontSize =
+      block.type === 'heading'
+        ? HEADING_EDITOR_FONT_SIZE[block.headingLevel ?? 0] ?? '15px'
+        : '15px';
 
     // 实时状态计算：在编辑态下以 localValue 为准，阅读态以 currentMarkdown 为准
     const effectiveMarkdown = isEditing ? localValue : currentMarkdown(block);
@@ -373,10 +402,10 @@ export const BlockItem = memo(
             ref={textareaRef}
             className="block-editor-textarea"
             data-testid="block-editor-textarea"
+            style={{ fontSize: editorFontSize }}
             value={localValue}
             onChange={handleTextareaChange}
             aria-label={`编辑第 ${block.order} 块 Markdown`}
-            rows={Math.max(3, Math.min(25, localValue.split('\n').length + 1))}
             autoFocus
           />
           <div className="block-editor-toolbar" data-testid="block-editor-toolbar">
@@ -522,18 +551,8 @@ export const BlockItem = memo(
               )
             )}
 
-            {/* 编辑与完成编辑入口 */}
-            {isEditing ? (
-              <button
-                type="button"
-                className="block-action-btn block-action-finish-edit"
-                data-testid="block-action-finish-edit"
-                aria-label={`完成编辑第 ${block.order} 块`}
-                onClick={handleFinishEdit}
-              >
-                完成编辑
-              </button>
-            ) : (
+            {/* 编辑入口：完成编辑按钮已在编辑区工具栏提供，此处编辑态下不重复渲染 */}
+            {!isEditing && (
               <button
                 type="button"
                 className="block-action-btn block-action-edit"

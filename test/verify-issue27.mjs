@@ -68,8 +68,9 @@ async function run() {
       id: `block-${type}-${idx + 1}`,
       order: idx + 1,
       type,
+      ...(type === 'heading' ? { headingLevel: 1 } : {}),
       originalHtml: `<p>${type} 内容</p>`,
-      initialMarkdown: `${type} 初始内容`,
+      initialMarkdown: type === 'heading' ? '# heading 初始内容' : `${type} 初始内容`,
       editedMarkdown: null,
       included: true,
       notes: [],
@@ -145,6 +146,10 @@ async function run() {
     const finishBtn = await page.$(`${block1Selector} [data-testid="block-action-finish-edit"]`);
     assert(finishBtn, '"完成编辑" button must be available in editing state');
 
+    // 回归：编辑态下"完成编辑"按钮只能出现一次（常驻 meta 操作行不得与编辑区工具栏重复渲染）
+    const finishBtns = await page.$$(`${block1Selector} [data-testid="block-action-finish-edit"]`);
+    assert.strictEqual(finishBtns.length, 1, '"完成编辑" button must appear exactly once while editing');
+
     // Click "完成编辑"
     await page.click(`${block1Selector} [data-testid="block-action-finish-edit"]`);
     await page.waitForSelector(`${block1Selector} [data-testid="block-rendered-content"]`);
@@ -159,6 +164,12 @@ async function run() {
     console.log('\n--- Test 4: Collapsed excluded block expands & enters editor ---');
     const block2Selector = '[data-block-id="block-heading-2"]';
 
+    // 编辑前（保留且展开态）记录标题块渲染态字号，供后续与编辑态字号对比
+    const headingRenderedFontSize = await page.$eval(
+      `${block2Selector} [data-testid="block-rendered-content"] h1`,
+      (el) => parseFloat(getComputedStyle(el).fontSize)
+    );
+
     // Exclude block 2
     await page.click(`${block2Selector} [data-testid="block-action-exclude"]`);
     await page.waitForSelector(`${block2Selector}[data-block-collapsed="true"]`);
@@ -170,6 +181,16 @@ async function run() {
 
     // Verify it expanded and entered editor
     await page.waitForSelector(`${block2Selector} [data-testid="block-editor-textarea"]`);
+
+    // 回归：标题块进入编辑态时字号不应骤降（编辑区字号需随标题层级贴近渲染态量级）
+    const headingEditorFontSize = await page.$eval(
+      `${block2Selector} [data-testid="block-editor-textarea"]`,
+      (el) => parseFloat(getComputedStyle(el).fontSize)
+    );
+    assert(
+      headingEditorFontSize >= headingRenderedFontSize * 0.85,
+      `标题编辑态字号不应骤降：渲染态 ${headingRenderedFontSize}px，编辑态 ${headingEditorFontSize}px`
+    );
     const isCollapsedNow = await page.$eval(block2Selector, (el) => el.getAttribute('data-block-collapsed'));
     const isIncludedNow = await page.$eval(block2Selector, (el) => el.getAttribute('data-block-included'));
     assert.strictEqual(isCollapsedNow, 'false', 'Block must be expanded when entering edit mode');
@@ -478,6 +499,81 @@ async function run() {
     console.log(`[A11y] Scroll position after keyboard edit finish: ${scrollY}`);
 
     console.log('✓ Test 11 Passed: Keyboard accessibility & focus retention verified');
+
+    // --------------------------------------------------------------------------
+    // Test 12: 长单行段落进入编辑态时，文本框需按折行内容撑高，不能被裁切变矮
+    // rows 只能按显式换行符计数，无法反映自动折行占用的视觉行数，
+    // 长单行段落（无 \n）曾因此被压缩进最矮 3 行的文本框，裁切掉折行后的内容。
+    // --------------------------------------------------------------------------
+    console.log('\n--- Test 12: Editor textarea grows to fit wrapped long single-line paragraph ---');
+    const longSingleLineText = '这是一段用于验证文本框高度问题的很长很长的段落文字，'.repeat(8);
+
+    await page.evaluate((text) => {
+      const { dispatch } = window.__wetrim;
+      dispatch({
+        type: 'INIT_STORAGE_STATE',
+        payload: {
+          session: {
+            schemaVersion: 1,
+            sessionId: 'test-session-issue27-long-paragraph',
+            revision: 1,
+            savedAt: new Date().toISOString(),
+            snapshot: {
+              snapshotId: 'test-snapshot-issue27-long-paragraph',
+              capturedAt: new Date().toISOString(),
+              source: {
+                title: '长单行段落文本框高度回归',
+                account: '测试公众号',
+                publishedAt: '2026-09-13',
+                url: 'https://mp.weixin.qq.com/s/test-edit-long-paragraph',
+              },
+              blocks: [
+                {
+                  id: 'block-paragraph-long',
+                  order: 1,
+                  type: 'paragraph',
+                  originalHtml: `<p>${text}</p>`,
+                  initialMarkdown: text,
+                  editedMarkdown: null,
+                  included: true,
+                  notes: [],
+                },
+              ],
+              images: [],
+              captureWarnings: [],
+            },
+          },
+          candidateSnapshot: null,
+          corrupted: false,
+        },
+      });
+    }, longSingleLineText);
+
+    const longBlockSelector = '[data-block-id="block-paragraph-long"]';
+    await page.waitForSelector(`${longBlockSelector} [data-testid="block-rendered-content"]`);
+
+    const longRenderedHeight = await page.$eval(
+      `${longBlockSelector} [data-testid="block-rendered-content"]`,
+      (el) => el.getBoundingClientRect().height
+    );
+
+    await page.click(`${longBlockSelector} [data-testid="block-action-edit"]`);
+    await page.waitForSelector(`${longBlockSelector} [data-testid="block-editor-textarea"]`);
+
+    const { clientHeight, scrollHeight } = await page.$eval(
+      `${longBlockSelector} [data-testid="block-editor-textarea"]`,
+      (el) => ({ clientHeight: el.clientHeight, scrollHeight: el.scrollHeight })
+    );
+    assert(
+      clientHeight >= scrollHeight - 3,
+      `编辑区必须按折行内容撑高，不能裁切：clientHeight=${clientHeight}px, scrollHeight=${scrollHeight}px`
+    );
+    assert(
+      clientHeight >= longRenderedHeight * 0.85,
+      `编辑区高度不应明显低于渲染态段落高度：渲染态 ${longRenderedHeight}px，编辑态 ${clientHeight}px`
+    );
+
+    console.log('✓ Test 12 Passed: Editor textarea grows to fit wrapped long single-line paragraph');
 
     console.log('\n=============================================');
     console.log('✓ All Issue #27 acceptance criteria verified successfully!');
