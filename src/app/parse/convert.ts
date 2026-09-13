@@ -9,6 +9,7 @@ import type {
 import { collectImages } from '../export/collect-images';
 import { splitBlocks } from './split-blocks';
 import { registerWechatRules, type WechatRulesOptions } from './rules/wechat';
+import { isTableDegraded } from './rules/table';
 
 /**
  * 装配 Turndown 转换基座与微信通用规则（对应 ARCHITECTURE.md §6.1 与 docs/conversion-rules.md §1、§4.8）
@@ -171,6 +172,30 @@ export function convertBlock(block: Block, options?: ConvertBlockOptions): Block
         code: 'richmedia-placeholder',
         message: '富媒体卡片已转换为占位说明',
       });
+    }
+  }
+
+  // 表格降级提示挂载（docs/conversion-rules.md §4.7 与 Issue #22）
+  if (
+    block.type === 'table' ||
+    (block.originalHtml && block.originalHtml.includes('<table'))
+  ) {
+    if (typeof DOMParser !== 'undefined') {
+      try {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(block.originalHtml, 'text/html');
+        const tables = Array.from(doc.querySelectorAll('table'));
+        if (tables.some(isTableDegraded)) {
+          if (!notes.some((n) => n.code === 'table-degraded')) {
+            notes.push({
+              code: 'table-degraded',
+              message: '表格包含合并单元格或复杂嵌套，已降级为可读文本',
+            });
+          }
+        }
+      } catch {
+        // 忽略 DOMParser 容错
+      }
     }
   }
 

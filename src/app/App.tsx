@@ -54,6 +54,7 @@ export const App: React.FC = () => {
           convertBlock,
           convertBlocks,
           createTurndown,
+          renderMarkdown,
           splitBlocks,
         };
       }
