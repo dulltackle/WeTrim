@@ -20,6 +20,8 @@ export interface EmptySubState {
   } | null;
 }
 
+export type SaveStatus = 'saved' | 'saving' | 'unsaved' | 'error';
+
 export interface AppState {
   viewMode: AppViewMode;
   session: Session | null;
@@ -27,6 +29,8 @@ export interface AppState {
   corruptedDetails: string | null;
   emptySubState: EmptySubState;
   selfTestPassed: boolean;
+  saveStatus: SaveStatus;
+  lastSavedRevision: number | null;
 }
 
 export type SessionAction =
@@ -42,6 +46,17 @@ export type SessionAction =
   | {
       type: 'SET_ARTICLE_SNAPSHOT';
       payload: ArticleSnapshot;
+    }
+  | {
+      type: 'SET_NEW_SESSION';
+      payload: Session;
+    }
+  | {
+      type: 'SET_SAVE_STATUS';
+      payload: {
+        status: SaveStatus;
+        lastSavedRevision?: number;
+      };
     }
   | {
       type: 'SET_EMPTY_NOTICE';
@@ -92,6 +107,8 @@ export const initialAppState: AppState = {
   corruptedDetails: null,
   emptySubState: initialEmptySubState,
   selfTestPassed: false,
+  saveStatus: 'saved',
+  lastSavedRevision: null,
 };
 
 export function sessionReducer(state: AppState, action: SessionAction): AppState {
@@ -114,6 +131,8 @@ export function sessionReducer(state: AppState, action: SessionAction): AppState
           viewMode: 'candidateConfirm',
           session,
           candidateSnapshot,
+          saveStatus: 'saved',
+          lastSavedRevision: session.revision,
           emptySubState: initialEmptySubState,
         };
       }
@@ -132,6 +151,8 @@ export function sessionReducer(state: AppState, action: SessionAction): AppState
           viewMode: 'cleaning',
           session: newSession,
           candidateSnapshot: null,
+          saveStatus: 'saving',
+          lastSavedRevision: 0,
           emptySubState: initialEmptySubState,
         };
       }
@@ -142,6 +163,8 @@ export function sessionReducer(state: AppState, action: SessionAction): AppState
           viewMode: 'cleaning',
           session,
           candidateSnapshot: null,
+          saveStatus: 'saved',
+          lastSavedRevision: session.revision,
           emptySubState: initialEmptySubState,
         };
       }
@@ -151,6 +174,31 @@ export function sessionReducer(state: AppState, action: SessionAction): AppState
         viewMode: 'empty',
         session: null,
         candidateSnapshot: null,
+        saveStatus: 'saved',
+        lastSavedRevision: null,
+      };
+    }
+
+    case 'SET_NEW_SESSION': {
+      return {
+        ...state,
+        viewMode: 'cleaning',
+        session: action.payload,
+        saveStatus: 'saving',
+        lastSavedRevision: 0,
+        candidateSnapshot: null,
+        emptySubState: initialEmptySubState,
+      };
+    }
+
+    case 'SET_SAVE_STATUS': {
+      return {
+        ...state,
+        saveStatus: action.payload.status,
+        lastSavedRevision:
+          action.payload.lastSavedRevision !== undefined
+            ? action.payload.lastSavedRevision
+            : state.lastSavedRevision,
       };
     }
 
@@ -180,6 +228,8 @@ export function sessionReducer(state: AppState, action: SessionAction): AppState
         viewMode: 'cleaning',
         session: newSession,
         candidateSnapshot: null,
+        saveStatus: 'saving',
+        lastSavedRevision: 0,
         emptySubState: initialEmptySubState,
       };
     }
@@ -256,9 +306,11 @@ export function sessionReducer(state: AppState, action: SessionAction): AppState
       );
       return {
         ...state,
+        saveStatus: 'saving',
         session: {
           ...state.session,
           revision: state.session.revision + 1,
+          savedAt: new Date().toISOString(),
           snapshot: {
             ...state.session.snapshot,
             blocks: nextBlocks,
@@ -274,9 +326,11 @@ export function sessionReducer(state: AppState, action: SessionAction): AppState
       );
       return {
         ...state,
+        saveStatus: 'saving',
         session: {
           ...state.session,
           revision: state.session.revision + 1,
+          savedAt: new Date().toISOString(),
           snapshot: {
             ...state.session.snapshot,
             blocks: nextBlocks,

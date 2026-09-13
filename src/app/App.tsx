@@ -19,6 +19,13 @@ import {
   initialAppState,
   sessionReducer,
 } from './state/session-reducer';
+import {
+  sessionSaveQueue,
+  SessionSaveQueue,
+  loadSession,
+  saveSessionDirect,
+  clearSessionDirect,
+} from './state/persistence';
 import './app.css';
 
 /**
@@ -34,6 +41,10 @@ import './app.css';
 export const App: React.FC = () => {
   const [state, dispatch] = useReducer(sessionReducer, initialAppState);
   const blockListRef = useRef<BlockListHandle>(null);
+  const stateRef = useRef(state);
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   // 1. marked + DOMPurify 真实渲染三步指引文案
   const stepsMarkdown = `1. **用浏览器打开一篇公众号文章**\\n2. **等它显示完**\\n3. **点工具栏上的 WeTrim 图标** 开始清洗`;
@@ -45,21 +56,33 @@ export const App: React.FC = () => {
       try {
         const articleSnapshot = buildArticleSnapshot(res);
 
-        // 先落盘，写入 candidateSnapshot（ARCHITECTURE.md §4.5）
-        if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-          const candidateRecord: CandidateRecord = {
+        if (!stateRef.current.session) {
+          // 无当前会话：直接提升为当前会话并入队持久化
+          const newSession: Session = {
             schemaVersion: 1,
+            sessionId: crypto.randomUUID(),
             snapshot: articleSnapshot,
+            revision: 1,
             savedAt: new Date().toISOString(),
           };
-          chrome.storage.local
-            .set({ [STORAGE_KEYS.CANDIDATE_SNAPSHOT]: candidateRecord })
-            .catch((err: unknown) => {
-              console.error('[WeTrim] Failed to persist candidateSnapshot:', err);
-            });
+          sessionSaveQueue.enqueue(newSession);
+          dispatch({ type: 'SET_NEW_SESSION', payload: newSession });
+        } else {
+          // 先落盘，写入 candidateSnapshot（ARCHITECTURE.md §4.5）
+          if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+            const candidateRecord: CandidateRecord = {
+              schemaVersion: 1,
+              snapshot: articleSnapshot,
+              savedAt: new Date().toISOString(),
+            };
+            chrome.storage.local
+              .set({ [STORAGE_KEYS.CANDIDATE_SNAPSHOT]: candidateRecord })
+              .catch((err: unknown) => {
+                console.error('[WeTrim] Failed to persist candidateSnapshot:', err);
+              });
+          }
+          dispatch({ type: 'SET_ARTICLE_SNAPSHOT', payload: articleSnapshot });
         }
-
-        dispatch({ type: 'SET_ARTICLE_SNAPSHOT', payload: articleSnapshot });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.error('[WeTrim] buildArticleSnapshot error:', err);
@@ -116,10 +139,26 @@ export const App: React.FC = () => {
           corruptedDetails = '存储中的清洗会话记录格式不完整或损坏';
         }
 
+        let initialSession: Session | null = corrupted ? null : (rawSession ?? null);
+
+        if (rawSession && !corrupted) {
+          sessionSaveQueue.initLoaded(rawSession);
+        } else if (!rawSession && rawCandidate?.snapshot) {
+          const newSession: Session = {
+            schemaVersion: 1,
+            sessionId: crypto.randomUUID(),
+            snapshot: rawCandidate.snapshot,
+            revision: 1,
+            savedAt: new Date().toISOString(),
+          };
+          sessionSaveQueue.enqueue(newSession);
+          initialSession = newSession;
+        }
+
         dispatch({
           type: 'INIT_STORAGE_STATE',
           payload: {
-            session: corrupted ? null : (rawSession ?? null),
+            session: initialSession,
             candidateSnapshot: rawCandidate?.snapshot ?? null,
             corrupted,
             corruptedDetails,
@@ -150,6 +189,59 @@ export const App: React.FC = () => {
     };
   }, []);
 
+  // 订阅持久化队列状态变更
+  useEffect(() => {
+    const unsubscribe = sessionSaveQueue.subscribe((status, meta) => {
+      dispatch({
+        type: 'SET_SAVE_STATUS',
+        payload: {
+          status,
+          lastSavedRevision: meta?.revision,
+        },
+      });
+    });
+    return unsubscribe;
+  }, []);
+
+  // 隐藏页面时尽早提交待保存内容（ARCHITECTURE.md §8.2）
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        sessionSaveQueue.flush();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
+  // 监听会话变更，修订号递增（取舍/还原立即提交）自动入队写入
+  const prevSessionRef = useRef<Session | null>(null);
+  useEffect(() => {
+    if (!state.session) {
+      prevSessionRef.current = null;
+      return;
+    }
+
+    const prev = prevSessionRef.current;
+    prevSessionRef.current = state.session;
+
+    // 初始由 initLoaded 初始化的已有会话不重复入队
+    if (!prev) {
+      return;
+    }
+
+    if (state.session.sessionId !== prev.sessionId) {
+      sessionSaveQueue.enqueue(state.session);
+      return;
+    }
+
+    if (state.session.revision > prev.revision) {
+      sessionSaveQueue.enqueue(state.session);
+    }
+  }, [state.session]);
+
   // 自检验证（CSP 与 eval 约束验证）
   useEffect(() => {
     try {
@@ -175,6 +267,11 @@ export const App: React.FC = () => {
           blockListRef,
           dispatch,
           processCaptureResult,
+          sessionSaveQueue,
+          SessionSaveQueue,
+          loadSession,
+          saveSessionDirect,
+          clearSessionDirect,
         };
       }
     } catch (err) {
@@ -226,7 +323,14 @@ export const App: React.FC = () => {
     }
   };
 
-  const { viewMode, session, candidateSnapshot, corruptedDetails, emptySubState, selfTestPassed } = state;
+  // 保存失败时的重试处理
+  const handleRetrySave = () => {
+    if (state.session) {
+      sessionSaveQueue.retry(state.session);
+    }
+  };
+
+  const { viewMode, session, candidateSnapshot, corruptedDetails, emptySubState, selfTestPassed, saveStatus } = state;
 
   // 顶部工作台状态计算
   const ticketTag =
@@ -286,12 +390,53 @@ export const App: React.FC = () => {
             <span className="ticket-tag">{ticketTag}</span>
             <span className="ticket-number">{ticketNumber}</span>
           </div>
-          <div className="system-status">
-            <span
-              className="status-dot"
-              style={{ backgroundColor: statusDotColor }}
-            ></span>
-            <span>{statusText}</span>
+          <div className="header-status-group" data-testid="header-status-group">
+            {/* 保存状态指示位 */}
+            {session && (
+              saveStatus === 'error' ? (
+                <button
+                  type="button"
+                  className="save-status save-status-error"
+                  data-testid="save-status"
+                  data-save-status="error"
+                  onClick={handleRetrySave}
+                  title="点击重新保存"
+                  aria-label="保存失败，点击重试"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <span className="save-status-dot save-status-dot-error" aria-hidden="true"></span>
+                  <span className="save-status-text">保存失败 · 点击重试</span>
+                </button>
+              ) : (
+                <div
+                  className={`save-status save-status-${saveStatus}`}
+                  data-testid="save-status"
+                  data-save-status={saveStatus}
+                  role="status"
+                  aria-live="polite"
+                >
+                  <span
+                    className={`save-status-dot save-status-dot-${saveStatus}`}
+                    aria-hidden="true"
+                  ></span>
+                  <span className="save-status-text">
+                    {saveStatus === 'saving'
+                      ? '正在保存'
+                      : saveStatus === 'unsaved'
+                      ? '最新更改未保存'
+                      : '已保存'}
+                  </span>
+                </div>
+              )
+            )}
+            <div className="system-status" data-testid="system-status">
+              <span
+                className="status-dot"
+                style={{ backgroundColor: statusDotColor }}
+              ></span>
+              <span>{statusText}</span>
+            </div>
           </div>
         </header>
 
@@ -454,7 +599,10 @@ export const App: React.FC = () => {
                     <button
                       type="button"
                       className="action-btn action-retry"
-                      onClick={() => dispatch({ type: 'RESET_TO_EMPTY' })}
+                      onClick={() => {
+                        sessionSaveQueue.clear();
+                        dispatch({ type: 'RESET_TO_EMPTY' });
+                      }}
                     >
                       重新开始
                     </button>

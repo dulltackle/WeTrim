@@ -94,6 +94,68 @@ body {
   background-color: var(--prussian-blue);
 }
 
+.header-status-group {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-shrink: 0;
+}
+
+.save-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ink-secondary);
+  user-select: none;
+  border-radius: 2px;
+}
+
+.save-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.save-status-dot-saved {
+  background-color: #07c160;
+}
+
+.save-status-dot-saving {
+  background-color: var(--prussian-blue);
+}
+
+.save-status-dot-unsaved {
+  background-color: #fa9d3b;
+}
+
+.save-status-dot-error {
+  background-color: var(--vermilion);
+}
+
+button.save-status-error {
+  cursor: pointer;
+  background-color: var(--vermilion-subtle);
+  border: 1px solid rgba(200, 53, 43, 0.25);
+  color: var(--vermilion);
+  padding: 2px 8px;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.4;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+button.save-status-error:hover {
+  background-color: #f7dedc;
+  border-color: var(--vermilion);
+}
+
+button.save-status-error:focus-visible {
+  outline: 2px solid var(--vermilion);
+  outline-offset: 1px;
+}
+
 /* 主校验纸张 */
 .proof-sheet {
   width: 100%;
