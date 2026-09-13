@@ -12,6 +12,8 @@ import {
 import { splitBlocks } from './parse/split-blocks';
 import { BlockList, type BlockListHandle } from './components/BlockList';
 import { renderMarkdown } from './preview/render';
+import { buildMarkdown } from './export/build-markdown';
+import { truncateGraphemes } from '../shared/grapheme';
 import { AppContext } from './state/session-context';
 import {
   initialAppState,
@@ -163,6 +165,8 @@ export const App: React.FC = () => {
       if (typeof window !== 'undefined') {
         (window as unknown as Record<string, unknown>).__wetrim = {
           buildArticleSnapshot,
+          buildMarkdown,
+          truncateGraphemes,
           convertBlock,
           convertBlocks,
           createTurndown,

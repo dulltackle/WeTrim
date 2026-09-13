@@ -10,6 +10,7 @@
     "test": "node test/check-dom-access.mjs && node test/verify-csp.mjs",
     "check-dom": "node test/check-dom-access.mjs",
     "verify:issue24": "node test/verify-issue24.mjs",
+    "verify:issue25": "node test/verify-issue25.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

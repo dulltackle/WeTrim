@@ -714,6 +714,35 @@ body {
   background-color: #f7f9f7;
   color: var(--ink-secondary);
   font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+}
+
+.filter-tab {
+  cursor: pointer;
+  background-color: #f7f9f7;
+  border: 1px solid var(--sheet-border);
+  color: var(--ink-secondary);
+  font-family: inherit;
+  user-select: none;
+  transition: all 0.15s ease;
+}
+
+.filter-tab:hover {
+  background-color: #eef2ee;
+  color: var(--ink-primary);
+  border-color: var(--ink-tertiary);
+}
+
+.filter-tab.is-active {
+  background-color: var(--ink-primary);
+  color: #fff;
+  border-color: var(--ink-primary);
+  font-weight: 600;
+}
+
+.filter-tab:focus-visible {
+  outline: 2px solid var(--prussian-blue);
+  outline-offset: 1px;
 }
 
 .chip-paragraph { border-color: #d1d5db; color: #374151; }
@@ -914,8 +943,167 @@ body {
 }
 
 .block-item.block-excluded {
-  opacity: 0.65;
+  opacity: 0.85;
   background-color: #fafbf9;
+}
+
+.block-item.block-collapsed {
+  padding: 6px 14px;
+}
+
+.block-collapsed-summary-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.block-summary-preview {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--ink-secondary);
+  padding: 0 4px;
+}
+
+.block-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.block-toggle-btn {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px solid var(--sheet-border);
+  background-color: #fff;
+  color: var(--ink-secondary);
+  font-family: inherit;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.block-toggle-btn:hover {
+  background-color: #f4f6f4;
+  color: var(--ink-primary);
+  border-color: var(--ink-secondary);
+}
+
+.block-toggle-btn:focus-visible {
+  outline: 2px solid var(--prussian-blue);
+  outline-offset: 1px;
+}
+
+.block-action-exclude:hover {
+  color: var(--vermilion);
+  border-color: var(--vermilion);
+  background-color: var(--vermilion-subtle);
+}
+
+.block-action-restore {
+  color: var(--prussian-blue);
+  border-color: #bfdbfe;
+  background-color: #eff6ff;
+  font-weight: 600;
+}
+
+.block-action-restore:hover {
+  background-color: #dbeafe;
+  color: #1d4ed8;
+  border-color: #93c5fd;
+}
+
+.block-action-expand,
+.block-action-collapse {
+  color: var(--ink-secondary);
+  background-color: #f7f9f7;
+}
+
+.block-action-expand:hover,
+.block-action-collapse:hover {
+  background-color: #eef2ee;
+  color: var(--ink-primary);
+}
+
+/* 整体块提示图标与浮层 */
+.composite-block-tip-trigger {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-tertiary);
+  cursor: help;
+  padding: 2px;
+  border-radius: 2px;
+}
+
+.composite-block-tip-trigger:hover,
+.composite-block-tip-trigger:focus-visible {
+  color: var(--prussian-blue);
+  outline: 1px solid var(--prussian-blue);
+}
+
+.composite-block-tip-trigger .tip-icon {
+  display: block;
+}
+
+.composite-block-tip-trigger .tip-tooltip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: var(--ink-primary);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1.4;
+  padding: 4px 8px;
+  border-radius: 2px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.15s ease, visibility 0.15s ease;
+  z-index: 30;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.composite-block-tip-trigger .tip-tooltip::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 4px;
+  border-style: solid;
+  border-color: var(--ink-primary) transparent transparent transparent;
+}
+
+.composite-block-tip-trigger:hover .tip-tooltip,
+.composite-block-tip-trigger:focus .tip-tooltip,
+.composite-block-tip-trigger:focus-visible .tip-tooltip {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* 筛选为空时的非模态说明 */
+.block-list-empty-filter {
+  padding: 48px 24px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--ink-secondary);
+  border: 1px dashed var(--sheet-border);
+  border-radius: 2px;
+  background-color: #fafbf9;
+  margin: 16px 0;
 }
 
 .block-item.block-is-edited {
