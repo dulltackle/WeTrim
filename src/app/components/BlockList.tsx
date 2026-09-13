@@ -5,6 +5,12 @@ import { useAppContext } from '../state/session-context';
 
 export type BlockFilterMode = 'all' | 'included' | 'excluded';
 
+export const EMPTY_FILTER_MESSAGES: Record<BlockFilterMode, string> = {
+  excluded: '没有被剔除的块',
+  included: '没有保留的块',
+  all: '暂无内容块',
+};
+
 /**
  * ADR-0005, Issue #24 & Issue #25：
  * 全部块的唯一渲染入口。
@@ -135,6 +141,13 @@ export const BlockList = forwardRef<BlockListHandle, BlockListProps>(({ blocks }
     }
   }, [dispatch, filter, visibleBlocks]);
 
+  const handleUpdateBlock = useCallback(
+    (blockId: string, editedMarkdown: string | null) => {
+      dispatch({ type: 'UPDATE_BLOCK', payload: { blockId, editedMarkdown } });
+    },
+    [dispatch]
+  );
+
   useImperativeHandle(
     ref,
     () => ({
@@ -225,11 +238,7 @@ export const BlockList = forwardRef<BlockListHandle, BlockListProps>(({ blocks }
       {/* 筛选为空时的非模态说明 */}
       {visibleBlocks.length === 0 && (
         <div className="block-list-empty-filter" data-testid="block-list-empty-filter">
-          {filter === 'excluded'
-            ? '没有被剔除的块'
-            : filter === 'included'
-            ? '没有保留的块'
-            : '暂无内容块'}
+          {EMPTY_FILTER_MESSAGES[filter]}
         </div>
       )}
 
@@ -241,6 +250,7 @@ export const BlockList = forwardRef<BlockListHandle, BlockListProps>(({ blocks }
               key={b.id}
               block={b}
               onToggle={handleToggleBlock}
+              onUpdate={handleUpdateBlock}
               ref={(el) => registerItemRef(b.id, el)}
             />
           ))}
