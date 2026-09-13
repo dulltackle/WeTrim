@@ -203,33 +203,12 @@ export function sessionReducer(state: AppState, action: SessionAction): AppState
     }
 
     case 'SET_ARTICLE_SNAPSHOT': {
-      const snapshot = action.payload;
-
-      if (state.session) {
-        // 已有当前清洗会话：新快照进 candidateSnapshot，等待用户拍板替换
-        return {
-          ...state,
-          viewMode: 'candidateConfirm',
-          candidateSnapshot: snapshot,
-          emptySubState: initialEmptySubState,
-        };
-      }
-
-      // 无当前会话：直接提升为当前会话
-      const newSession: Session = {
-        schemaVersion: 1,
-        sessionId: crypto.randomUUID(),
-        snapshot,
-        revision: 1,
-        savedAt: new Date().toISOString(),
-      };
+      // 调用方（App.tsx）仅在已有当前会话时才 dispatch 本 action；
+      // 无当前会话的情形改走 SET_NEW_SESSION
       return {
         ...state,
-        viewMode: 'cleaning',
-        session: newSession,
-        candidateSnapshot: null,
-        saveStatus: 'saving',
-        lastSavedRevision: 0,
+        viewMode: 'candidateConfirm',
+        candidateSnapshot: action.payload,
         emptySubState: initialEmptySubState,
       };
     }

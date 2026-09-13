@@ -332,6 +332,13 @@ export const App: React.FC = () => {
 
   const { viewMode, session, candidateSnapshot, corruptedDetails, emptySubState, selfTestPassed, saveStatus } = state;
 
+  const saveStatusTextMap: Record<Exclude<typeof saveStatus, 'error'>, string> = {
+    saving: '正在保存',
+    unsaved: '最新更改未保存',
+    saved: '已保存',
+  };
+  const saveStatusText = saveStatus === 'error' ? '' : saveStatusTextMap[saveStatus];
+
   // 顶部工作台状态计算
   const ticketTag =
     viewMode === 'cleaning'
@@ -420,13 +427,7 @@ export const App: React.FC = () => {
                     className={`save-status-dot save-status-dot-${saveStatus}`}
                     aria-hidden="true"
                   ></span>
-                  <span className="save-status-text">
-                    {saveStatus === 'saving'
-                      ? '正在保存'
-                      : saveStatus === 'unsaved'
-                      ? '最新更改未保存'
-                      : '已保存'}
-                  </span>
+                  <span className="save-status-text">{saveStatusText}</span>
                 </div>
               )
             )}

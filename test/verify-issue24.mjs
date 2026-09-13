@@ -109,27 +109,33 @@ async function run() {
     // 2.4 Candidate confirm state (候选确认态 - #24 最小壳)
     await page.evaluate(() => {
       const { dispatch } = window.__wetrim;
-      // 先设当前会话
+      // 先设当前会话（无当前会话时走 SET_NEW_SESSION，与 processCaptureResult 的真实路径一致）
       dispatch({
-        type: 'SET_ARTICLE_SNAPSHOT',
+        type: 'SET_NEW_SESSION',
         payload: {
-          snapshotId: 'snap-1',
-          capturedAt: new Date().toISOString(),
-          source: { title: '第一篇已在清洗文章', account: '作者A', publishedAt: '2026-09-01', url: 'https://mp.weixin.qq.com/s/1' },
-          blocks: [
-            {
-              id: 'b-1',
-              order: 1,
-              type: 'paragraph',
-              originalHtml: '<p>第一篇正文</p>',
-              initialMarkdown: '第一篇正文',
-              editedMarkdown: null,
-              included: true,
-              notes: [],
-            },
-          ],
-          images: [],
-          captureWarnings: [],
+          schemaVersion: 1,
+          sessionId: 'test-session-1',
+          revision: 1,
+          savedAt: new Date().toISOString(),
+          snapshot: {
+            snapshotId: 'snap-1',
+            capturedAt: new Date().toISOString(),
+            source: { title: '第一篇已在清洗文章', account: '作者A', publishedAt: '2026-09-01', url: 'https://mp.weixin.qq.com/s/1' },
+            blocks: [
+              {
+                id: 'b-1',
+                order: 1,
+                type: 'paragraph',
+                originalHtml: '<p>第一篇正文</p>',
+                initialMarkdown: '第一篇正文',
+                editedMarkdown: null,
+                included: true,
+                notes: [],
+              },
+            ],
+            images: [],
+            captureWarnings: [],
+          },
         },
       });
       // 再次传入新快照，已有当前会话时触发 candidateConfirm
