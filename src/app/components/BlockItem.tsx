@@ -2,11 +2,10 @@ import React, { forwardRef, useEffect, useState } from 'react';
 import { currentMarkdown, type Block } from '../../shared/types';
 import { truncateGraphemes } from '../../shared/grapheme';
 import { renderMarkdown } from '../preview/render';
-import { useAppContext } from '../state/session-context';
 
 export interface BlockItemProps {
   block: Block;
-  onToggle?: (id: string) => void;
+  onToggle: (id: string) => void;
 }
 
 export const BLOCK_TYPE_LABELS: Record<string, string> = {
@@ -32,7 +31,6 @@ export const BLOCK_TYPE_LABELS: Record<string, string> = {
  * - 列表、引用、表格整体取舍提示：「整体取舍，编辑 Markdown 可删改内部内容与图片」
  */
 export const BlockItem = forwardRef<HTMLDivElement, BlockItemProps>(({ block, onToggle }, ref) => {
-  const { dispatch } = useAppContext();
   const [isExpanded, setIsExpanded] = useState(false);
 
   // 当外部重新包含该块时，重置折叠展开状态
@@ -43,11 +41,7 @@ export const BlockItem = forwardRef<HTMLDivElement, BlockItemProps>(({ block, on
   }, [block.included]);
 
   const handleToggle = () => {
-    if (onToggle) {
-      onToggle(block.id);
-    } else {
-      dispatch({ type: 'TOGGLE_BLOCK', payload: { blockId: block.id } });
-    }
+    onToggle(block.id);
   };
 
   const typeLabel = BLOCK_TYPE_LABELS[block.type] || block.type;

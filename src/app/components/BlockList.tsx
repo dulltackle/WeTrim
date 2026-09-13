@@ -106,53 +106,32 @@ export const BlockList = forwardRef<BlockListHandle, BlockListProps>(({ blocks }
 
   // 块取舍切换处理（在筛选视图下剔除/恢复导致块从视图消失时，焦点平稳前移）
   const handleToggleBlock = useCallback((blockId: string) => {
-    if (filter === 'included') {
-      // 在「保留」视图下剔除当前块：焦点前移到列表中下一个可见块
-      const currentIndex = visibleBlocks.findIndex((b) => b.id === blockId);
-      let nextFocusId: string | null = null;
-      if (currentIndex !== -1) {
-        if (currentIndex + 1 < visibleBlocks.length) {
-          nextFocusId = visibleBlocks[currentIndex + 1].id;
-        } else if (currentIndex > 0) {
-          nextFocusId = visibleBlocks[currentIndex - 1].id;
-        }
-      }
-
-      dispatch({ type: 'TOGGLE_BLOCK', payload: { blockId } });
-
-      if (nextFocusId) {
-        setTimeout(() => {
-          const el = itemRefs.current.get(nextFocusId!);
-          if (el) {
-            el.focus();
-          }
-        }, 0);
-      }
-    } else if (filter === 'excluded') {
-      // 在「剔除」视图下恢复保留当前块：焦点前移到列表中下一个可见块
-      const currentIndex = visibleBlocks.findIndex((b) => b.id === blockId);
-      let nextFocusId: string | null = null;
-      if (currentIndex !== -1) {
-        if (currentIndex + 1 < visibleBlocks.length) {
-          nextFocusId = visibleBlocks[currentIndex + 1].id;
-        } else if (currentIndex > 0) {
-          nextFocusId = visibleBlocks[currentIndex - 1].id;
-        }
-      }
-
-      dispatch({ type: 'TOGGLE_BLOCK', payload: { blockId } });
-
-      if (nextFocusId) {
-        setTimeout(() => {
-          const el = itemRefs.current.get(nextFocusId!);
-          if (el) {
-            el.focus();
-          }
-        }, 0);
-      }
-    } else {
+    if (filter === 'all') {
       // 全部视图下，原位折叠/展开，不移出视图
       dispatch({ type: 'TOGGLE_BLOCK', payload: { blockId } });
+      return;
+    }
+
+    // 在「保留」/「剔除」视图下切换当前块会使其从视图消失：焦点前移到列表中下一个可见块
+    const currentIndex = visibleBlocks.findIndex((b) => b.id === blockId);
+    let nextFocusId: string | null = null;
+    if (currentIndex !== -1) {
+      if (currentIndex + 1 < visibleBlocks.length) {
+        nextFocusId = visibleBlocks[currentIndex + 1].id;
+      } else if (currentIndex > 0) {
+        nextFocusId = visibleBlocks[currentIndex - 1].id;
+      }
+    }
+
+    dispatch({ type: 'TOGGLE_BLOCK', payload: { blockId } });
+
+    if (nextFocusId) {
+      setTimeout(() => {
+        const el = itemRefs.current.get(nextFocusId!);
+        if (el) {
+          el.focus();
+        }
+      }, 0);
     }
   }, [dispatch, filter, visibleBlocks]);
 
