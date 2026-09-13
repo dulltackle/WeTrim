@@ -259,7 +259,7 @@ WeTrim 对两种假设完整支持并实测验证：
 - 嵌套列表（✅ 官方真嵌套假设 A 与第三方平铺假设 B 均已实测覆盖并完整验证，见 #20）
 - 引用套列表（🔧 构造验证，见 #21）
 - 多段落引用（🔧 构造验证，见 #21）
-- 公式：行内与独立（无任何验证）
+- 公式：行内与独立（🔧 构造验证，无真实样本，见 #23）
 - 空 `js_darkmode` `<pre>` 噪声（✅ 上游有真实案例，本项目 10 篇里 0 个）
 
 表格的真实样本见 [#12](https://github.com/dulltackle/WeTrim/issues/12#issuecomment-5602467069)；其余结构的真实样本见 [#13](https://github.com/dulltackle/WeTrim/issues/13#issuecomment-5631234452)。

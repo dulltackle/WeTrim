@@ -3,6 +3,7 @@ import { registerCodeRules } from './code';
 import { registerListRules } from './list';
 import { registerQuoteRules } from './quote';
 import { registerTableRules } from './table';
+import { registerFormulaRules } from './formula';
 
 
 export interface WechatRulesOptions {
@@ -16,12 +17,8 @@ export interface WechatRulesOptions {
  * 3. 相对地址按文章 URL 解析为绝对地址
  * 4. wx_fmt 只用于猜扩展名，不在此修改 URL
  */
-export function resolveImageUrl(img: Element, baseUrl?: string): string {
-  const dataSrc = img.getAttribute('data-src')?.trim();
-  const src = img.getAttribute('src')?.trim();
-  const rawUrl = dataSrc || src || '';
+export function resolveUrlString(rawUrl: string, baseUrl?: string): string {
   if (!rawUrl) return '';
-
   if (baseUrl) {
     try {
       return new URL(rawUrl, baseUrl).href;
@@ -30,6 +27,13 @@ export function resolveImageUrl(img: Element, baseUrl?: string): string {
     }
   }
   return rawUrl;
+}
+
+export function resolveImageUrl(img: Element, baseUrl?: string): string {
+  const dataSrc = img.getAttribute('data-src')?.trim();
+  const src = img.getAttribute('src')?.trim();
+  const rawUrl = dataSrc || src || '';
+  return resolveUrlString(rawUrl, baseUrl);
 }
 
 /**
@@ -112,6 +116,9 @@ export function registerWechatRules(
 
   // 7. 表格规则：GFM 管道表格输出与防原始 HTML 兜底（docs/conversion-rules.md §4.7 与 Issue #22）
   registerTableRules(service);
+
+  // 8. 公式规则：行内 $...$ 与独立 $$...$$（docs/conversion-rules.md §4.9 与 Issue #23）
+  registerFormulaRules(service);
 
 
   // 注：富媒体元素（mp-common-profile, mp-common-miniprogram, mpvoice, video_iframe 等）

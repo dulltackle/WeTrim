@@ -10,6 +10,7 @@ import { collectImages } from '../export/collect-images';
 import { splitBlocks } from './split-blocks';
 import { registerWechatRules, type WechatRulesOptions } from './rules/wechat';
 import { resetTableDegradedState, consumeTableDegradedState } from './rules/table';
+import { prepareFormulaPlaceholders } from './rules/formula';
 
 /**
  * 装配 Turndown 转换基座与微信通用规则（对应 ARCHITECTURE.md §6.1 与 docs/conversion-rules.md §1、§4.8）
@@ -44,16 +45,17 @@ export interface ConvertBlockOptions {
  * 在转入 Turndown 前将富媒体属性提取为可读占位文本节点。
  */
 export function prepareRichMediaPlaceholders(html: string): string {
-  if (
-    !html.includes('mp-common-') &&
-    !html.includes('mpprofile') &&
-    !html.includes('video_iframe') &&
-    !html.includes('mpvoice')
-  ) {
-    return html;
-  }
+  const mightBeRich =
+    html.includes('mp-common-') ||
+    html.includes('mp-') ||
+    html.includes('mpprofile') ||
+    html.includes('video') ||
+    html.includes('audio') ||
+    html.includes('mpvoice') ||
+    html.includes('qqmusic') ||
+    html.includes('iframe');
 
-  if (typeof DOMParser === 'undefined') {
+  if (!mightBeRich || typeof DOMParser === 'undefined') {
     return html;
   }
 
@@ -61,47 +63,185 @@ export function prepareRichMediaPlaceholders(html: string): string {
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
 
-    // 处理公众号名片
+    // 1. 处理公众号名片（mp-common-profile, mpprofile）
+    // 从属性取昵称、简介、头像（docs/conversion-rules.md §4.10 与 Issue #23 验收标准）
     const profiles = doc.querySelectorAll('mp-common-profile, mpprofile');
     profiles.forEach((el) => {
-      const name =
+      const nickname = (
         el.getAttribute('data-nickname') ||
         el.getAttribute('data-alias') ||
-        el.getAttribute('data-pluginname') ||
-        '';
-      const placeholder = doc.createElement('span');
-      placeholder.textContent = name ? `【公众号】${name}` : '【公众号名片】';
-      el.replaceWith(placeholder);
+        ''
+      ).trim();
+
+      const signature = (
+        el.getAttribute('data-signature') ||
+        el.getAttribute('data-description') ||
+        el.getAttribute('data-desc') ||
+        ''
+      ).trim();
+
+      const avatar = (
+        el.getAttribute('data-headimg') ||
+        el.getAttribute('data-headimgurl') ||
+        ''
+      ).trim();
+
+      const url = (
+        el.getAttribute('data-url') ||
+        el.getAttribute('href') ||
+        ''
+      ).trim();
+
+      const container = doc.createElement('div');
+
+      // 头像图片（转为 <img> 节点供 Turndown 转换为 Markdown 图片，并由 collectImages 收集）
+      if (avatar) {
+        const imgP = doc.createElement('p');
+        const imgEl = doc.createElement('img');
+        imgEl.setAttribute('data-src', avatar);
+        imgEl.setAttribute('alt', nickname || '头像');
+        imgP.appendChild(imgEl);
+        container.appendChild(imgP);
+      }
+
+      // 公众号名称占位与链接
+      const nameP = doc.createElement('p');
+      const labelText = nickname ? `【公众号】${nickname}` : '【公众号】';
+      if (url) {
+        const linkEl = doc.createElement('a');
+        linkEl.setAttribute('href', url);
+        linkEl.textContent = labelText;
+        nameP.appendChild(linkEl);
+      } else {
+        nameP.textContent = labelText;
+      }
+      container.appendChild(nameP);
+
+      // 公众号简介
+      if (signature) {
+        const sigP = doc.createElement('p');
+        sigP.textContent = signature;
+        container.appendChild(sigP);
+      }
+
+      el.replaceWith(container);
     });
 
-    // 处理小程序
+    // 2. 处理小程序（mp-common-miniprogram, mp-miniprogram）
     const miniprograms = doc.querySelectorAll('mp-common-miniprogram, mp-miniprogram');
     miniprograms.forEach((el) => {
-      const title =
+      const title = (
         el.getAttribute('data-miniprogram-title') ||
         el.getAttribute('data-miniprogram-nickname') ||
-        '';
-      const placeholder = doc.createElement('span');
-      placeholder.textContent = title ? `【小程序】${title}` : '【小程序】';
-      el.replaceWith(placeholder);
+        ''
+      ).trim();
+
+      const cover = (
+        el.getAttribute('data-miniprogram-imageurl') ||
+        el.getAttribute('data-miniprogram-headimg') ||
+        ''
+      ).trim();
+
+      // 小程序仅在有真实 Web 链接时生成链接（不使用内部路由 data-miniprogram-path）
+      const rawUrl = (
+        el.getAttribute('href') ||
+        el.getAttribute('data-url') ||
+        ''
+      ).trim();
+      const url = /^https?:\/\//i.test(rawUrl) || rawUrl.startsWith('/') ? rawUrl : '';
+
+      const container = doc.createElement('div');
+
+      if (cover) {
+        const imgP = doc.createElement('p');
+        const imgEl = doc.createElement('img');
+        imgEl.setAttribute('data-src', cover);
+        imgEl.setAttribute('alt', title || '小程序封面');
+        imgP.appendChild(imgEl);
+        container.appendChild(imgP);
+      }
+
+      const titleP = doc.createElement('p');
+      const labelText = title ? `【小程序】${title}` : '【小程序】';
+      if (url) {
+        const linkEl = doc.createElement('a');
+        linkEl.setAttribute('href', url);
+        linkEl.textContent = labelText;
+        titleP.appendChild(linkEl);
+      } else {
+        titleP.textContent = labelText;
+      }
+      container.appendChild(titleP);
+
+      el.replaceWith(container);
     });
 
-    // 处理音频
-    const audios = doc.querySelectorAll('mpvoice, mp-common-mpaudio');
-    audios.forEach((el) => {
-      const name = el.getAttribute('name') || el.getAttribute('data-name') || '';
-      const placeholder = doc.createElement('span');
-      placeholder.textContent = name ? `【音频】${name}` : '【音频】';
-      el.replaceWith(placeholder);
-    });
-
-    // 处理视频
-    const videos = doc.querySelectorAll('iframe.video_iframe, mpvideosnap, mp-common-videosnap');
+    // 3. 处理视频（iframe.video_iframe, video, mpvideosnap, mp-common-videosnap）
+    // 使用 span 容器包裹链接/文字，避免在原有 <p> 中产生非法的 <p><p>...</p></p>
+    const videos = doc.querySelectorAll('iframe.video_iframe, video, mpvideosnap, mp-common-videosnap');
     videos.forEach((el) => {
-      const title = el.getAttribute('data-title') || el.getAttribute('title') || '';
-      const placeholder = doc.createElement('span');
-      placeholder.textContent = title ? `【视频】${title}` : '【视频】';
-      el.replaceWith(placeholder);
+      const title = (
+        el.getAttribute('data-title') ||
+        el.getAttribute('title') ||
+        el.getAttribute('data-name') ||
+        ''
+      ).trim();
+
+      const url = (
+        el.getAttribute('data-src') ||
+        el.getAttribute('src') ||
+        el.getAttribute('data-url') ||
+        ''
+      ).trim();
+
+      const container = doc.createElement('span');
+      const labelText = title ? `【视频】${title}` : '【视频】';
+      if (url) {
+        const linkEl = doc.createElement('a');
+        linkEl.setAttribute('href', url);
+        linkEl.textContent = labelText;
+        container.appendChild(linkEl);
+      } else {
+        container.textContent = labelText;
+      }
+      el.replaceWith(container);
+    });
+
+    // 4. 处理音频（mpvoice, mp-common-mpaudio, audio, qqmusic）
+    const audios = doc.querySelectorAll('mpvoice, mp-common-mpaudio, audio, qqmusic');
+    audios.forEach((el) => {
+      let title = (
+        el.getAttribute('name') ||
+        el.getAttribute('data-name') ||
+        el.getAttribute('data-title') ||
+        el.getAttribute('title') ||
+        el.getAttribute('data-songname') ||
+        ''
+      ).trim();
+
+      const singer = (el.getAttribute('data-singer') || '').trim();
+      if (singer && title && !title.includes(singer)) {
+        title = `${title} - ${singer}`;
+      }
+
+      const url = (
+        el.getAttribute('data-src') ||
+        el.getAttribute('src') ||
+        el.getAttribute('data-url') ||
+        ''
+      ).trim();
+
+      const container = doc.createElement('span');
+      const labelText = title ? `【音频】${title}` : '【音频】';
+      if (url) {
+        const linkEl = doc.createElement('a');
+        linkEl.setAttribute('href', url);
+        linkEl.textContent = labelText;
+        container.appendChild(linkEl);
+      } else {
+        container.textContent = labelText;
+      }
+      el.replaceWith(container);
     });
 
     return doc.body.innerHTML;
@@ -133,10 +273,20 @@ export function convertBlock(block: Block, options?: ConvertBlockOptions): Block
 
   resetTableDegradedState(turndown);
   try {
-    const preparedHtml = prepareRichMediaPlaceholders(block.originalHtml);
+    const preparedHtml = prepareFormulaPlaceholders(
+      prepareRichMediaPlaceholders(block.originalHtml)
+    );
     converted = turndown.turndown(preparedHtml);
     // ADR-0007: 块首尾空白由外层拼接统一负责，修整首尾空行
     converted = converted.trim();
+
+    // 独立公式方言保证：type === 'formula' 的独立块统一保证以 $$...$$ 包裹（docs/conversion-rules.md §4.9）
+    if (block.type === 'formula' && converted.length > 0) {
+      if (!converted.startsWith('$$') || !converted.endsWith('$$')) {
+        const cleanInner = converted.replace(/^\$+|\$+$/g, '').trim();
+        converted = `$$${cleanInner || '【公式】'}$$`;
+      }
+    }
   } catch {
     failed = true;
   }
@@ -167,7 +317,17 @@ export function convertBlock(block: Block, options?: ConvertBlockOptions): Block
   const notes: ConversionNote[] = [...block.notes];
   if (
     block.type === 'richMedia' ||
-    (block.originalHtml && block.originalHtml.includes('mp-common-'))
+    (block.originalHtml &&
+      (block.originalHtml.includes('mp-common-') ||
+        block.originalHtml.includes('mp-miniprogram') ||
+        block.originalHtml.includes('mpprofile') ||
+        block.originalHtml.includes('video_iframe') ||
+        block.originalHtml.includes('mpvoice') ||
+        block.originalHtml.includes('mpvideosnap') ||
+        block.originalHtml.includes('qqmusic') ||
+        block.originalHtml.includes('<video') ||
+        block.originalHtml.includes('<audio') ||
+        block.originalHtml.includes('<iframe')))
   ) {
     if (!notes.some((n) => n.code === 'richmedia-placeholder')) {
       notes.push({

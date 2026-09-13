@@ -16,6 +16,28 @@ const PASSTHROUGH = new Set([
   'fieldset',
 ]);
 
+// 普通透明行内包装标签（docs/conversion-rules.md §1.1、§1.2）
+const TRANSPARENT_INLINE_TAGS = new Set([
+  'span',
+  'font',
+  'b',
+  'strong',
+  'i',
+  'em',
+  'u',
+  's',
+  'del',
+  'strike',
+  'small',
+  'sub',
+  'sup',
+  'a',
+  'label',
+  'br',
+  'wbr',
+  'mark',
+]);
+
 // 块级后代集合：存在这些后代意味着当前元素仍是容器，不是叶子内容
 const BLOCKISH = new Set([
   ...PASSTHROUGH,
@@ -40,6 +62,7 @@ const RICH_TAGS = new Set([
   'audio',
   'mpvoice',
   'mp-common-profile',
+  'mp-common-miniprogram',
   'mp-miniprogram',
   'mp-common-videosnap',
   'mp-common-mpaudio',
@@ -51,45 +74,57 @@ const RICH_TAGS = new Set([
 const FORMULA_TAGS = new Set(['mjx-container', 'math', 'semantics', 'annotation']);
 
 /**
- * 判定元素是否为公式载体
+ * 判定元素是否为公式载体。
+ * 注意：根据 docs/conversion-rules.md §4.9 与验收标准，
+ * 若公式是图片（LaTeX 截图，img 元素），走图片块的通用逻辑，不作为 formula 块处理。
  */
 function isFormulaEl(el: Element): boolean {
   const tag = el.tagName.toLowerCase();
+  if (tag === 'img') return false; // 公式若是图片走图片块通用逻辑
   if (FORMULA_TAGS.has(tag)) return true;
+  if (tag.startsWith('mjx-')) return true;
 
   const cls = (typeof el.className === 'string' ? el.className : '') || '';
   if (/(mathjax|MathJax|katex|wxformula|formula)/i.test(cls)) return true;
 
-  if (tag === 'img') {
-    const hay = `${cls} ${el.getAttribute('data-src') || el.getAttribute('src') || ''} ${el.getAttribute('data-type') || ''}`;
-    if (/(mathjax|latex|formula|svg\+xml)/i.test(hay) && /svg|formula|latex/i.test(hay)) {
-      return true;
-    }
-  }
   return false;
 }
 
 /**
  * 判定公式是否独占一行（独立公式）。
- * 若父级有其它有意义的文本或元素，则为行内公式。
+ * 判据参考 docs/conversion-rules.md §4.9：「父级是否只有它一个有内容的孩子」。
+ * 行内公式留在所属文字块里，不得切碎句子。
  */
 function isBlockLevelFormula(el: Element): boolean {
   const p = el.parentElement;
   if (!p) return true;
-  let contentCount = 0;
-  for (const child of Array.from(p.childNodes)) {
+
+  // 若父级是行内包装（如 span、font），继续向上查找最贴近的块容器
+  let container: Element = p;
+  while (container.parentElement && !BLOCKISH.has(container.tagName.toLowerCase()) && container.tagName.toLowerCase() !== 'body') {
+    container = container.parentElement;
+  }
+
+  // 判定容器内除公式（及包含公式的纯包裹节点）外，是否还有实质文本或其它内容
+  let otherContentCount = 0;
+  for (const child of Array.from(container.childNodes)) {
     if (child.nodeType === Node.TEXT_NODE) {
       if ((child.textContent || '').replace(/\s+/g, ' ').trim().length > 0) {
-        contentCount++;
+        otherContentCount++;
       }
     } else if (child.nodeType === Node.ELEMENT_NODE) {
-      const tag = (child as Element).tagName.toLowerCase();
-      if (tag !== 'br') {
-        contentCount++;
+      const childEl = child as Element;
+      const tag = childEl.tagName.toLowerCase();
+      if (tag === 'br') continue;
+      if (childEl === el || childEl.contains(el)) continue;
+      // 检查非公式兄弟元素是否有实质内容
+      if ((childEl.textContent || '').trim().length > 0 || childEl.querySelector('img')) {
+        otherContentCount++;
       }
     }
   }
-  return contentCount <= 1;
+
+  return otherContentCount === 0;
 }
 
 /**
@@ -172,6 +207,12 @@ function unitType(el: Element): BlockType | 'noise' | null {
     return 'code';
   }
 
+  // 独立的未知对象/嵌入卡片（如 canvas, embed, object, applet）
+  // 供用户决定保留或剔除（docs/conversion-rules.md §4.11）
+  if (tag === 'canvas' || tag === 'embed' || tag === 'object' || tag === 'applet') {
+    return 'unknown';
+  }
+
   return null;
 }
 
@@ -200,7 +241,7 @@ interface RawBlockEmission {
 function splitLeafByImages(el: Element): RawBlockEmission[] {
   const allImgs = Array.from(el.querySelectorAll('img')).filter(isContentImg);
 
-  // 无图片：若有实质文字则整块成段落
+  // 无图片：若有实质文字则整块成段落，无文字无图片则不产生块
   if (allImgs.length === 0) {
     const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
     if (text.length === 0) return [];
