@@ -1,7 +1,7 @@
 import puppeteer from 'puppeteer';
 import path from 'path';
+import fs from 'fs';
 import assert from 'assert';
-import { execSync } from 'child_process';
 import { checkDomAccess } from './check-dom-access.mjs';
 
 async function run() {
@@ -437,11 +437,9 @@ async function run() {
     // --------------------------------------------------------------------------
     console.log('\n--- Test 5: Real 347-Block Long-form Benchmark ("每10年换一副骨架...") ---');
 
-    const longformData = JSON.parse(
-      execSync('git show 64d097d:output/wayfinder-12/samples/wetrim-sample-deep-longform.json', {
-        maxBuffer: 50 * 1024 * 1024,
-      })
-    );
+    const longformFixturePath = path.resolve('test/fixtures/wetrim-sample-deep-longform.json');
+    assert(fs.existsSync(longformFixturePath), 'test/fixtures/wetrim-sample-deep-longform.json must exist');
+    const longformData = JSON.parse(fs.readFileSync(longformFixturePath, 'utf8'));
 
     // 5.1 加载 347 块快照并分发进入 cleaning 状态
     const totalBlocksCount = await page.evaluate(
