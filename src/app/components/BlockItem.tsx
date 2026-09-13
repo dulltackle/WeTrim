@@ -49,7 +49,6 @@ export const BlockItem = memo(
     const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const maxWaitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    const prevBlockIdRef = useRef(block.id);
     const prevEditedMarkdownRef = useRef(block.editedMarkdown);
 
     // 合并 forwarded ref 与内部 container ref
@@ -81,22 +80,10 @@ export const BlockItem = memo(
       }
     }, [block.id, onUpdate]);
 
-    // 外部 block props 同步
+    // 外部 block props 同步：当外部 block.editedMarkdown 变更（如还原成功，或外部更新）
+    // 且本地无未保存修改时同步。BlockList 以 block.id 作为 key，id 变化必然导致
+    // 组件卸载重建，因此这里无需处理块身份变更的场景。
     useEffect(() => {
-      if (prevBlockIdRef.current !== block.id) {
-        // 块身份变更，重置所有内部状态
-        prevBlockIdRef.current = block.id;
-        prevEditedMarkdownRef.current = block.editedMarkdown;
-        const newMd = currentMarkdown(block);
-        setLocalValue(newMd);
-        localValueRef.current = newMd;
-        setIsEditing(false);
-        setIsConfirmingRestore(false);
-        isDirtyRef.current = false;
-        return;
-      }
-
-      // 当外部 block.editedMarkdown 变更（如还原成功，或外部更新）且本地无未保存修改时同步
       if (block.editedMarkdown !== prevEditedMarkdownRef.current && !isDirtyRef.current) {
         const newMd = currentMarkdown(block);
         setLocalValue(newMd);
@@ -115,14 +102,9 @@ export const BlockItem = memo(
     // 卸载前刷新未保存更改
     useEffect(() => {
       return () => {
-        if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
-        if (maxWaitTimerRef.current) clearTimeout(maxWaitTimerRef.current);
-        if (isDirtyRef.current) {
-          onUpdate?.(block.id, localValueRef.current);
-          isDirtyRef.current = false;
-        }
+        flushSave();
       };
-    }, [block.id, onUpdate]);
+    }, [flushSave]);
 
     // 文本框输入事件
     const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
