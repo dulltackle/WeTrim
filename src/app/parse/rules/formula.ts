@@ -121,16 +121,20 @@ export const FORMULA_CONTEXT_INLINE_TAGS = new Set([
   'mark',
   'br',
   'wbr',
+  'math',
+  'semantics',
+  'annotation',
+  'mjx-container',
 ]);
 
 /**
- * 向上穿透透明行内包装元素（如 span），定位至公式所在的最贴近块级容器。
+ * 向上穿透透明行内包装元素（如 span）与公式内部容器标签，定位至公式所在的最贴近真实块级容器。
  */
 export function findFormulaContextContainer(el: Element): Element {
   let container: Element = el.parentElement ?? el;
   while (
     container.parentElement &&
-    FORMULA_CONTEXT_INLINE_TAGS.has(container.tagName.toLowerCase())
+    (FORMULA_CONTEXT_INLINE_TAGS.has(container.tagName.toLowerCase()) || isFormulaElement(container))
   ) {
     container = container.parentElement;
   }

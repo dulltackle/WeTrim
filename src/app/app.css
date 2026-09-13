@@ -858,22 +858,243 @@ body {
   border-radius: 2px;
 }
 
-.block-markdown-content {
-  background-color: #fafaf8;
+/* 5. 候选确认卡片 (Candidate Confirm Card - Issue #24 最小壳) */
+.candidate-confirm-card {
+  background: #fff;
   border: 1px solid var(--sheet-border);
+  border-left: 4px solid #fa9d3b;
   border-radius: 2px;
-  padding: 8px 12px;
-  overflow-x: auto;
+  padding: 32px 36px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+  width: 100%;
 }
 
-.block-markdown-text {
+.candidate-stamp {
+  border-color: #fa9d3b;
+  color: #fa9d3b;
+}
+
+/* 6. 损坏记录卡片 (Corrupted Record Card - Issue #24 最小壳) */
+.corrupted-record-card {
+  background: #fff;
+  border: 1px solid var(--sheet-border);
+  border-left: 4px solid var(--vermilion);
+  border-radius: 2px;
+  padding: 32px 36px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+  width: 100%;
+}
+
+.state-placeholder-tip {
+  font-size: 13px;
+  color: var(--ink-secondary);
+  line-height: 1.6;
+}
+
+/* ==========================================================================
+   Issue #24: 真实阅读态 BlockItem 渲染与状态标签
+   ========================================================================== */
+
+.block-item:focus {
+  outline: 2px solid var(--prussian-blue);
+  outline-offset: 1px;
+}
+
+.block-item:focus-visible {
+  outline: 2px solid var(--prussian-blue);
+  outline-offset: 1px;
+}
+
+.block-item.block-excluded {
+  opacity: 0.65;
+  background-color: #fafbf9;
+}
+
+.block-item.block-is-edited {
+  border-left: 3px solid #d97706;
+}
+
+.block-item.block-is-empty {
+  border-style: dashed;
+}
+
+.block-edited-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 2px;
+  background-color: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12px;
-  line-height: 1.5;
+}
+
+.block-empty-badge {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: 2px;
+  background-color: #f3f4f6;
+  color: #4b5563;
+  border: 1px solid #e5e7eb;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.block-status-tag.status-included {
+  color: #15803d;
+  font-weight: 600;
+}
+
+.block-status-tag.status-excluded {
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+.block-empty-placeholder {
+  font-size: 13px;
+  color: var(--ink-tertiary);
+  font-style: italic;
+  padding: 8px 4px;
+}
+
+/* 真实阅读渲染内容：段落/标题/列表/引用/表格/代码/公式 */
+.block-rendered-content {
   color: var(--ink-primary);
-  margin: 0;
-  white-space: pre-wrap;
+  font-size: 15px;
+  line-height: 1.75;
   word-break: break-word;
+  overflow-wrap: break-word;
+  min-width: 0;
+}
+
+.block-rendered-content > *:first-child {
+  margin-top: 0;
+}
+
+.block-rendered-content > *:last-child {
+  margin-bottom: 0;
+}
+
+.block-rendered-content p {
+  margin: 6px 0;
+}
+
+.block-rendered-content h1 {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.4;
+  margin: 10px 0 6px;
+}
+
+.block-rendered-content h2 {
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1.4;
+  margin: 8px 0 6px;
+}
+
+.block-rendered-content h3 {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.4;
+  margin: 8px 0 4px;
+}
+
+.block-rendered-content h4,
+.block-rendered-content h5,
+.block-rendered-content h6 {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+  margin: 6px 0 4px;
+}
+
+.block-rendered-content ul,
+.block-rendered-content ol {
+  padding-left: 24px;
+  margin: 6px 0;
+}
+
+.block-rendered-content li {
+  margin-bottom: 4px;
+}
+
+.block-rendered-content blockquote {
+  border-left: 3px solid var(--sheet-border);
+  padding: 8px 16px;
+  background-color: #fbfbf9;
+  color: var(--ink-secondary);
+  margin: 8px 0;
+  border-radius: 2px;
+}
+
+.block-rendered-content table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 8px 0;
+  overflow-x: auto;
+  display: block;
+}
+
+.block-rendered-content th,
+.block-rendered-content td {
+  border: 1px solid var(--sheet-border);
+  padding: 6px 10px;
+  text-align: left;
+}
+
+.block-rendered-content th {
+  background-color: #f4f6f4;
+  font-weight: 600;
+}
+
+.block-rendered-content pre {
+  background-color: #f8faf8;
+  border: 1px solid var(--sheet-border);
+  padding: 10px 14px;
+  border-radius: 2px;
+  overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 8px 0;
+}
+
+.block-rendered-content code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  background-color: rgba(0, 0, 0, 0.04);
+  padding: 1px 4px;
+  border-radius: 2px;
+}
+
+.block-rendered-content pre code {
+  background-color: transparent;
+  padding: 0;
+}
+
+.block-rendered-content hr {
+  border: none;
+  border-top: 1px solid var(--sheet-border);
+  margin: 12px 0;
+}
+
+.block-rendered-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 2px;
+  display: block;
+  margin: 6px 0;
 }
 
 

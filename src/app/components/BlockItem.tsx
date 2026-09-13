@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { forwardRef } from 'react';
 import { currentMarkdown, type Block } from '../../shared/types';
+import { renderMarkdown } from '../preview/render';
 
 export interface BlockItemProps {
   block: Block;
@@ -19,34 +20,67 @@ export const BLOCK_TYPE_LABELS: Record<string, string> = {
   unknown: '未知内容',
 };
 
-export const BlockItem: React.FC<BlockItemProps> = ({ block }) => {
+/**
+ * 依据 Issue #24：
+ * 结构性转变：从调试视图换成真实阅读态——用已有的 renderMarkdown 渲染 currentMarkdown(block)，
+ * 标题出真实层级、段落/列表/引用/表格/代码走真实语义标签。
+ * 状态徽章（序号/类型/保留-剔除/已修改/内容为空）作为周边文字标签环绕内容，不侵入内容本身。
+ * 标题层级、块序号、初始类型、保留/剔除、已修改、内容为空全部有文字表达。
+ */
+export const BlockItem = forwardRef<HTMLDivElement, BlockItemProps>(({ block }, ref) => {
   const typeLabel = BLOCK_TYPE_LABELS[block.type] || block.type;
   const levelText =
     block.type === 'heading' && block.headingLevel ? ` H${block.headingLevel}` : '';
 
-  // 原始 HTML 摘要（保留前 160 字符，单行紧凑展示）
-  const snippet =
-    block.originalHtml.length > 160
-      ? `${block.originalHtml.slice(0, 160)}…`
-      : block.originalHtml;
-
   const markdown = currentMarkdown(block);
+  const isEdited = block.editedMarkdown !== null;
+  const isEmpty = markdown.trim() === '';
+
+  const renderedHtml = !isEmpty ? renderMarkdown(markdown) : '';
 
   return (
     <div
-      className="block-item"
+      ref={ref}
+      tabIndex={-1}
+      className={`block-item ${block.included ? 'block-included' : 'block-excluded'} ${
+        isEdited ? 'block-is-edited' : ''
+      } ${isEmpty ? 'block-is-empty' : ''}`}
       data-testid="block-item"
       data-block-id={block.id}
       data-block-type={block.type}
       data-block-order={block.order}
+      data-block-included={block.included ? 'true' : 'false'}
+      data-block-edited={isEdited ? 'true' : 'false'}
+      data-block-empty={isEmpty ? 'true' : 'false'}
     >
+      {/* 周边文字状态徽章标签 */}
       <div className="block-item-meta">
-        <span className="block-order-badge">#{block.order}</span>
-        <span className={`block-type-badge block-type-${block.type}`}>
+        <span className="block-order-badge" data-testid="block-order-badge">
+          #{block.order}
+        </span>
+        <span
+          className={`block-type-badge block-type-${block.type}`}
+          data-testid="block-type-badge"
+        >
           {typeLabel}
           {levelText}
         </span>
-        <span className="block-status-tag">{block.included ? '保留' : '剔除'}</span>
+        {isEdited && (
+          <span className="block-edited-badge" data-testid="block-edited-badge">
+            已修改
+          </span>
+        )}
+        {isEmpty && (
+          <span className="block-empty-badge" data-testid="block-empty-badge">
+            内容为空
+          </span>
+        )}
+        <span
+          className={`block-status-tag ${block.included ? 'status-included' : 'status-excluded'}`}
+          data-testid="block-status-tag"
+        >
+          {block.included ? '保留' : '剔除'}
+        </span>
       </div>
 
       {block.notes.length > 0 && (
@@ -60,14 +94,20 @@ export const BlockItem: React.FC<BlockItemProps> = ({ block }) => {
         </div>
       )}
 
-      {/* 每块独立转换出的只读 Markdown 结果 */}
-      <div className="block-markdown-content" data-testid="block-markdown-content">
-        <pre className="block-markdown-text">{markdown}</pre>
-      </div>
-
-      <div className="block-html-summary" title={block.originalHtml}>
-        <code>{snippet}</code>
-      </div>
+      {/* 真实阅读态：renderMarkdown 渲染语义 HTML */}
+      {isEmpty ? (
+        <div className="block-empty-placeholder" data-testid="block-empty-placeholder">
+          （内容为空）
+        </div>
+      ) : (
+        <div
+          className="block-rendered-content"
+          data-testid="block-rendered-content"
+          dangerouslySetInnerHTML={{ __html: renderedHtml }}
+        />
+      )}
     </div>
   );
-};
+});
+
+BlockItem.displayName = 'BlockItem';

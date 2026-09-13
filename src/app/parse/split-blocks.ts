@@ -78,6 +78,9 @@ function isFormulaEl(el: Element): boolean {
  */
 function isBlockLevelFormula(el: Element): boolean {
   if (!el.parentElement) return true;
+  if (el.parentElement && isFormulaEl(el.parentElement)) {
+    return false;
+  }
   const container = findFormulaContextContainer(el);
   return !hasOtherSignificantContent(container, el);
 }
