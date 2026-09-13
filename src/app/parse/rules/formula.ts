@@ -97,7 +97,12 @@ export function extractFormulaTex(el: Element): string {
   return tex;
 }
 
-const INLINE_WRAPPERS = new Set([
+/**
+ * 「透明行内包装标签」集合：公式向上寻找块级容器、判定独立/行内时穿透这些标签。
+ * split-blocks.ts 的 isBlockLevelFormula 与本文件的 isStandaloneFormulaNode 共用同一份定义与扫描逻辑，
+ * 避免两处各自维护一份相近但不同步的标签表与遍历实现。
+ */
+export const FORMULA_CONTEXT_INLINE_TAGS = new Set([
   'span',
   'font',
   'b',
@@ -114,7 +119,44 @@ const INLINE_WRAPPERS = new Set([
   'a',
   'label',
   'mark',
+  'br',
+  'wbr',
 ]);
+
+/**
+ * 向上穿透透明行内包装元素（如 span），定位至公式所在的最贴近块级容器。
+ */
+export function findFormulaContextContainer(el: Element): Element {
+  let container: Element = el.parentElement ?? el;
+  while (
+    container.parentElement &&
+    FORMULA_CONTEXT_INLINE_TAGS.has(container.tagName.toLowerCase())
+  ) {
+    container = container.parentElement;
+  }
+  return container;
+}
+
+/**
+ * 判定容器内除目标节点（及包含目标节点的祖先分支）外，是否还有实质文本或图片内容。
+ */
+export function hasOtherSignificantContent(container: Element, target: Element): boolean {
+  for (const child of Array.from(container.childNodes)) {
+    if (child.nodeType === Node.TEXT_NODE) {
+      if ((child.textContent || '').replace(/\s+/g, ' ').trim().length > 0) {
+        return true;
+      }
+    } else if (child.nodeType === Node.ELEMENT_NODE) {
+      const c = child as Element;
+      if (c === target || c.contains(target)) continue;
+      if (c.tagName.toLowerCase() === 'br') continue;
+      if ((c.textContent || '').trim().length > 0 || c.querySelector('img')) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
 
 /**
  * 判定公式在当前 DOM 上下文中是否为独立块级公式。
@@ -128,39 +170,13 @@ function isStandaloneFormulaNode(el: HTMLElement): boolean {
   const cls = (typeof el.className === 'string' ? el.className : '') || '';
   if (/katex-display|math-display/i.test(cls)) return true;
 
-  // 向上寻找最贴近的真实块级容器（跳过 span 等普通行内包裹）
-  let container: Element | null = el.parentElement;
-  while (
-    container &&
-    container.parentElement &&
-    INLINE_WRAPPERS.has(container.tagName.toLowerCase())
-  ) {
-    container = container.parentElement;
-  }
+  if (!el.parentElement) return true;
 
-  if (!container) return true;
+  const container = findFormulaContextContainer(el);
   const containerTag = container.tagName.toLowerCase();
   if (containerTag === 'body' || containerTag === 'html') return true;
 
-  let otherSignificantContent = false;
-  for (const child of Array.from(container.childNodes)) {
-    if (child.nodeType === Node.TEXT_NODE) {
-      if ((child.textContent || '').replace(/\s+/g, ' ').trim().length > 0) {
-        otherSignificantContent = true;
-        break;
-      }
-    } else if (child.nodeType === Node.ELEMENT_NODE) {
-      const c = child as Element;
-      if (c === el || c.contains(el)) continue;
-      if (c.tagName.toLowerCase() === 'br') continue;
-      if ((c.textContent || '').trim().length > 0 || c.querySelector('img')) {
-        otherSignificantContent = true;
-        break;
-      }
-    }
-  }
-
-  return !otherSignificantContent;
+  return !hasOtherSignificantContent(container, el);
 }
 
 /**
@@ -208,14 +224,23 @@ export function registerFormulaRules(turndown: TurndownService): void {
  * 2. 避免直接以普通文本替换导致 LaTeX 语法字符（如 \int_0 中的 _ 与 \）被 Turndown 的 text escaper 误转义。
  */
 export function prepareFormulaPlaceholders(html: string): string {
-  if (
-    !html.includes('mjx-') &&
-    !html.includes('math') &&
-    !html.includes('katex') &&
-    !html.includes('MathJax') &&
-    !html.includes('formula') &&
-    !html.includes('tex')
-  ) {
+  // 注意：不要用裸露的 'tex' 子串做快速路径判断——英文单词 "text" 本身就包含
+  // 该子串，几乎每个正文块都会命中，导致这个早退分支形同虚设。改用更贴近实际
+  // 探测目标（标签名/类名/专用属性）的子串，并统一转小写比较避免大小写遗漏。
+  const lower = html.toLowerCase();
+  const mightBeFormula =
+    lower.includes('mjx-') ||
+    lower.includes('<math') ||
+    lower.includes('semantics') ||
+    lower.includes('annotation') ||
+    lower.includes('katex') ||
+    lower.includes('mathjax') ||
+    lower.includes('formula') ||
+    lower.includes('data-tex') ||
+    lower.includes('data-latex') ||
+    lower.includes('x-tex');
+
+  if (!mightBeFormula) {
     return html;
   }
 

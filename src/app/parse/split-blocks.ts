@@ -1,5 +1,6 @@
 import type { Block, BlockType } from '../../shared/types';
 import { mergeAdjacentLists } from './rules/list';
+import { findFormulaContextContainer, hasOtherSignificantContent } from './rules/formula';
 
 const HEADINGS = new Set(['h1', 'h2', 'h3', 'h4', 'h5', 'h6']);
 
@@ -14,28 +15,6 @@ const PASSTHROUGH = new Set([
   'center',
   'font',
   'fieldset',
-]);
-
-// 普通透明行内包装标签（docs/conversion-rules.md §1.1、§1.2）
-const TRANSPARENT_INLINE_TAGS = new Set([
-  'span',
-  'font',
-  'b',
-  'strong',
-  'i',
-  'em',
-  'u',
-  's',
-  'del',
-  'strike',
-  'small',
-  'sub',
-  'sup',
-  'a',
-  'label',
-  'br',
-  'wbr',
-  'mark',
 ]);
 
 // 块级后代集合：存在这些后代意味着当前元素仍是容器，不是叶子内容
@@ -94,37 +73,13 @@ function isFormulaEl(el: Element): boolean {
  * 判定公式是否独占一行（独立公式）。
  * 判据参考 docs/conversion-rules.md §4.9：「父级是否只有它一个有内容的孩子」。
  * 行内公式留在所属文字块里，不得切碎句子。
+ * 容器定位（向上穿透行内包装标签）与兄弟内容扫描逻辑与 rules/formula.ts 的
+ * isStandaloneFormulaNode 共用，避免两处各自维护一份相近但不同步的实现。
  */
 function isBlockLevelFormula(el: Element): boolean {
-  const p = el.parentElement;
-  if (!p) return true;
-
-  // 若父级是行内包装（如 span、font），继续向上查找最贴近的块容器
-  let container: Element = p;
-  while (container.parentElement && !BLOCKISH.has(container.tagName.toLowerCase()) && container.tagName.toLowerCase() !== 'body') {
-    container = container.parentElement;
-  }
-
-  // 判定容器内除公式（及包含公式的纯包裹节点）外，是否还有实质文本或其它内容
-  let otherContentCount = 0;
-  for (const child of Array.from(container.childNodes)) {
-    if (child.nodeType === Node.TEXT_NODE) {
-      if ((child.textContent || '').replace(/\s+/g, ' ').trim().length > 0) {
-        otherContentCount++;
-      }
-    } else if (child.nodeType === Node.ELEMENT_NODE) {
-      const childEl = child as Element;
-      const tag = childEl.tagName.toLowerCase();
-      if (tag === 'br') continue;
-      if (childEl === el || childEl.contains(el)) continue;
-      // 检查非公式兄弟元素是否有实质内容
-      if ((childEl.textContent || '').trim().length > 0 || childEl.querySelector('img')) {
-        otherContentCount++;
-      }
-    }
-  }
-
-  return otherContentCount === 0;
+  if (!el.parentElement) return true;
+  const container = findFormulaContextContainer(el);
+  return !hasOtherSignificantContent(container, el);
 }
 
 /**
