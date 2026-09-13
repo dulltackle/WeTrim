@@ -1,6 +1,36 @@
 import type TurndownService from 'turndown';
 
 /**
+ * 每个 TurndownService 实例对应一份"本次 turndown() 调用是否发生过表格降级"的状态。
+ * 由 wechatTable 规则在判定降级的同一时刻写入，避免调用方为拿到这个结果
+ * 而重新解析一遍 HTML、重新跑一遍 isTableDegraded（对应 Issue #22 审查意见）。
+ */
+const tableDegradedState = new WeakMap<TurndownService, { degraded: boolean }>();
+
+/**
+ * 在每次独立的 turndown() 调用前重置降级状态
+ */
+export function resetTableDegradedState(service: TurndownService): void {
+  tableDegradedState.set(service, { degraded: false });
+}
+
+/**
+ * 读取上一次 turndown() 调用过程中是否有任意表格发生了降级
+ */
+export function consumeTableDegradedState(service: TurndownService): boolean {
+  return tableDegradedState.get(service)?.degraded ?? false;
+}
+
+function markTableDegraded(service: TurndownService): void {
+  const state = tableDegradedState.get(service);
+  if (state) {
+    state.degraded = true;
+  } else {
+    tableDegradedState.set(service, { degraded: true });
+  }
+}
+
+/**
  * 获取表格的直接 <tr> 行（排除内嵌子表格的 <tr>）
  */
 export function getDirectTableRows(table: Element): Element[] {
@@ -254,6 +284,7 @@ export function registerTableRules(service: TurndownService): void {
 
       // 无法可靠表达的合并单元格或复杂嵌套 → 降级为可读文本
       if (isTableDegraded(table)) {
+        markTableDegraded(service);
         const text = degradeTableToText(table, service);
         return '\n\n' + text.trim() + '\n\n';
       }
