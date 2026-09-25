@@ -952,20 +952,6 @@ button.save-status-error:focus-visible {
 }
 
 /* 5. 换稿通知单与候选确认 (Candidate Confirm Modal - Issue #28) */
-.candidate-confirm-card {
-  background: #fff;
-  border: 1px solid var(--sheet-border);
-  border-left: 1px solid var(--amber);
-  border-radius: 2px;
-  padding: 32px 36px;
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  min-width: 0;
-  width: 100%;
-}
-
 .candidate-stamp {
   border-color: var(--amber);
   color: var(--amber);
@@ -983,16 +969,22 @@ button.save-status-error:focus-visible {
   box-shadow: 0 12px 36px rgba(0, 0, 0, 0.16), 0 2px 8px rgba(0, 0, 0, 0.06);
   position: fixed;
   inset: 0;
+  /* 窗口较矮或标题很长时签条内部滚动，避免操作按钮落到可视区外而无法点击 */
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  z-index: 1000;
+}
+
+/* 仅在打开时改为 flex：作者样式的 display 会覆盖 UA 的 dialog:not([open]) { display: none } */
+.candidate-confirm-dialog[open] {
   display: flex;
   flex-direction: column;
   gap: 20px;
   animation: slideInNote 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-  overflow: visible;
-  z-index: 1000;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .candidate-confirm-dialog {
+  .candidate-confirm-dialog[open] {
     animation: none;
   }
 }
@@ -1136,6 +1128,38 @@ button.save-status-error:focus-visible {
   background-color: #f4f6f4;
   color: var(--ink-primary);
   border-color: var(--ink-secondary);
+}
+
+.candidate-actions .action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 只读副本提示（ARCHITECTURE.md §4.6） */
+.read-only-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 8px 14px;
+  border: 1px solid var(--sheet-border);
+  border-left: 3px solid var(--ink-secondary);
+  border-radius: 2px;
+  background-color: #fff;
+  font-size: 13px;
+  color: var(--ink-primary);
+  line-height: 1.5;
+}
+
+.read-only-note .note-badge {
+  background-color: var(--ink-secondary);
+  color: #fff;
+}
+
+.read-only-note-text {
+  flex: 1 1 240px;
+  min-width: 0;
 }
 
 /* 6. 损坏记录卡片 (Corrupted Record Card - Issue #24 最小壳) */

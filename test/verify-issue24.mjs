@@ -157,15 +157,14 @@ async function run() {
       const viewMode = container?.getAttribute('data-view-mode');
       const card = document.querySelector('[data-testid="candidate-confirm-card"]');
       const title = card?.querySelector('.notice-title')?.textContent?.trim();
-      const quote = card?.querySelector('.notice-verbatim-quote')?.textContent?.trim();
-      const tip = card?.querySelector('.state-placeholder-tip')?.textContent?.trim();
+      // #28 已将 #24 的最小壳替换为换稿通知单，候选标题位于新稿栏
+      const quote = card?.querySelector('[data-testid="candidate-new-section"] .candidate-article-title')?.textContent?.trim();
       const stamp = card?.querySelector('.notice-stamp')?.textContent?.trim();
       return {
         viewMode,
         hasCard: Boolean(card),
         title,
         quote,
-        tip,
         stamp,
       };
     });
@@ -173,7 +172,6 @@ async function run() {
     assert.strictEqual(candidateState.hasCard, true, 'Candidate confirm shell card must be rendered');
     assert.strictEqual(candidateState.stamp, '待确认', 'Candidate stamp must say "待确认"');
     assert(candidateState.quote?.includes('新抓取的第二篇文章'), 'Candidate card must mention candidate article title');
-    assert(candidateState.tip?.includes('#28'), 'Candidate card must mention #28 placeholder');
 
     // 2.5 Corrupted record state (损坏记录态 - #24 最小壳)
     await page.evaluate(() => {

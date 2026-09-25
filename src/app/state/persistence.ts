@@ -175,7 +175,11 @@ export class SessionSaveQueue {
   }
 
   /**
-   * 隐藏页面时尽早提交待保存内容（ARCHITECTURE.md §8.2）
+   * 隐藏页面时尽早提交待保存内容（ARCHITECTURE.md §8.2）；
+   * 替换会话前等待旧会话在途写入结束。
+   *
+   * 写入失败时 startWrite 会把该修订挂回 pendingSession 以供重试，
+   * 因此遇到失败必须停止：否则存储持续拒绝写入（如磁盘空间不足）时会无限重写，调用方永远等不到返回。
    */
   public async flush(): Promise<void> {
     while (this.inFlightPromise || this.pendingSession) {
@@ -185,11 +189,10 @@ export class SessionSaveQueue {
         this.startWrite(next);
       }
       if (this.inFlightPromise) {
-        try {
-          await this.inFlightPromise;
-        } catch {
-          break;
-        }
+        await this.inFlightPromise;
+      }
+      if (this.lastError !== null) {
+        break;
       }
     }
   }

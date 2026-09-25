@@ -3,6 +3,28 @@ import path from 'path';
 import assert from 'assert';
 import { checkDomAccess } from './check-dom-access.mjs';
 
+/**
+ * 在 service worker 中替换 chrome.scripting.executeScript：计数，并以延迟返回给定抓取结果，
+ * 用于经由真实点击入口验证「不重抓 / 不并发抓两次」。
+ */
+async function stubExecuteScript(worker, result = { kind: 'noArticle' }) {
+  await worker.evaluate((res) => {
+    self.__execCount = 0;
+    self.__origExecuteScript = self.__origExecuteScript || chrome.scripting.executeScript;
+    chrome.scripting.executeScript = async () => {
+      self.__execCount += 1;
+      await new Promise((r) => setTimeout(r, 300));
+      return [{ result: res }];
+    };
+  }, result);
+}
+
+async function restoreExecuteScript(worker) {
+  await worker.evaluate(() => {
+    chrome.scripting.executeScript = self.__origExecuteScript;
+  });
+}
+
 async function run() {
   console.log('==> Starting Issue #28 Verification (Candidate Snapshot, Re-entrancy Guard, & Replacement Confirmation Modal)...');
 
@@ -161,6 +183,20 @@ async function run() {
     // 5. Verify default focus is on "继续当前清洗" button
     const activeTestId = await page.evaluate(() => document.activeElement?.getAttribute('data-testid'));
     assert.strictEqual(activeTestId, 'candidate-btn-continue', 'Focus must be on "继续当前清洗" button');
+    // 6. 签条过高时内部可滚动，按钮不会落到可视区外
+    const dialogOverflowY = await page.$eval('.candidate-confirm-dialog', (el) => getComputedStyle(el).overflowY);
+    assert.strictEqual(dialogOverflowY, 'auto', 'Dialog must scroll internally when taller than viewport');
+
+    // 7. 未打开的签条不得显示（作者样式不能覆盖 dialog:not([open]) 的隐藏）
+    const closedDialogDisplay = await page.evaluate(() => {
+      const probe = document.createElement('dialog');
+      probe.className = 'candidate-confirm-dialog';
+      document.body.appendChild(probe);
+      const display = getComputedStyle(probe).display;
+      probe.remove();
+      return display;
+    });
+    assert.strictEqual(closedDialogDisplay, 'none', 'Closed candidate dialog must not be displayed');
     console.log('✓ Test 3 Passed: Candidate confirmation modal renders correctly over background session with proper details');
 
     // --------------------------------------------------------------------------
@@ -200,20 +236,39 @@ async function run() {
     console.log('✓ Test 4 Passed: Overwrite candidate in place with focus reset to continue');
 
     // --------------------------------------------------------------------------
-    // Test 5: Background re-entrancy & same-URL protection:
-    //         已有候选且是同一 URL -> 不重新抓取
+    // Test 5: Background re-entrancy & same-URL protection（经由 service worker 的真实点击入口）:
+    //         已有候选且是同一 URL（全页仍开着）-> 不重新抓取
+    //         抓取进行中再点 -> 忽略，不并发抓两次
     // --------------------------------------------------------------------------
-    console.log('\n--- Test 5: Same URL candidate protection in background ---');
-    // Call background action with same URL as article 3
-    const tabsBefore = await browser.pages();
-    // Simulate background handling check
-    const isSameUrlHandled = await worker.evaluate(async () => {
-      const data = await chrome.storage.local.get('candidateSnapshot');
-      const cand = data.candidateSnapshot;
-      return cand?.snapshot?.source?.url === 'https://mp.weixin.qq.com/s/article-3';
+    console.log('\n--- Test 5: Same URL candidate protection & re-entrancy guard in background ---');
+    await stubExecuteScript(worker);
+
+    // 5a. 同一 URL 且全页开着：不注入抓取，确认框仍是第三篇
+    await worker.evaluate(() =>
+      self.__wetrimBackground.handleActionClick({ id: 999999, url: 'https://mp.weixin.qq.com/s/article-3' })
+    );
+    const execCountSameUrl = await worker.evaluate(() => self.__execCount);
+    assert.strictEqual(execCountSameUrl, 0, 'Same-URL click with open app page must not re-capture');
+    const dialogStillArticle3 = await page.$eval('[data-testid="candidate-new-section"] .candidate-article-title', (el) => el.textContent.trim());
+    assert(dialogStillArticle3.includes('第三篇文章：最终定稿版'), 'Existing confirm dialog must stay in place');
+
+    // 5b. 两次快速点击另一篇：只抓取一次
+    await worker.evaluate(() => {
+      const tab = { id: 999999, url: 'https://mp.weixin.qq.com/s/another-article' };
+      return Promise.all([
+        self.__wetrimBackground.handleActionClick(tab),
+        self.__wetrimBackground.handleActionClick(tab),
+      ]);
     });
-    assert.strictEqual(isSameUrlHandled, true, 'Worker should detect existing candidate with same URL');
-    console.log('✓ Test 5 Passed: Service worker detects matching candidate URL without re-capturing');
+    const execCountDoubleClick = await worker.evaluate(() => self.__execCount);
+    assert.strictEqual(execCountDoubleClick, 1, 'Two rapid clicks must trigger exactly one capture');
+    await restoreExecuteScript(worker);
+
+    // 抓取结果（noArticle）被全页消费，确认框不受影响
+    await page.waitForFunction(async () => !(await chrome.storage.local.get('pendingCapture')).pendingCapture, { timeout: 5000 });
+    const dialogOpenAfterGuard = await page.$eval('.candidate-confirm-dialog', (el) => el.hasAttribute('open'));
+    assert.strictEqual(dialogOpenAfterGuard, true, 'Confirm dialog must remain open');
+    console.log('✓ Test 5 Passed: Same-URL click keeps dialog without re-capture; rapid clicks capture once');
 
     // --------------------------------------------------------------------------
     // Test 6: Continue cleaning flow (Esc or click "继续当前清洗"):
@@ -293,9 +348,38 @@ async function run() {
     }, replaceArticle);
     await page.waitForSelector('[data-testid="candidate-confirm-card"]', { timeout: 5000 });
 
-    // Click replace button
-    await page.click('[data-testid="candidate-btn-replace"]');
+    // 放慢 currentSession 写入并计数，以便观察替换进行中的状态
+    await page.evaluate(() => {
+      const origSet = chrome.storage.local.set;
+      window._origStorageSetSlow = origSet;
+      window._writtenSessionIds = new Set();
+      chrome.storage.local.set = async (items) => {
+        if (items && 'currentSession' in items) {
+          window._writtenSessionIds.add(items.currentSession.sessionId);
+          await new Promise((r) => setTimeout(r, 300));
+        }
+        return origSet.call(chrome.storage.local, items);
+      };
+    });
+
+    // 连点两次替换：只能生成一个新会话
+    await page.evaluate(() => {
+      const btn = document.querySelector('[data-testid="candidate-btn-replace"]');
+      btn.click();
+      btn.click();
+    });
+
+    // 替换进行中：两个按钮禁用，Esc 不会触发「继续」
+    await page.waitForSelector('[data-testid="candidate-btn-continue"]:disabled', { timeout: 2000 });
+    await page.keyboard.press('Escape');
     await page.waitForFunction(() => !document.querySelector('.candidate-confirm-dialog') || !document.querySelector('.candidate-confirm-dialog').hasAttribute('open'));
+
+    // 替换成功后会话变更 effect 会把同一新会话再入队一次，因此按 sessionId 去重计数
+    const writtenSessionCount = await page.evaluate(() => {
+      chrome.storage.local.set = window._origStorageSetSlow;
+      return window._writtenSessionIds.size;
+    });
+    assert.strictEqual(writtenSessionCount, 1, 'Double-clicking replace must create exactly one new session');
 
     // Check title updated to new article
     await page.waitForSelector('.slip-title', { timeout: 5000 });
@@ -347,7 +431,29 @@ async function run() {
       };
     });
 
+    // 旧会话先进入保存失败状态（存储持续拒绝写入）
+    await page.evaluate(async () => {
+      const cur = await window.__wetrim.loadSession();
+      window.__wetrim.dispatch({ type: 'TOGGLE_BLOCK', payload: { blockId: cur.snapshot.blocks[0].id } });
+    });
+    await page.waitForSelector('[data-save-status="error"]', { timeout: 5000 });
+
     await page.click('[data-testid="candidate-btn-replace"]');
+
+    // 替换不能因为旧会话保存失败而卡住，也不能无限重写
+    await page.waitForSelector('[data-testid="candidate-replace-error"]', { timeout: 5000 });
+    const writeAttempts = await page.evaluate(async () => {
+      let count = 0;
+      const failingSet = chrome.storage.local.set;
+      chrome.storage.local.set = async (items) => {
+        if (items && 'currentSession' in items) count += 1;
+        return failingSet.call(chrome.storage.local, items);
+      };
+      await new Promise((r) => setTimeout(r, 500));
+      chrome.storage.local.set = failingSet;
+      return count;
+    });
+    assert.strictEqual(writeAttempts, 0, 'Failed old-session save must not be retried in an endless loop');
 
     // Dialog must remain open!
     const dialogOpenAfterFail = await page.$eval('.candidate-confirm-dialog', (el) => el.hasAttribute('open'));
@@ -366,6 +472,10 @@ async function run() {
     });
     await page.click('[data-testid="candidate-btn-continue"]');
     await page.waitForFunction(() => !document.querySelector('.candidate-confirm-dialog') || !document.querySelector('.candidate-confirm-dialog').hasAttribute('open'));
+
+    // 旧会话仍可手动重试保存
+    await page.click('[data-save-status="error"]');
+    await page.waitForSelector('[data-save-status="saved"]', { timeout: 5000 });
     console.log('✓ Test 9 Passed: Replace write failure gracefully leaves old session untouched and displays error');
 
     // --------------------------------------------------------------------------
@@ -475,26 +585,107 @@ async function run() {
     console.log('✓ Test 11 Passed: Stale candidates discarded on startup without auto-promotion or confirm popup');
 
     // --------------------------------------------------------------------------
-    // Test 12: Read-only second instance arbitration:
-    //          只读第二实例不删候选，也不显示签条
+    // Test 12: Read-only second instance（真实的第二个扩展全页标签）:
+    //          只读页不消费 pendingCapture、不写 storage、不显示保存状态；
+    //          service worker 的叫醒消息只发给写入方
     // --------------------------------------------------------------------------
-    console.log('\n--- Test 12: Read-only secondary instance constraints ---');
-    await page.evaluate(() => {
-      const { dispatch } = window.__wetrim;
-      dispatch({
-        type: 'INIT_STORAGE_STATE',
-        payload: {
-          session: null,
-          corrupted: false,
-          isReadOnly: true,
+    console.log('\n--- Test 12: Read-only secondary instance isolation ---');
+    const page2 = await browser.newPage();
+    await page2.setViewport({ width: 1200, height: 800 });
+    await page2.goto(appUrl, { waitUntil: 'networkidle0' });
+    await page2.waitForSelector('[data-testid="read-only-note"]', { timeout: 5000 });
+
+    const readOnlyUi = await page2.evaluate(() => ({
+      hasSaveStatus: Boolean(document.querySelector('[data-testid="save-status"]')),
+      slipInert: document.querySelector('[data-testid="manuscript-slip"]')?.hasAttribute('inert'),
+      hasSwitchBtn: Boolean(document.querySelector('[data-testid="read-only-switch-writer"]')),
+    }));
+    assert.strictEqual(readOnlyUi.hasSaveStatus, false, 'Read-only page must not show save status');
+    assert.strictEqual(readOnlyUi.slipInert, true, 'Read-only manuscript must be inert');
+    assert.strictEqual(readOnlyUi.hasSwitchBtn, true, 'Read-only page must offer switching to the writer page');
+    const writerIsEditable = await page.$eval('[data-testid="manuscript-slip"]', (el) => !el.hasAttribute('inert'));
+    assert.strictEqual(writerIsEditable, true, 'First app page must stay the writer');
+
+    // 只读页的内存改动不写 storage
+    const revisionBefore = (await worker.evaluate(() => chrome.storage.local.get('currentSession'))).currentSession.revision;
+    await page2.evaluate(async () => {
+      const cur = await window.__wetrim.loadSession();
+      window.__wetrim.dispatch({ type: 'TOGGLE_BLOCK', payload: { blockId: cur.snapshot.blocks[0].id } });
+    });
+    await new Promise((r) => setTimeout(r, 500));
+    const revisionAfter = (await worker.evaluate(() => chrome.storage.local.get('currentSession'))).currentSession.revision;
+    assert.strictEqual(revisionAfter, revisionBefore, 'Read-only page edits must not be written to storage');
+
+    // 直接叫醒只读页：不得消费 pendingCapture
+    const page2TabId = await page2.evaluate(async () => (await chrome.tabs.getCurrent()).id);
+    await worker.evaluate(async (tabId) => {
+      await chrome.storage.local.set({ pendingCapture: { capturedAt: new Date().toISOString(), result: { kind: 'noArticle' } } });
+      await chrome.tabs.sendMessage(tabId, { type: 'pending-capture' });
+    }, page2TabId);
+    await new Promise((r) => setTimeout(r, 500));
+    const pendingAfterReadOnlyWake = await worker.evaluate(() => chrome.storage.local.get('pendingCapture'));
+    assert(pendingAfterReadOnlyWake.pendingCapture, 'Read-only page must not consume pendingCapture');
+
+    // 经由点击入口的真实抓取：叫醒并聚焦写入方，由写入方弹出确认框
+    await stubExecuteScript(worker, {
+      kind: 'article',
+      source: { title: '只读仲裁测试文章', account: '测试', publishedAt: '2026-09-08', url: 'https://mp.weixin.qq.com/s/read-only-routing' },
+      contentHtml: '<p>只读仲裁正文</p>',
+      unstable: false,
+    });
+    await worker.evaluate(() =>
+      self.__wetrimBackground.handleActionClick({ id: 999999, url: 'https://mp.weixin.qq.com/s/read-only-routing' })
+    );
+    await restoreExecuteScript(worker);
+    await page.waitForSelector('.candidate-confirm-dialog[open]', { timeout: 5000 });
+    const readOnlyViewMode = await page2.$eval('.app-container', (el) => el.getAttribute('data-view-mode'));
+    assert.strictEqual(readOnlyViewMode, 'cleaning', 'Read-only page must not enter candidateConfirm');
+    await page.click('[data-testid="candidate-btn-continue"]');
+    await page.waitForFunction(() => !document.querySelector('.candidate-confirm-dialog[open]'));
+    await page2.close();
+    console.log('✓ Test 12 Passed: Read-only instance never consumes captures or writes storage; worker wakes the writer');
+
+    // --------------------------------------------------------------------------
+    // Test 13: 全页已关闭时残留的同 URL 候选不得吞掉点击
+    // --------------------------------------------------------------------------
+    console.log('\n--- Test 13: Stale same-URL candidate with app page closed still captures ---');
+    await page.close();
+    page = null;
+    await worker.evaluate(async () => {
+      await chrome.storage.local.set({
+        candidateSnapshot: {
+          schemaVersion: 1,
+          savedAt: new Date().toISOString(),
+          snapshot: {
+            snapshotId: 'stale-same-url',
+            capturedAt: new Date().toISOString(),
+            source: { title: '残留同 URL 候选', account: '测试', publishedAt: '2026-09-09', url: 'https://mp.weixin.qq.com/s/stale-same-url' },
+            blocks: [],
+            images: [],
+            captureWarnings: [],
+          },
         },
       });
     });
+    await stubExecuteScript(worker, {
+      kind: 'article',
+      source: { title: '残留同 URL 重新抓取', account: '测试', publishedAt: '2026-09-09', url: 'https://mp.weixin.qq.com/s/stale-same-url' },
+      contentHtml: '<p>重新抓取正文</p>',
+      unstable: false,
+    });
+    const newAppTarget = browser.waitForTarget((t) => t.type() === 'page' && t.url().endsWith('/app.html'), { timeout: 5000 });
+    await worker.evaluate(() =>
+      self.__wetrimBackground.handleActionClick({ id: 999999, url: 'https://mp.weixin.qq.com/s/stale-same-url' })
+    );
+    const execCountStale = await worker.evaluate(() => self.__execCount);
+    await restoreExecuteScript(worker);
+    assert.strictEqual(execCountStale, 1, 'Stale same-URL candidate without an open app page must not block capture');
 
-    // Verify that candidate modal is not shown when isReadOnly
-    const modalInReadOnly = await page.$eval('.candidate-confirm-dialog', (el) => el.hasAttribute('open')).catch(() => false);
-    assert.strictEqual(modalInReadOnly, false, 'Read-only instance must never display candidate confirm modal');
-    console.log('✓ Test 12 Passed: Secondary read-only instance arbitration verified');
+    page = await (await newAppTarget).page();
+    await page.waitForSelector('.candidate-confirm-dialog[open]', { timeout: 5000 });
+    const reopenedCandidateTitle = await page.$eval('[data-testid="candidate-new-section"] .candidate-article-title', (el) => el.textContent.trim());
+    assert(reopenedCandidateTitle.includes('残留同 URL 重新抓取'), 'Freshly captured article must be offered for confirmation');
+    console.log('✓ Test 13 Passed: Click is not swallowed by a stale candidate after the app page was closed');
 
     console.log('\n=============================================');
     console.log('✓ All Issue #28 acceptance criteria verified successfully!');

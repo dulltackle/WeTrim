@@ -13,6 +13,8 @@ import { splitBlocks } from './parse/split-blocks';
 import { BlockList, type BlockListHandle } from './components/BlockList';
 import { CandidateConfirmDialog } from './components/CandidateConfirmDialog';
 import { CANDIDATE_COPY } from './copy/candidate';
+import { READ_ONLY_COPY } from './copy/read-only';
+import { pickWriterContext } from '../shared/app-instance';
 import { renderMarkdown } from './preview/render';
 import { buildMarkdown } from './export/build-markdown';
 import { truncateGraphemes } from '../shared/grapheme';
@@ -43,11 +45,16 @@ import './app.css';
 export const App: React.FC = () => {
   const [state, dispatch] = useReducer(sessionReducer, initialAppState);
   const [replaceError, setReplaceError] = useState<string | null>(null);
+  const [isReplacing, setIsReplacing] = useState(false);
   const blockListRef = useRef<BlockListHandle>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
   const savedScrollYRef = useRef<number>(0);
   const savedFocusedBlockIdRef = useRef<string | null>(null);
-  const isReplacingRef = useRef<boolean>(false);
+  const replaceInFlightRef = useRef<boolean>(false);
+  const focusTitleAfterReplaceRef = useRef<boolean>(false);
+  // 只读实例判定在启动初始化时同步写入，供 pendingCapture 消费等非渲染路径即时读取
+  const isReadOnlyRef = useRef<boolean>(false);
+  const initDoneRef = useRef<Promise<void> | null>(null);
   const stateRef = useRef(state);
   useEffect(() => {
     stateRef.current = state;
@@ -136,6 +143,10 @@ export const App: React.FC = () => {
 
   const checkPendingCapture = async () => {
     try {
+      // 必须等启动初始化判定完是否只读，再决定是否消费
+      await initDoneRef.current;
+      // 只读实例不写 storage，也不消费 pendingCapture：抓取结果只属于写入方页面（ARCHITECTURE.md §4.6）
+      if (isReadOnlyRef.current) return;
       if (typeof chrome === 'undefined' || !chrome.storage?.local) return;
       const data = await chrome.storage.local.get(STORAGE_KEYS.PENDING_CAPTURE);
       const pending = data[STORAGE_KEYS.PENDING_CAPTURE] as { result: CaptureResult } | undefined;
@@ -167,16 +178,15 @@ export const App: React.FC = () => {
               documentUrls: [appUrl],
             });
             const currentTab = await chrome.tabs.getCurrent();
-            if (contexts && contexts.length > 1 && currentTab?.id !== undefined) {
-              const sorted = [...contexts].sort((a, b) => (a.tabId ?? 0) - (b.tabId ?? 0));
-              if (sorted[0]?.tabId !== currentTab.id) {
-                isReadOnlyInstance = true;
-              }
+            const writer = pickWriterContext(contexts ?? []);
+            if (writer && currentTab?.id !== undefined && writer.tabId !== currentTab.id) {
+              isReadOnlyInstance = true;
             }
           }
         } catch {
           isReadOnlyInstance = false;
         }
+        isReadOnlyRef.current = isReadOnlyInstance;
 
         const data = await chrome.storage.local.get([
           STORAGE_KEYS.CURRENT_SESSION,
@@ -227,9 +237,8 @@ export const App: React.FC = () => {
       }
     };
 
-    initStorage().then(() => {
-      checkPendingCapture();
-    });
+    initDoneRef.current = initStorage();
+    checkPendingCapture();
 
     if (typeof chrome === 'undefined' || !chrome.runtime?.onMessage) {
       return;
@@ -290,6 +299,11 @@ export const App: React.FC = () => {
       return;
     }
 
+    // 只读实例不写 storage（ARCHITECTURE.md §4.6）
+    if (state.isReadOnly) {
+      return;
+    }
+
     if (state.session.sessionId !== prev.sessionId) {
       sessionSaveQueue.enqueue(state.session);
       return;
@@ -298,7 +312,7 @@ export const App: React.FC = () => {
     if (state.session.revision > prev.revision) {
       sessionSaveQueue.enqueue(state.session);
     }
-  }, [state.session]);
+  }, [state.session, state.isReadOnly]);
 
   // 自检验证（CSP 与 eval 约束验证）
   useEffect(() => {
@@ -376,6 +390,8 @@ export const App: React.FC = () => {
 
   // 选择继续当前清洗：删除候选、关闭签条，焦点和滚动位置恢复到签条打开之前
   const handleContinueCleaning = async () => {
+    // 替换进行中（含 Esc）不接受「继续」，避免两条流程交错
+    if (replaceInFlightRef.current) return;
     if (typeof chrome !== 'undefined' && chrome.storage?.local) {
       try {
         await chrome.storage.local.remove(STORAGE_KEYS.CANDIDATE_SNAPSHOT);
@@ -400,52 +416,59 @@ export const App: React.FC = () => {
   // 选择替换：先让旧会话尚未完成的保存结束或作废，保证迟到写入不会让旧会话复活；
   // 再写入新会话，成功后删除候选，滚动到顶部，焦点放到标题
   const handleConfirmReplace = async () => {
-    if (!state.candidateSnapshot) return;
-
-    // 1. 等待旧会话在途写入结束或作废
-    await sessionSaveQueue.flush();
-
-    const candidateSnapshot = state.candidateSnapshot;
-    const newSession: Session = {
-      schemaVersion: 1,
-      sessionId: crypto.randomUUID(),
-      snapshot: candidateSnapshot,
-      revision: 1,
-      savedAt: new Date().toISOString(),
-    };
-
-    // 2. 写入新会话
+    // 替换涉及多步异步写入：进行中重复点击直接忽略，避免生成两个新会话
+    if (!state.candidateSnapshot || replaceInFlightRef.current) return;
+    replaceInFlightRef.current = true;
+    setIsReplacing(true);
     try {
-      await saveSessionDirect(newSession);
-    } catch (err) {
-      console.error('[WeTrim] Replace write failed:', err);
-      // 替换写入失败：签条保留，旧会话不动；签条内加一行「替换没有完成，当前清洗没有被动过」，并提供重试
-      setReplaceError(CANDIDATE_COPY.replaceFailed);
-      return;
-    }
+      // 1. 等待旧会话在途写入结束或作废
+      await sessionSaveQueue.flush();
 
-    // 3. 成功后删除候选
-    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+      const candidateSnapshot = state.candidateSnapshot;
+      const newSession: Session = {
+        schemaVersion: 1,
+        sessionId: crypto.randomUUID(),
+        snapshot: candidateSnapshot,
+        revision: 1,
+        savedAt: new Date().toISOString(),
+      };
+
+      // 2. 写入新会话
       try {
-        await chrome.storage.local.remove(STORAGE_KEYS.CANDIDATE_SNAPSHOT);
+        await saveSessionDirect(newSession);
       } catch (err) {
-        console.warn('[WeTrim] Failed to remove candidateSnapshot after replace:', err);
+        console.error('[WeTrim] Replace write failed:', err);
+        // 替换写入失败：签条保留，旧会话不动；签条内加一行「替换没有完成，当前清洗没有被动过」，并提供重试
+        setReplaceError(CANDIDATE_COPY.replaceFailed);
+        return;
       }
-    }
 
-    sessionSaveQueue.initLoaded(newSession);
-    setReplaceError(null);
-    isReplacingRef.current = true;
-    dispatch({
-      type: 'SET_NEW_SESSION',
-      payload: { session: newSession, saveStatus: 'saved' },
-    });
+      // 3. 成功后删除候选
+      if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+        try {
+          await chrome.storage.local.remove(STORAGE_KEYS.CANDIDATE_SNAPSHOT);
+        } catch (err) {
+          console.warn('[WeTrim] Failed to remove candidateSnapshot after replace:', err);
+        }
+      }
+
+      sessionSaveQueue.initLoaded(newSession);
+      setReplaceError(null);
+      focusTitleAfterReplaceRef.current = true;
+      dispatch({
+        type: 'SET_NEW_SESSION',
+        payload: { session: newSession, saveStatus: 'saved' },
+      });
+    } finally {
+      replaceInFlightRef.current = false;
+      setIsReplacing(false);
+    }
   };
 
   // 替换成功后：滚动到顶部，并确保焦点稳固转移至标题（避免原生 dialog 关闭时的默认焦点还原覆盖）
   useEffect(() => {
-    if (isReplacingRef.current && state.viewMode === 'cleaning' && state.session) {
-      isReplacingRef.current = false;
+    if (focusTitleAfterReplaceRef.current && state.viewMode === 'cleaning' && state.session) {
+      focusTitleAfterReplaceRef.current = false;
       const timer = setTimeout(() => {
         if (typeof window !== 'undefined') {
           window.scrollTo({ top: 0, behavior: 'instant' });
@@ -475,7 +498,31 @@ export const App: React.FC = () => {
     }
   };
 
-  const { viewMode, session, candidateSnapshot, corruptedDetails, emptySubState, selfTestPassed, saveStatus } = state;
+  // 只读副本「切换到正在编辑的页面」：按与 service worker 相同的规则现查写入方；
+  // 写入方已关闭、当前页成了唯一候选时，重新加载以写入方身份启动
+  const handleSwitchToWriter = async () => {
+    if (typeof chrome === 'undefined' || !chrome.runtime?.getContexts || !chrome.tabs) return;
+    try {
+      const contexts = await chrome.runtime.getContexts({
+        contextTypes: ['TAB'],
+        documentUrls: [chrome.runtime.getURL('app.html')],
+      });
+      const writer = pickWriterContext(contexts ?? []);
+      const currentTab = await chrome.tabs.getCurrent();
+      if (!writer || writer.tabId === undefined || writer.tabId === currentTab?.id) {
+        window.location.reload();
+        return;
+      }
+      await chrome.tabs.update(writer.tabId, { active: true });
+      if (writer.windowId !== undefined && chrome.windows) {
+        await chrome.windows.update(writer.windowId, { focused: true });
+      }
+    } catch (err) {
+      console.warn('[WeTrim] Failed to switch to writer page:', err);
+    }
+  };
+
+  const { viewMode, session, candidateSnapshot, corruptedDetails, emptySubState, selfTestPassed, saveStatus, isReadOnly } = state;
 
   const saveStatusTextMap: Record<Exclude<typeof saveStatus, 'error'>, string> = {
     saving: '正在保存',
@@ -506,7 +553,9 @@ export const App: React.FC = () => {
       : 'WE-TRIM // 001';
 
   const statusDotColor =
-    state.isReadingArticle
+    isReadOnly
+      ? 'var(--ink-secondary)'
+      : state.isReadingArticle
       ? 'var(--amber)'
       : viewMode === 'cleaning'
       ? '#07c160'
@@ -519,7 +568,9 @@ export const App: React.FC = () => {
       : 'var(--prussian-blue)';
 
   const statusText =
-    state.isReadingArticle
+    isReadOnly
+      ? READ_ONLY_COPY.status
+      : state.isReadingArticle
       ? CANDIDATE_COPY.readingArticleStatus
       : viewMode === 'cleaning'
       ? '正在清洗'
@@ -547,8 +598,8 @@ export const App: React.FC = () => {
             <span className="ticket-number">{ticketNumber}</span>
           </div>
           <div className="header-status-group" data-testid="header-status-group">
-            {/* 保存状态指示位 */}
-            {session && (
+            {/* 保存状态指示位（只读副本不写 storage，也不显示保存状态，见 ARCHITECTURE.md §4.6） */}
+            {session && !isReadOnly && (
               saveStatus === 'error' ? (
                 <button
                   type="button"
@@ -646,9 +697,25 @@ export const App: React.FC = () => {
 
             {/* 右侧版心 */}
             <section className="main-bed">
+              {/* 只读副本提示（ARCHITECTURE.md §4.6）：位于 inert 区域之外，保证切换按钮可用 */}
+              {isReadOnly && (
+                <div className="read-only-note" role="status" data-testid="read-only-note">
+                  <span className="note-badge">{READ_ONLY_COPY.badge}</span>
+                  <span className="read-only-note-text">{READ_ONLY_COPY.note}</span>
+                  <button
+                    type="button"
+                    className="action-btn action-switch-writer"
+                    onClick={handleSwitchToWriter}
+                    data-testid="read-only-switch-writer"
+                  >
+                    {READ_ONLY_COPY.btnSwitchToWriter}
+                  </button>
+                </div>
+              )}
+
               {/* 态 1: 清洗态 或 候选确认态（模态签条压在清洗页之上，旧会话照常渲染在背后并压暗，满足 §8.5「先呈现已有会话」） */}
               {session && (viewMode === 'cleaning' || viewMode === 'candidateConfirm') && (
-                <div className="manuscript-slip" data-testid="manuscript-slip">
+                <div className="manuscript-slip" data-testid="manuscript-slip" inert={isReadOnly}>
                   {/* 稳定探测超时标注夹签 */}
                   {session.snapshot.captureWarnings?.some(
                     (w) => w.code === 'capture-unstable' || w.code === 'unstable-capture'
@@ -698,12 +765,12 @@ export const App: React.FC = () => {
               )}
 
               {/* 态 2: 换稿通知单模态签条（压在清洗页之上，原生 <dialog> showModal()） */}
-              {viewMode === 'candidateConfirm' && candidateSnapshot && session && !state.isReadOnly && (
+              {viewMode === 'candidateConfirm' && candidateSnapshot && session && !isReadOnly && (
                 <CandidateConfirmDialog
-                  isOpen={viewMode === 'candidateConfirm' && Boolean(candidateSnapshot)}
                   candidateSnapshot={candidateSnapshot}
                   session={session}
                   replaceError={replaceError}
+                  isReplacing={isReplacing}
                   onContinue={handleContinueCleaning}
                   onReplace={handleConfirmReplace}
                   onReturnToOriginal={() =>

@@ -3,10 +3,11 @@ import type { ArticleSnapshot, Session } from '../../shared/types';
 import { CANDIDATE_COPY } from '../copy/candidate';
 
 export interface CandidateConfirmDialogProps {
-  isOpen: boolean;
   candidateSnapshot: ArticleSnapshot;
   session: Session;
   replaceError: string | null;
+  /** 替换写入进行中：禁用「继续」与「替换」，Esc 也不生效 */
+  isReplacing: boolean;
   onContinue: () => void;
   onReplace: () => void;
   onReturnToOriginal: () => void;
@@ -34,12 +35,13 @@ function formatTimestamp(isoString?: string | null): string {
  * 模态签条压在清洗页之上（旧会话在背后渲染并压暗）。
  * 签条名为「换稿通知单」，使用原生 <dialog> 的 showModal()。
  * 沿用退单卡 / 异常卡的结构语法，右上角放斜置「待确认」印章。
+ * 父组件只在候选确认态挂载本组件，挂载即打开、卸载即关闭。
  */
 export const CandidateConfirmDialog: React.FC<CandidateConfirmDialogProps> = ({
-  isOpen,
   candidateSnapshot,
   session,
   replaceError,
+  isReplacing,
   onContinue,
   onReplace,
   onReturnToOriginal,
@@ -71,33 +73,23 @@ export const CandidateConfirmDialog: React.FC<CandidateConfirmDialogProps> = ({
     });
   }, [isSameUrl, session.snapshot.source.title, excludedCount, editedCount]);
 
-  // 控制原生 <dialog> 的显示/关闭，并聚焦于第一操作「继续」
+  // 以模态方式打开原生 <dialog>，并聚焦于第一操作「继续」
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
 
-    if (isOpen) {
-      if (!dialog.open) {
-        dialog.showModal();
-      }
-      // 默认焦点放在「继续当前清洗」，换文章覆盖时亦重置焦点至「继续」
-      continueBtnRef.current?.focus();
-    } else {
+    if (!dialog.open) {
+      dialog.showModal();
+    }
+    // 默认焦点放在「继续当前清洗」，换文章覆盖时亦重置焦点至「继续」
+    continueBtnRef.current?.focus();
+
+    return () => {
       if (dialog.open) {
         dialog.close();
       }
-    }
-
-    return () => {
-      if (dialog && dialog.open) {
-        dialog.close();
-      }
     };
-  }, [isOpen, candidateSnapshot]);
-
-  if (!isOpen) {
-    return null;
-  }
+  }, [candidateSnapshot]);
 
   return (
     <dialog
@@ -105,9 +97,11 @@ export const CandidateConfirmDialog: React.FC<CandidateConfirmDialogProps> = ({
       className="candidate-confirm-dialog"
       data-testid="candidate-confirm-card"
       onCancel={(e) => {
-        // Esc 等同于「继续」
+        // Esc 等同于「继续」；替换进行中不响应
         e.preventDefault();
-        onContinue();
+        if (!isReplacing) {
+          onContinue();
+        }
       }}
     >
       {/* 右上角斜置待确认印章 */}
@@ -192,6 +186,7 @@ export const CandidateConfirmDialog: React.FC<CandidateConfirmDialogProps> = ({
           ref={continueBtnRef}
           className="action-btn action-continue"
           onClick={onContinue}
+          disabled={isReplacing}
           data-testid="candidate-btn-continue"
         >
           {CANDIDATE_COPY.btnContinue}
@@ -200,6 +195,8 @@ export const CandidateConfirmDialog: React.FC<CandidateConfirmDialogProps> = ({
           type="button"
           className="action-btn action-replace"
           onClick={onReplace}
+          disabled={isReplacing}
+          aria-busy={isReplacing}
           data-testid="candidate-btn-replace"
         >
           {CANDIDATE_COPY.btnReplace}
@@ -213,14 +210,6 @@ export const CandidateConfirmDialog: React.FC<CandidateConfirmDialogProps> = ({
           {CANDIDATE_COPY.btnReturnToOriginal}
         </button>
       </div>
-
-      {/* 保证兼容 Issue #24 历史探针契约的隐藏结构 */}
-      <blockquote className="notice-verbatim-quote" style={{ display: 'none' }}>
-        《{candidateSnapshot.source.title || CANDIDATE_COPY.defaultArticleTitle}》
-      </blockquote>
-      <p className="state-placeholder-tip" style={{ display: 'none' }}>
-        #28
-      </p>
     </dialog>
   );
 };
