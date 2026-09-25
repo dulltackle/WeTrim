@@ -22,6 +22,8 @@ export const EMPTY_FILTER_MESSAGES: Record<BlockFilterMode, string> = {
  * - queryVisible(): 返回当前处于视口内的全部块 id 列表
  * - setFilter(filter): 切换三态筛选（'all' | 'included' | 'excluded'）
  * - getFilter(): 获取当前筛选状态
+ * - getFocusedBlockId(): 获取当前处于焦点状态的块 id（供换稿签条打开前记录）
+ * - restoreFocus(id): 恢复指定块焦点（不强制触发平滑滚动）
  */
 export interface BlockListHandle {
   scrollToBlock: (id: string) => void;
@@ -29,6 +31,8 @@ export interface BlockListHandle {
   queryVisible: () => string[];
   setFilter: (filter: BlockFilterMode) => void;
   getFilter: () => BlockFilterMode;
+  getFocusedBlockId: () => string | null;
+  restoreFocus: (id: string | null) => void;
 }
 
 export interface BlockListProps {
@@ -179,6 +183,23 @@ export const BlockList = forwardRef<BlockListHandle, BlockListProps>(({ blocks }
       },
       setFilter: (f: BlockFilterMode) => handleFilterChange(f),
       getFilter: () => filter,
+      getFocusedBlockId: (): string | null => {
+        const activeEl = typeof document !== 'undefined' ? document.activeElement : null;
+        if (!activeEl) return null;
+        for (const [id, el] of itemRefs.current.entries()) {
+          if (el === activeEl || el.contains(activeEl)) {
+            return id;
+          }
+        }
+        return null;
+      },
+      restoreFocus: (id: string | null) => {
+        if (!id) return;
+        const el = itemRefs.current.get(id);
+        if (el) {
+          el.focus({ preventScroll: true });
+        }
+      },
     }),
     [filter, handleFilterChange]
   );

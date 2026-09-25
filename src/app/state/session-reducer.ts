@@ -13,6 +13,7 @@ export type AppViewMode = 'empty' | 'cleaning' | 'candidateConfirm' | 'corrupted
 export interface EmptySubState {
   notice: Extract<CaptureResult, { kind: 'wechatNotice' | 'captcha' }> | null;
   marginClipNote: string | null;
+  marginClipNoteAutoDismiss: boolean;
   splitError: {
     message: string;
     tabId?: number;
@@ -31,6 +32,8 @@ export interface AppState {
   selfTestPassed: boolean;
   saveStatus: SaveStatus;
   lastSavedRevision: number | null;
+  isReadingArticle: boolean;
+  isReadOnly: boolean;
 }
 
 export type SessionAction =
@@ -38,9 +41,10 @@ export type SessionAction =
       type: 'INIT_STORAGE_STATE';
       payload: {
         session: Session | null;
-        candidateSnapshot: ArticleSnapshot | null;
+        candidateSnapshot?: ArticleSnapshot | null;
         corrupted: boolean;
         corruptedDetails?: string;
+        isReadOnly?: boolean;
       };
     }
   | {
@@ -48,8 +52,15 @@ export type SessionAction =
       payload: ArticleSnapshot;
     }
   | {
+      type: 'DISCARD_CANDIDATE';
+    }
+  | {
+      type: 'SET_READING_ARTICLE';
+      payload: boolean;
+    }
+  | {
       type: 'SET_NEW_SESSION';
-      payload: Session;
+      payload: Session | { session: Session; saveStatus?: SaveStatus };
     }
   | {
       type: 'SET_SAVE_STATUS';
@@ -64,7 +75,7 @@ export type SessionAction =
     }
   | {
       type: 'SET_MARGIN_CLIP_NOTE';
-      payload: string | null;
+      payload: string | { text: string; autoDismiss?: boolean } | null;
     }
   | {
       type: 'SET_SPLIT_ERROR';
@@ -97,6 +108,7 @@ export type SessionAction =
 export const initialEmptySubState: EmptySubState = {
   notice: null,
   marginClipNote: null,
+  marginClipNoteAutoDismiss: true,
   splitError: null,
 };
 
@@ -109,54 +121,28 @@ export const initialAppState: AppState = {
   selfTestPassed: false,
   saveStatus: 'saved',
   lastSavedRevision: null,
+  isReadingArticle: false,
+  isReadOnly: false,
 };
 
 export function sessionReducer(state: AppState, action: SessionAction): AppState {
   switch (action.type) {
     case 'INIT_STORAGE_STATE': {
-      const { session, candidateSnapshot, corrupted, corruptedDetails } = action.payload;
+      const { session, corrupted, corruptedDetails, isReadOnly } = action.payload;
 
       if (corrupted) {
         return {
           ...state,
           viewMode: 'corruptedRecord',
           corruptedDetails: corruptedDetails || '无法识别的会话数据格式',
+          isReadOnly: Boolean(isReadOnly),
+          isReadingArticle: false,
         };
       }
 
-      if (session && candidateSnapshot) {
-        // 已有会话且存在未处理候选快照 -> 进入候选确认态（ARCHITECTURE.md §4.5）
-        return {
-          ...state,
-          viewMode: 'candidateConfirm',
-          session,
-          candidateSnapshot,
-          saveStatus: 'saved',
-          lastSavedRevision: session.revision,
-          emptySubState: initialEmptySubState,
-        };
-      }
-
-      if (!session && candidateSnapshot) {
-        // 无旧会话时不弹确认，直接提升为当前清洗会话（ARCHITECTURE.md §4.5）
-        const newSession: Session = {
-          schemaVersion: 1,
-          sessionId: crypto.randomUUID(),
-          snapshot: candidateSnapshot,
-          revision: 1,
-          savedAt: new Date().toISOString(),
-        };
-        return {
-          ...state,
-          viewMode: 'cleaning',
-          session: newSession,
-          candidateSnapshot: null,
-          saveStatus: 'saving',
-          lastSavedRevision: 0,
-          emptySubState: initialEmptySubState,
-        };
-      }
-
+      // 依据 ARCHITECTURE.md §4.5 与 Issue #28：
+      // 候选未处理就关闭扩展全页 -> 丢弃候选，下次打开直接恢复旧会话。
+      // 候选永远不会自动提升为当前会话，启动时亦不自动进入候选确认态。
       if (session) {
         return {
           ...state,
@@ -166,6 +152,8 @@ export function sessionReducer(state: AppState, action: SessionAction): AppState
           saveStatus: 'saved',
           lastSavedRevision: session.revision,
           emptySubState: initialEmptySubState,
+          isReadOnly: Boolean(isReadOnly),
+          isReadingArticle: false,
         };
       }
 
@@ -176,18 +164,43 @@ export function sessionReducer(state: AppState, action: SessionAction): AppState
         candidateSnapshot: null,
         saveStatus: 'saved',
         lastSavedRevision: null,
+        isReadOnly: Boolean(isReadOnly),
+        isReadingArticle: false,
       };
     }
 
     case 'SET_NEW_SESSION': {
+      const newSession =
+        'session' in action.payload ? action.payload.session : action.payload;
+      const status =
+        'saveStatus' in action.payload && action.payload.saveStatus
+          ? action.payload.saveStatus
+          : 'saving';
       return {
         ...state,
         viewMode: 'cleaning',
-        session: action.payload,
-        saveStatus: 'saving',
-        lastSavedRevision: 0,
+        session: newSession,
+        saveStatus: status,
+        lastSavedRevision: status === 'saved' ? newSession.revision : 0,
         candidateSnapshot: null,
         emptySubState: initialEmptySubState,
+        isReadingArticle: false,
+      };
+    }
+
+    case 'DISCARD_CANDIDATE': {
+      return {
+        ...state,
+        viewMode: state.session ? 'cleaning' : 'empty',
+        candidateSnapshot: null,
+        isReadingArticle: false,
+      };
+    }
+
+    case 'SET_READING_ARTICLE': {
+      return {
+        ...state,
+        isReadingArticle: action.payload,
       };
     }
 
@@ -203,13 +216,13 @@ export function sessionReducer(state: AppState, action: SessionAction): AppState
     }
 
     case 'SET_ARTICLE_SNAPSHOT': {
-      // 调用方（App.tsx）仅在已有当前会话时才 dispatch 本 action；
-      // 无当前会话的情形改走 SET_NEW_SESSION
+      // 写入 candidateSnapshot 成功后触发本 action 进入 candidateConfirm
       return {
         ...state,
         viewMode: 'candidateConfirm',
         candidateSnapshot: action.payload,
         emptySubState: initialEmptySubState,
+        isReadingArticle: false,
       };
     }
 
@@ -226,11 +239,22 @@ export function sessionReducer(state: AppState, action: SessionAction): AppState
     }
 
     case 'SET_MARGIN_CLIP_NOTE': {
+      if (typeof action.payload === 'object' && action.payload !== null) {
+        return {
+          ...state,
+          emptySubState: {
+            ...state.emptySubState,
+            marginClipNote: action.payload.text,
+            marginClipNoteAutoDismiss: action.payload.autoDismiss ?? true,
+          },
+        };
+      }
       return {
         ...state,
         emptySubState: {
           ...state.emptySubState,
           marginClipNote: action.payload,
+          marginClipNoteAutoDismiss: true,
         },
       };
     }

@@ -14,6 +14,7 @@
     "verify:issue25": "node test/verify-issue25.mjs",
     "verify:issue26": "node test/verify-issue26.mjs",
     "verify:issue27": "node test/verify-issue27.mjs",
+    "verify:issue28": "node test/verify-issue28.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

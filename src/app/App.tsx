@@ -1,4 +1,4 @@
-import React, { useEffect, useReducer, useRef } from 'react';
+import React, { useEffect, useReducer, useRef, useState } from 'react';
 import type { CaptureResult, CandidateRecord, Session } from '../shared/types';
 import { STORAGE_KEYS } from '../shared/storage-keys';
 import { PENDING_CAPTURE_MESSAGE_TYPE } from '../shared/messages';
@@ -11,6 +11,8 @@ import {
 } from './parse/convert';
 import { splitBlocks } from './parse/split-blocks';
 import { BlockList, type BlockListHandle } from './components/BlockList';
+import { CandidateConfirmDialog } from './components/CandidateConfirmDialog';
+import { CANDIDATE_COPY } from './copy/candidate';
 import { renderMarkdown } from './preview/render';
 import { buildMarkdown } from './export/build-markdown';
 import { truncateGraphemes } from '../shared/grapheme';
@@ -29,18 +31,23 @@ import {
 import './app.css';
 
 /**
- * 依据 ARCHITECTURE.md §4.1 ~ §4.5、§7、§8.5，ADR-0005 与 Issue #24：
+ * 依据 ARCHITECTURE.md §4.1 ~ §4.5、§7、§8.5，ADR-0005 与 Issue #24、Issue #28：
  * 视觉世界：延续「校对纸/印厂签条」语言 · Operate 模式
  *
  * App 顶层单 useReducer + Context 四态状态机：
  * 1. empty（空态）：3 步指引、微信提示页、验证页、整篇级失败卡片、无文章浮贴夹签
  * 2. cleaning（清洗态）：文章来源与标题位于正文之前，BlockList 连续渲染全部块
- * 3. candidateConfirm（候选确认态）：已有会话时新抓取快照待确认替换（#24 留壳，#28 实现）
+ * 3. candidateConfirm（候选确认态）：已有会话时新抓取快照先落盘，弹出换稿通知单确认替换（#28 实现）
  * 4. corruptedRecord（损坏记录态）：存储记录格式损坏或无法识别（#24 留壳，#35 实现）
  */
 export const App: React.FC = () => {
   const [state, dispatch] = useReducer(sessionReducer, initialAppState);
+  const [replaceError, setReplaceError] = useState<string | null>(null);
   const blockListRef = useRef<BlockListHandle>(null);
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const savedScrollYRef = useRef<number>(0);
+  const savedFocusedBlockIdRef = useRef<string | null>(null);
+  const isReplacingRef = useRef<boolean>(false);
   const stateRef = useRef(state);
   useEffect(() => {
     stateRef.current = state;
@@ -51,13 +58,39 @@ export const App: React.FC = () => {
   const renderedStepsHtml = renderMarkdown(stepsMarkdown);
 
   // 消费 pendingCapture 逻辑：读到后必须立即删除该 key，防止重复消费
-  const processCaptureResult = (res: CaptureResult) => {
+  const processCaptureResult = async (res: CaptureResult) => {
     if (res.kind === 'article') {
+      dispatch({ type: 'SET_READING_ARTICLE', payload: true });
       try {
         const articleSnapshot = buildArticleSnapshot(res);
 
+        // 先落盘，写入 candidateSnapshot（ARCHITECTURE.md §4.5 与 Issue #28）
+        if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+          const candidateRecord: CandidateRecord = {
+            schemaVersion: 1,
+            snapshot: articleSnapshot,
+            savedAt: new Date().toISOString(),
+          };
+          try {
+            await chrome.storage.local.set({ [STORAGE_KEYS.CANDIDATE_SNAPSHOT]: candidateRecord });
+          } catch (err: unknown) {
+            console.error('[WeTrim] Failed to persist candidateSnapshot:', err);
+            // 候选写盘失败：不弹确认；页边夹签提示「新文章没保存下来，当前清洗没有被动过」。该夹签不自动收回，由用户手动关闭
+            dispatch({
+              type: 'SET_MARGIN_CLIP_NOTE',
+              payload: {
+                text: CANDIDATE_COPY.candidateSaveFailed,
+                autoDismiss: false,
+              },
+            });
+            dispatch({ type: 'SET_READING_ARTICLE', payload: false });
+            return;
+          }
+        }
+
+        // 写入 candidateSnapshot 成功后：
         if (!stateRef.current.session) {
-          // 无当前会话：直接提升为当前会话并入队持久化
+          // 无旧会话：直接提升为当前会话并入队持久化
           const newSession: Session = {
             schemaVersion: 1,
             sessionId: crypto.randomUUID(),
@@ -65,22 +98,20 @@ export const App: React.FC = () => {
             revision: 1,
             savedAt: new Date().toISOString(),
           };
+          if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+            try {
+              await chrome.storage.local.remove(STORAGE_KEYS.CANDIDATE_SNAPSHOT);
+            } catch {}
+          }
           sessionSaveQueue.enqueue(newSession);
           dispatch({ type: 'SET_NEW_SESSION', payload: newSession });
         } else {
-          // 先落盘，写入 candidateSnapshot（ARCHITECTURE.md §4.5）
-          if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-            const candidateRecord: CandidateRecord = {
-              schemaVersion: 1,
-              snapshot: articleSnapshot,
-              savedAt: new Date().toISOString(),
-            };
-            chrome.storage.local
-              .set({ [STORAGE_KEYS.CANDIDATE_SNAPSHOT]: candidateRecord })
-              .catch((err: unknown) => {
-                console.error('[WeTrim] Failed to persist candidateSnapshot:', err);
-              });
+          // 已有当前会话：记录当前滚动位置与聚焦块，进入 candidateConfirm
+          if (stateRef.current.viewMode !== 'candidateConfirm') {
+            savedScrollYRef.current = typeof window !== 'undefined' ? window.scrollY : 0;
+            savedFocusedBlockIdRef.current = blockListRef.current?.getFocusedBlockId?.() ?? null;
           }
+          setReplaceError(null);
           dispatch({ type: 'SET_ARTICLE_SNAPSHOT', payload: articleSnapshot });
         }
       } catch (err) {
@@ -90,6 +121,8 @@ export const App: React.FC = () => {
           type: 'SET_SPLIT_ERROR',
           payload: { message: msg, tabId: res.tabId, url: res.source.url },
         });
+      } finally {
+        dispatch({ type: 'SET_READING_ARTICLE', payload: false });
       }
     } else if (res.kind === 'wechatNotice' || res.kind === 'captcha') {
       dispatch({ type: 'SET_EMPTY_NOTICE', payload: res });
@@ -109,7 +142,7 @@ export const App: React.FC = () => {
       if (pending && pending.result) {
         // 立即删除该 key
         await chrome.storage.local.remove(STORAGE_KEYS.PENDING_CAPTURE);
-        processCaptureResult(pending.result);
+        await processCaptureResult(pending.result);
       }
     } catch (err) {
       console.warn('[WeTrim] Error reading pendingCapture:', err);
@@ -123,6 +156,28 @@ export const App: React.FC = () => {
         if (typeof chrome === 'undefined' || !chrome.storage?.local) {
           return;
         }
+
+        // 检查是否为只读第二实例（ARCHITECTURE.md §4.6 与 Issue #28）
+        let isReadOnlyInstance = false;
+        try {
+          if (chrome.runtime?.getContexts && chrome.tabs?.getCurrent) {
+            const appUrl = chrome.runtime.getURL('app.html');
+            const contexts = await chrome.runtime.getContexts({
+              contextTypes: ['TAB'],
+              documentUrls: [appUrl],
+            });
+            const currentTab = await chrome.tabs.getCurrent();
+            if (contexts && contexts.length > 1 && currentTab?.id !== undefined) {
+              const sorted = [...contexts].sort((a, b) => (a.tabId ?? 0) - (b.tabId ?? 0));
+              if (sorted[0]?.tabId !== currentTab.id) {
+                isReadOnlyInstance = true;
+              }
+            }
+          }
+        } catch {
+          isReadOnlyInstance = false;
+        }
+
         const data = await chrome.storage.local.get([
           STORAGE_KEYS.CURRENT_SESSION,
           STORAGE_KEYS.CANDIDATE_SNAPSHOT,
@@ -130,6 +185,16 @@ export const App: React.FC = () => {
 
         const rawSession = data[STORAGE_KEYS.CURRENT_SESSION] as Session | undefined;
         const rawCandidate = data[STORAGE_KEYS.CANDIDATE_SNAPSHOT] as CandidateRecord | undefined;
+
+        // 关页即丢弃候选：启动时发现残留候选应当丢弃。
+        // 但只读的第二实例不得删掉写入方页面的候选（见 §4.6 与 Issue #28）。
+        if (!isReadOnlyInstance && rawCandidate) {
+          try {
+            await chrome.storage.local.remove(STORAGE_KEYS.CANDIDATE_SNAPSHOT);
+          } catch (err) {
+            console.warn('[WeTrim] Error removing stale candidateSnapshot on init:', err);
+          }
+        }
 
         let corrupted = false;
         let corruptedDetails = '';
@@ -139,29 +204,22 @@ export const App: React.FC = () => {
           corruptedDetails = '存储中的清洗会话记录格式不完整或损坏';
         }
 
-        let initialSession: Session | null = corrupted ? null : (rawSession ?? null);
+        const initialSession: Session | null = corrupted ? null : (rawSession ?? null);
 
         if (rawSession && !corrupted) {
-          sessionSaveQueue.initLoaded(rawSession);
-        } else if (!rawSession && rawCandidate?.snapshot) {
-          const newSession: Session = {
-            schemaVersion: 1,
-            sessionId: crypto.randomUUID(),
-            snapshot: rawCandidate.snapshot,
-            revision: 1,
-            savedAt: new Date().toISOString(),
-          };
-          sessionSaveQueue.enqueue(newSession);
-          initialSession = newSession;
+          if (!isReadOnlyInstance) {
+            sessionSaveQueue.initLoaded(rawSession);
+          }
         }
 
+        // 候选永远不会自动提升为当前会话，启动时恢复旧会话
         dispatch({
           type: 'INIT_STORAGE_STATE',
           payload: {
             session: initialSession,
-            candidateSnapshot: rawCandidate?.snapshot ?? null,
             corrupted,
             corruptedDetails,
+            isReadOnly: isReadOnlyInstance,
           },
         });
       } catch (err) {
@@ -265,8 +323,11 @@ export const App: React.FC = () => {
           renderMarkdown,
           splitBlocks,
           blockListRef,
+          titleRef,
           dispatch,
           processCaptureResult,
+          handleContinueCleaning,
+          handleConfirmReplace,
           sessionSaveQueue,
           SessionSaveQueue,
           loadSession,
@@ -280,14 +341,15 @@ export const App: React.FC = () => {
   }, []);
 
   // 页边浮贴夹签（Margin Clip Note）自动轻微收回（4 秒）
+  // 依据 Issue #28：候选写盘失败时的提示夹签不自动收回，由用户手动关闭
   useEffect(() => {
-    if (state.emptySubState.marginClipNote) {
+    if (state.emptySubState.marginClipNote && state.emptySubState.marginClipNoteAutoDismiss) {
       const timer = setTimeout(() => {
         dispatch({ type: 'SET_MARGIN_CLIP_NOTE', payload: null });
       }, 4000);
       return () => clearTimeout(timer);
     }
-  }, [state.emptySubState.marginClipNote]);
+  }, [state.emptySubState.marginClipNote, state.emptySubState.marginClipNoteAutoDismiss]);
 
   // 「回到原文看看」：优先聚焦原标签页；若已关闭则打开原 URL
   const handleReturnToOriginal = async (tabId?: number, url?: string | null) => {
@@ -312,8 +374,91 @@ export const App: React.FC = () => {
     }
   };
 
-  // 「重试」：通知 background 对目标标签页发起重新抓取探测
+  // 选择继续当前清洗：删除候选、关闭签条，焦点和滚动位置恢复到签条打开之前
+  const handleContinueCleaning = async () => {
+    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+      try {
+        await chrome.storage.local.remove(STORAGE_KEYS.CANDIDATE_SNAPSHOT);
+      } catch (err) {
+        console.warn('[WeTrim] Failed to remove candidateSnapshot on continue:', err);
+      }
+    }
+    dispatch({ type: 'DISCARD_CANDIDATE' });
+    setReplaceError(null);
+    const targetScrollY = savedScrollYRef.current;
+    const targetBlockId = savedFocusedBlockIdRef.current;
+    setTimeout(() => {
+      if (typeof window !== 'undefined') {
+        window.scrollTo({ top: targetScrollY, behavior: 'instant' });
+      }
+      if (targetBlockId) {
+        blockListRef.current?.restoreFocus(targetBlockId);
+      }
+    }, 0);
+  };
+
+  // 选择替换：先让旧会话尚未完成的保存结束或作废，保证迟到写入不会让旧会话复活；
+  // 再写入新会话，成功后删除候选，滚动到顶部，焦点放到标题
+  const handleConfirmReplace = async () => {
+    if (!state.candidateSnapshot) return;
+
+    // 1. 等待旧会话在途写入结束或作废
+    await sessionSaveQueue.flush();
+
+    const candidateSnapshot = state.candidateSnapshot;
+    const newSession: Session = {
+      schemaVersion: 1,
+      sessionId: crypto.randomUUID(),
+      snapshot: candidateSnapshot,
+      revision: 1,
+      savedAt: new Date().toISOString(),
+    };
+
+    // 2. 写入新会话
+    try {
+      await saveSessionDirect(newSession);
+    } catch (err) {
+      console.error('[WeTrim] Replace write failed:', err);
+      // 替换写入失败：签条保留，旧会话不动；签条内加一行「替换没有完成，当前清洗没有被动过」，并提供重试
+      setReplaceError(CANDIDATE_COPY.replaceFailed);
+      return;
+    }
+
+    // 3. 成功后删除候选
+    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+      try {
+        await chrome.storage.local.remove(STORAGE_KEYS.CANDIDATE_SNAPSHOT);
+      } catch (err) {
+        console.warn('[WeTrim] Failed to remove candidateSnapshot after replace:', err);
+      }
+    }
+
+    sessionSaveQueue.initLoaded(newSession);
+    setReplaceError(null);
+    isReplacingRef.current = true;
+    dispatch({
+      type: 'SET_NEW_SESSION',
+      payload: { session: newSession, saveStatus: 'saved' },
+    });
+  };
+
+  // 替换成功后：滚动到顶部，并确保焦点稳固转移至标题（避免原生 dialog 关闭时的默认焦点还原覆盖）
+  useEffect(() => {
+    if (isReplacingRef.current && state.viewMode === 'cleaning' && state.session) {
+      isReplacingRef.current = false;
+      const timer = setTimeout(() => {
+        if (typeof window !== 'undefined') {
+          window.scrollTo({ top: 0, behavior: 'instant' });
+        }
+        titleRef.current?.focus();
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [state.viewMode, state.session]);
+
+  // 「重试」：通知 background 对目标标签页发起重新抓取探测（必须带明确 tabId）
   const handleRetry = async (tabId?: number) => {
+    if (typeof tabId !== 'number') return;
     if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) return;
     try {
       dispatch({ type: 'SET_SPLIT_ERROR', payload: null });
@@ -344,7 +489,7 @@ export const App: React.FC = () => {
     viewMode === 'cleaning'
       ? '校样'
       : viewMode === 'candidateConfirm'
-      ? '候选'
+      ? CANDIDATE_COPY.ticketCandidateTag
       : viewMode === 'corruptedRecord'
       ? '损坏'
       : emptySubState.notice
@@ -361,21 +506,25 @@ export const App: React.FC = () => {
       : 'WE-TRIM // 001';
 
   const statusDotColor =
-    viewMode === 'cleaning'
+    state.isReadingArticle
+      ? 'var(--amber)'
+      : viewMode === 'cleaning'
       ? '#07c160'
       : viewMode === 'candidateConfirm'
-      ? '#fa9d3b'
+      ? 'var(--amber)'
       : viewMode === 'corruptedRecord' || emptySubState.splitError
-      ? '#c8352b'
+      ? 'var(--vermilion)'
       : emptySubState.notice
-      ? '#fa9d3b'
-      : '#2f5fa8';
+      ? 'var(--amber)'
+      : 'var(--prussian-blue)';
 
   const statusText =
-    viewMode === 'cleaning'
+    state.isReadingArticle
+      ? CANDIDATE_COPY.readingArticleStatus
+      : viewMode === 'cleaning'
       ? '正在清洗'
       : viewMode === 'candidateConfirm'
-      ? '等待确认'
+      ? CANDIDATE_COPY.waitingConfirmStatus
       : viewMode === 'corruptedRecord'
       ? '记录损坏'
       : emptySubState.splitError
@@ -497,11 +646,13 @@ export const App: React.FC = () => {
 
             {/* 右侧版心 */}
             <section className="main-bed">
-              {/* 态 1: 清洗态 (viewMode === 'cleaning') */}
-              {viewMode === 'cleaning' && session && (
+              {/* 态 1: 清洗态 或 候选确认态（模态签条压在清洗页之上，旧会话照常渲染在背后并压暗，满足 §8.5「先呈现已有会话」） */}
+              {session && (viewMode === 'cleaning' || viewMode === 'candidateConfirm') && (
                 <div className="manuscript-slip" data-testid="manuscript-slip">
                   {/* 稳定探测超时标注夹签 */}
-                  {session.snapshot.captureWarnings?.some((w) => w.code === 'unstable-capture') && (
+                  {session.snapshot.captureWarnings?.some(
+                    (w) => w.code === 'capture-unstable' || w.code === 'unstable-capture'
+                  ) && (
                     <div className="unstable-note" data-testid="unstable-note">
                       <span className="note-badge">批注</span>
                       <span>文章可能还没显示完整，可以回到原文等它加载完再重新抓一次</span>
@@ -511,7 +662,9 @@ export const App: React.FC = () => {
                   {/* 文章来源与标题：必须位于正文内容块之前 */}
                   <div className="slip-header" data-testid="slip-header">
                     <span className="slip-kicker">文稿录入单</span>
-                    <h1 className="slip-title">{session.snapshot.source.title || '无标题文章'}</h1>
+                    <h1 className="slip-title" ref={titleRef} tabIndex={-1}>
+                      {session.snapshot.source.title || '无标题文章'}
+                    </h1>
                     <div className="slip-meta">
                       {session.snapshot.source.account && (
                         <span className="meta-item meta-account">
@@ -528,7 +681,7 @@ export const App: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* 顶部操作行 */}
+                  {/* 顶部操作行（依据 Issue #28 已移除全页重新抓取按钮） */}
                   <div className="slip-actions">
                     <button
                       type="button"
@@ -537,13 +690,6 @@ export const App: React.FC = () => {
                     >
                       回到原文看看
                     </button>
-                    <button
-                      type="button"
-                      className="action-btn action-retry"
-                      onClick={() => handleRetry()}
-                    >
-                      重新抓取
-                    </button>
                   </div>
 
                   {/* 正文块流列表：ADR-0005 唯一渲染入口 */}
@@ -551,33 +697,19 @@ export const App: React.FC = () => {
                 </div>
               )}
 
-              {/* 态 2: 候选确认态 (viewMode === 'candidateConfirm') - 最小壳 */}
-              {viewMode === 'candidateConfirm' && candidateSnapshot && (
-                <div className="candidate-confirm-card" data-testid="candidate-confirm-card">
-                  <div className="notice-stamp candidate-stamp" aria-hidden="true">
-                    <span>待确认</span>
-                  </div>
-                  <div className="notice-header">
-                    <span className="notice-sub">文稿替换确认</span>
-                    <h2 className="notice-title">检测到新抓取文章</h2>
-                  </div>
-                  <blockquote className="notice-verbatim-quote">
-                    《{candidateSnapshot.source.title || '无标题文章'}》
-                    {candidateSnapshot.source.account ? `（${candidateSnapshot.source.account}）` : ''} 已就绪。
-                  </blockquote>
-                  <p className="state-placeholder-tip">
-                    当前已有正在清洗的会话。候选替换确认交互即将支持（#28）。
-                  </p>
-                  <div className="notice-actions">
-                    <button
-                      type="button"
-                      className="action-btn action-return"
-                      onClick={() => dispatch({ type: 'SET_VIEW_MODE', payload: 'cleaning' })}
-                    >
-                      返回当前清洗
-                    </button>
-                  </div>
-                </div>
+              {/* 态 2: 换稿通知单模态签条（压在清洗页之上，原生 <dialog> showModal()） */}
+              {viewMode === 'candidateConfirm' && candidateSnapshot && session && !state.isReadOnly && (
+                <CandidateConfirmDialog
+                  isOpen={viewMode === 'candidateConfirm' && Boolean(candidateSnapshot)}
+                  candidateSnapshot={candidateSnapshot}
+                  session={session}
+                  replaceError={replaceError}
+                  onContinue={handleContinueCleaning}
+                  onReplace={handleConfirmReplace}
+                  onReturnToOriginal={() =>
+                    handleReturnToOriginal(undefined, candidateSnapshot.source.url)
+                  }
+                />
               )}
 
               {/* 态 3: 损坏记录态 (viewMode === 'corruptedRecord') - 最小壳 */}

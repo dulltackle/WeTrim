@@ -9,6 +9,8 @@
   --vermilion-subtle: #faeceb;
   --prussian-blue: #2f5fa8;
   --prussian-blue-subtle: #ebf1fa;
+  --amber: #fa9d3b;
+  --amber-subtle: #fdf5ea;
   --registration-hairline: #c4cdc4;
   --margin-track-width: 84px;
 }
@@ -127,7 +129,7 @@ body {
 }
 
 .save-status-dot-unsaved {
-  background-color: #fa9d3b;
+  background-color: var(--amber);
 }
 
 .save-status-dot-error {
@@ -949,11 +951,11 @@ button.save-status-error:focus-visible {
   border-radius: 2px;
 }
 
-/* 5. 候选确认卡片 (Candidate Confirm Card - Issue #24 最小壳) */
+/* 5. 换稿通知单与候选确认 (Candidate Confirm Modal - Issue #28) */
 .candidate-confirm-card {
   background: #fff;
   border: 1px solid var(--sheet-border);
-  border-left: 4px solid #fa9d3b;
+  border-left: 1px solid var(--amber);
   border-radius: 2px;
   padding: 32px 36px;
   position: relative;
@@ -965,8 +967,175 @@ button.save-status-error:focus-visible {
 }
 
 .candidate-stamp {
-  border-color: #fa9d3b;
-  color: #fa9d3b;
+  border-color: var(--amber);
+  color: var(--amber);
+}
+
+.candidate-confirm-dialog {
+  border: 1px solid var(--sheet-border);
+  border-radius: 3px;
+  background-color: #ffffff;
+  color: var(--ink-primary);
+  max-width: 520px;
+  width: calc(100% - 32px);
+  margin: auto;
+  padding: 32px 36px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.16), 0 2px 8px rgba(0, 0, 0, 0.06);
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  animation: slideInNote 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: visible;
+  z-index: 1000;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .candidate-confirm-dialog {
+    animation: none;
+  }
+}
+
+.candidate-confirm-dialog::backdrop {
+  background-color: rgba(26, 26, 24, 0.5);
+  backdrop-filter: blur(1.5px);
+}
+
+.candidate-sections-container {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+}
+
+.candidate-section {
+  position: relative;
+  border: 1px solid var(--sheet-border);
+  border-radius: 2px;
+  padding: 14px 16px;
+  background-color: var(--sheet-bg);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.candidate-new-section .section-label-badge {
+  color: var(--amber);
+}
+
+.candidate-old-section .section-label-badge {
+  color: var(--ink-secondary);
+}
+
+.section-label-badge {
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: 700;
+  text-transform: uppercase;
+  display: inline-block;
+  margin-bottom: 2px;
+}
+
+.candidate-article-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.candidate-article-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink-primary);
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.candidate-article-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--ink-secondary);
+}
+
+.candidate-article-meta .meta-item strong {
+  color: var(--ink-primary);
+  font-weight: 600;
+}
+
+.candidate-unstable-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background-color: var(--prussian-blue-subtle);
+  border: 1px solid rgba(47, 95, 168, 0.25);
+  padding: 6px 10px;
+  border-radius: 2px;
+  font-size: 12px;
+  color: var(--ink-primary);
+  margin-top: 4px;
+}
+
+.candidate-loss-notice {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--vermilion);
+  line-height: 1.5;
+  padding: 4px 0;
+}
+
+.candidate-replace-error {
+  font-size: 13px;
+  color: var(--vermilion);
+  background-color: var(--vermilion-subtle);
+  border: 1px solid rgba(200, 53, 43, 0.3);
+  padding: 8px 12px;
+  border-radius: 2px;
+  font-weight: 500;
+}
+
+.candidate-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.candidate-actions .action-continue {
+  background-color: var(--prussian-blue);
+  border: 1px solid var(--prussian-blue);
+  color: #fff;
+  font-weight: 600;
+}
+
+.candidate-actions .action-continue:hover {
+  background-color: #244b85;
+  border-color: #244b85;
+}
+
+.candidate-actions .action-replace {
+  background-color: transparent;
+  border: 1px solid var(--vermilion);
+  color: var(--vermilion);
+  font-weight: 600;
+}
+
+.candidate-actions .action-replace:hover {
+  background-color: var(--vermilion-subtle);
+}
+
+.candidate-actions .action-return {
+  background-color: #fff;
+  border: 1px solid var(--sheet-border);
+  color: var(--ink-secondary);
+}
+
+.candidate-actions .action-return:hover {
+  background-color: #f4f6f4;
+  color: var(--ink-primary);
+  border-color: var(--ink-secondary);
 }
 
 /* 6. 损坏记录卡片 (Corrupted Record Card - Issue #24 最小壳) */
