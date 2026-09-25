@@ -4,6 +4,7 @@ import React, {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -15,6 +16,7 @@ export interface BlockItemProps {
   block: Block;
   onToggle: (id: string) => void;
   onUpdate?: (id: string, editedMarkdown: string | null) => void;
+  isTempExpanded?: boolean;
 }
 
 export const BLOCK_TYPE_LABELS: Record<string, string> = {
@@ -40,9 +42,10 @@ export const BLOCK_TYPE_LABELS: Record<string, string> = {
  * - 实时反馈 ≤50ms：编辑中徽章（已修改 / 内容为空）基于本地值同步即时更新
  * - 还原内容：单块编辑区与常驻 meta 操作行均提供，二次内联确认，不改动保留/剔除状态
  * - 纯键盘可达与焦点保持：完成编辑后焦点平稳回落该块，不跳顶
+ * - 临时展开（isTempExpanded）：搜索命中折叠剔除块时临时展开，离开后自动收起
  */
 export const BlockItem = memo(
-  forwardRef<HTMLDivElement, BlockItemProps>(({ block, onToggle, onUpdate }, ref) => {
+  forwardRef<HTMLDivElement, BlockItemProps>(({ block, onToggle, onUpdate, isTempExpanded }, ref) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     const [isConfirmingRestore, setIsConfirmingRestore] = useState(false);
@@ -228,7 +231,13 @@ export const BlockItem = memo(
     const previewText = truncateGraphemes(effectiveMarkdown, 20);
     const summaryPreview = isLocallyEmpty ? '（内容为空）' : previewText;
 
-    const isCollapsed = !block.included && !isExpanded;
+    const isCollapsed = !block.included && !isExpanded && !isTempExpanded;
+
+    // 展开态渲染内容缓存：顶层 Hook 调用，折叠态跳过渲染，非折叠态缓存 marked 解析结果
+    const renderedHtml = useMemo(
+      () => (!isLocallyEmpty && !isCollapsed ? renderMarkdown(effectiveMarkdown) : ''),
+      [isLocallyEmpty, isCollapsed, effectiveMarkdown]
+    );
 
     // 整体块提示图标与浮层
     const compositeTip = isComposite ? (
@@ -392,8 +401,6 @@ export const BlockItem = memo(
     }
 
     // 展开态（保留态，或剔除后点击展开 / 编辑）
-    const renderedHtml = !isLocallyEmpty ? renderMarkdown(effectiveMarkdown) : '';
-
     let contentNode: React.ReactNode;
     if (isEditing) {
       contentNode = (

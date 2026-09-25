@@ -10,10 +10,12 @@ import {
   createTurndown,
 } from './parse/convert';
 import { splitBlocks } from './parse/split-blocks';
-import { BlockList, type BlockListHandle } from './components/BlockList';
+import { BlockList, type BlockListHandle, type BlockFilterMode } from './components/BlockList';
 import { CandidateConfirmDialog } from './components/CandidateConfirmDialog';
 import { CANDIDATE_COPY } from './copy/candidate';
 import { READ_ONLY_COPY } from './copy/read-only';
+import { NAVIGATION_COPY } from './copy/navigation';
+import type { SearchState } from './search/text-search';
 import { pickWriterContext } from '../shared/app-instance';
 import { renderMarkdown } from './preview/render';
 import { buildMarkdown } from './export/build-markdown';
@@ -59,6 +61,168 @@ export const App: React.FC = () => {
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  // Issue #29: 搜索、序号定位与顶栏联动状态
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchState, setSearchState] = useState<SearchState>({
+    query: '',
+    totalHits: 0,
+    currentHitIndex: -1,
+    hiddenHitsCount: 0,
+    hiddenHitsFilter: null,
+    wrappedNotice: false,
+  });
+  const [orderInputValue, setOrderInputValue] = useState('');
+  const [orderJumpTip, setOrderJumpTip] = useState<{
+    text: string;
+    canSwitchToAll?: boolean;
+    targetOrder?: number;
+  } | null>(null);
+  const [currentFilter, setCurrentFilter] = useState<BlockFilterMode>('all');
+  const [wrappedToast, setWrappedToast] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const wrappedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 快捷键支持（Issue #29 §6）：
+  // 第一次按 Ctrl/⌘+F，焦点进入搜索框并全选里面的文字；焦点已经在搜索框时再按一次，交给浏览器原生查找
+  useEffect(() => {
+    if (state.viewMode !== 'cleaning' || state.isReadOnly) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+        if (document.activeElement === searchInputRef.current) {
+          // 焦点已经在搜索框时再按一次，交给浏览器原生查找
+          return;
+        }
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [state.viewMode, state.isReadOnly]);
+
+  // 搜索输入改变
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const q = e.target.value;
+    setSearchQuery(q);
+    const res = blockListRef.current?.search(q);
+    if (res) {
+      setSearchState(res);
+    }
+  };
+
+  // 清空搜索
+  const handleClearSearch = () => {
+    setSearchQuery('');
+    blockListRef.current?.clearSearch();
+    setSearchState({
+      query: '',
+      totalHits: 0,
+      currentHitIndex: -1,
+      hiddenHitsCount: 0,
+      hiddenHitsFilter: null,
+      wrappedNotice: false,
+    });
+    setWrappedToast(false);
+    searchInputRef.current?.focus();
+  };
+
+  const triggerWrappedToast = () => {
+    setWrappedToast(true);
+    if (wrappedTimerRef.current) clearTimeout(wrappedTimerRef.current);
+    wrappedTimerRef.current = setTimeout(() => {
+      setWrappedToast(false);
+    }, 2500);
+  };
+
+  // 下一处命中
+  const handleNextHit = () => {
+    const res = blockListRef.current?.gotoNextHit();
+    if (res?.wrapped) {
+      triggerWrappedToast();
+    }
+  };
+
+  // 上一处命中
+  const handlePrevHit = () => {
+    const res = blockListRef.current?.gotoPrevHit();
+    if (res?.wrapped) {
+      triggerWrappedToast();
+    }
+  };
+
+  // 搜索框按键
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (e.shiftKey) {
+        handlePrevHit();
+      } else {
+        handleNextHit();
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      // Esc 把焦点还给当前命中所在的块，查询词和高亮保留；点 × 才清空
+      blockListRef.current?.focusCurrentHitBlock();
+    }
+  };
+
+  // 序号定位
+  const handleOrderJump = () => {
+    const trimmed = orderInputValue.trim();
+    const n = parseInt(trimmed, 10);
+    const totalBlocks = state.session?.snapshot.blocks.length || 0;
+    const res = blockListRef.current?.locateOrder(n);
+    if (!res || res.status === 'out_of_range') {
+      setOrderJumpTip({
+        text: NAVIGATION_COPY.totalBlocksOutOfRange(totalBlocks),
+        canSwitchToAll: false,
+      });
+    } else if (res.status === 'hidden_by_filter') {
+      const text =
+        res.hiddenInFilter === 'excluded'
+          ? NAVIGATION_COPY.targetBlockExcluded(n)
+          : NAVIGATION_COPY.targetBlockIncluded(n);
+      setOrderJumpTip({
+        text,
+        canSwitchToAll: true,
+        targetOrder: n,
+      });
+    } else if (res.status === 'success') {
+      setOrderJumpTip(null);
+    }
+  };
+
+  // 切到全部并跳过去
+  const handleSwitchToAllAndJump = () => {
+    if (orderJumpTip?.targetOrder) {
+      const targetOrder = orderJumpTip.targetOrder;
+      setCurrentFilter('all');
+      blockListRef.current?.setFilter('all');
+      setOrderJumpTip(null);
+      setTimeout(() => {
+        blockListRef.current?.locateOrder(targetOrder);
+      }, 20);
+    }
+  };
+
+  // 序号输入框按键
+  const handleOrderKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleOrderJump();
+    } else if (e.key === 'Escape') {
+      setOrderJumpTip(null);
+    }
+  };
+
+  // 筛选 Tab 点击
+  const handleFilterTabClick = (nextFilter: BlockFilterMode) => {
+    setCurrentFilter(nextFilter);
+    blockListRef.current?.setFilter(nextFilter);
+    setOrderJumpTip(null);
+  };
 
   // 1. marked + DOMPurify 真实渲染三步指引文案
   const stepsMarkdown = `1. **用浏览器打开一篇公众号文章**\\n2. **等它显示完**\\n3. **点工具栏上的 WeTrim 图标** 开始清洗`;
@@ -338,6 +502,7 @@ export const App: React.FC = () => {
           splitBlocks,
           blockListRef,
           titleRef,
+          searchInputRef,
           dispatch,
           processCaptureResult,
           handleContinueCleaning,
@@ -347,6 +512,14 @@ export const App: React.FC = () => {
           loadSession,
           saveSessionDirect,
           clearSessionDirect,
+          handleSearchChange,
+          handleClearSearch,
+          handleNextHit,
+          handlePrevHit,
+          handleOrderJump,
+          handleFilterTabClick,
+          setSearchQuery,
+          setOrderInputValue,
         };
       }
     } catch (err) {
@@ -591,54 +764,276 @@ export const App: React.FC = () => {
         data-csp-eval-verified={selfTestPassed ? 'true' : 'false'}
         data-view-mode={viewMode}
       >
-        {/* 顶部工作台状态条 */}
-        <header className="workbench-header" data-testid="workbench-header">
-          <div className="ticket-slug">
-            <span className="ticket-tag">{ticketTag}</span>
-            <span className="ticket-number">{ticketNumber}</span>
-          </div>
-          <div className="header-status-group" data-testid="header-status-group">
-            {/* 保存状态指示位（只读副本不写 storage，也不显示保存状态，见 ARCHITECTURE.md §4.6） */}
-            {session && !isReadOnly && (
-              saveStatus === 'error' ? (
-                <button
-                  type="button"
-                  className="save-status save-status-error"
-                  data-testid="save-status"
-                  data-save-status="error"
-                  onClick={handleRetrySave}
-                  title="点击重新保存"
-                  aria-label="保存失败，点击重试"
-                  role="status"
-                  aria-live="polite"
-                >
-                  <span className="save-status-dot save-status-dot-error" aria-hidden="true"></span>
-                  <span className="save-status-text">保存失败 · 点击重试</span>
-                </button>
-              ) : (
-                <div
-                  className={`save-status save-status-${saveStatus}`}
-                  data-testid="save-status"
-                  data-save-status={saveStatus}
-                  role="status"
-                  aria-live="polite"
-                >
-                  <span
-                    className={`save-status-dot save-status-dot-${saveStatus}`}
-                    aria-hidden="true"
-                  ></span>
-                  <span className="save-status-text">{saveStatusText}</span>
-                </div>
-              )
-            )}
-            <div className="system-status" data-testid="system-status">
-              <span
-                className="status-dot"
-                style={{ backgroundColor: statusDotColor }}
-              ></span>
-              <span>{statusText}</span>
+        {/* 顶部工作台状态条（清洗态下固定在顶部，提供搜索、定位与筛选工具，Issue #29） */}
+        <header
+          className={`workbench-header ${viewMode === 'cleaning' ? 'is-sticky' : ''}`}
+          data-testid="workbench-header"
+        >
+          <div className="header-primary-row" data-testid="header-primary-row">
+            <div className="ticket-slug">
+              <span className="ticket-tag">{ticketTag}</span>
+              <span className="ticket-number">{ticketNumber}</span>
+            </div>
+            <div className="header-status-group" data-testid="header-status-group">
+              {/* 保存状态指示位（只读副本不写 storage，也不显示保存状态，见 ARCHITECTURE.md §4.6） */}
+              {session && !isReadOnly && (
+                saveStatus === 'error' ? (
+                  <button
+                    type="button"
+                    className="save-status save-status-error"
+                    data-testid="save-status"
+                    data-save-status="error"
+                    onClick={handleRetrySave}
+                    title="点击重新保存"
+                    aria-label="保存失败，点击重试"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <span className="save-status-dot save-status-dot-error" aria-hidden="true"></span>
+                    <span className="save-status-text">保存失败 · 点击重试</span>
+                  </button>
+                ) : (
+                  <div
+                    className={`save-status save-status-${saveStatus}`}
+                    data-testid="save-status"
+                    data-save-status={saveStatus}
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <span
+                      className={`save-status-dot save-status-dot-${saveStatus}`}
+                      aria-hidden="true"
+                    ></span>
+                    <span className="save-status-text">{saveStatusText}</span>
+                  </div>
+                )
+              )}
+              <div className="system-status" data-testid="system-status">
+                <span
+                  className="status-dot"
+                  style={{ backgroundColor: statusDotColor }}
+                ></span>
+                <span>{statusText}</span>
+              </div>
             </div>
           </div>
+
+          {/* 清洗态工具行：仅在 cleaning 态渲染，只读页隐藏整行（Issue #29 §4） */}
+          {session && viewMode === 'cleaning' && !isReadOnly && (
+            <nav
+              className="header-nav-toolbar"
+              data-testid="header-nav-toolbar"
+              aria-label="文稿清洗导航与查找工具"
+            >
+              <div className="nav-toolbar-main">
+                {/* 搜索框 */}
+                <div className="search-box" data-testid="search-box">
+                  <input
+                    ref={searchInputRef}
+                    type="search"
+                    className="search-input"
+                    data-testid="search-input"
+                    placeholder={NAVIGATION_COPY.searchPlaceholder}
+                    aria-label={NAVIGATION_COPY.searchAriaLabel}
+                    value={searchQuery}
+                    onChange={handleSearchChange}
+                    onKeyDown={handleSearchKeyDown}
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      className="search-clear-btn"
+                      data-testid="search-clear-btn"
+                      aria-label={NAVIGATION_COPY.clearSearchAriaLabel}
+                      title={NAVIGATION_COPY.clearSearch}
+                      onClick={handleClearSearch}
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+
+                {/* 命中计数与上一处/下一处 */}
+                {searchQuery.trim() !== '' && (
+                  <div className="search-nav-group" data-testid="search-nav-group">
+                    <span
+                      className="search-counter"
+                      data-testid="search-counter"
+                      role="status"
+                      aria-live="polite"
+                      aria-label={NAVIGATION_COPY.hitCountAria(
+                        searchState.totalHits > 0 ? searchState.currentHitIndex + 1 : 0,
+                        searchState.totalHits
+                      )}
+                    >
+                      {searchState.totalHits > 0
+                        ? NAVIGATION_COPY.hitCountDisplay(
+                            searchState.currentHitIndex + 1,
+                            searchState.totalHits
+                          )
+                        : '0 / 0'}
+                    </span>
+                    <button
+                      type="button"
+                      className="search-nav-btn search-prev-btn"
+                      data-testid="search-prev-btn"
+                      aria-label={NAVIGATION_COPY.prevHitAriaLabel}
+                      title={NAVIGATION_COPY.prevHit}
+                      onClick={handlePrevHit}
+                      disabled={searchState.totalHits === 0}
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      className="search-nav-btn search-next-btn"
+                      data-testid="search-next-btn"
+                      aria-label={NAVIGATION_COPY.nextHitAriaLabel}
+                      title={NAVIGATION_COPY.nextHit}
+                      onClick={handleNextHit}
+                      disabled={searchState.totalHits === 0}
+                    >
+                      ↓
+                    </button>
+                  </div>
+                )}
+
+                {/* 搜索提示：未找到 / 回到第一处 / 另有 N 处在已剔除块中 */}
+                {searchQuery.trim() !== '' &&
+                  searchState.totalHits === 0 &&
+                  searchState.hiddenHitsCount === 0 && (
+                    <span className="search-tip search-not-found" data-testid="search-not-found">
+                      {NAVIGATION_COPY.notFound(searchQuery.trim())}
+                    </span>
+                  )}
+
+                {wrappedToast && (
+                  <span className="search-tip search-wrapped-toast" data-testid="search-wrapped-tip">
+                    {NAVIGATION_COPY.wrappedToFirst}
+                  </span>
+                )}
+
+                {searchQuery.trim() !== '' && searchState.hiddenHitsCount > 0 && (
+                  <div className="search-tip search-hidden-notice" data-testid="search-hidden-notice">
+                    <span>
+                      {searchState.hiddenHitsFilter === 'excluded'
+                        ? NAVIGATION_COPY.otherHitsInExcluded(searchState.hiddenHitsCount)
+                        : NAVIGATION_COPY.otherHitsInIncluded(searchState.hiddenHitsCount)}
+                    </span>
+                    <button
+                      type="button"
+                      className="search-switch-btn"
+                      data-testid="search-switch-to-all"
+                      onClick={() => handleFilterTabClick('all')}
+                    >
+                      {NAVIGATION_COPY.switchToAll}
+                    </button>
+                  </div>
+                )}
+
+                {/* 「跳至 #」序号定位输入框 */}
+                <div className="order-jump-box" data-testid="order-jump-box">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    className="order-jump-input"
+                    data-testid="order-jump-input"
+                    placeholder={NAVIGATION_COPY.jumpPlaceholder}
+                    aria-label={NAVIGATION_COPY.jumpAriaLabel}
+                    value={orderInputValue}
+                    onChange={(e) => {
+                      setOrderInputValue(e.target.value);
+                      if (orderJumpTip) setOrderJumpTip(null);
+                    }}
+                    onKeyDown={handleOrderKeyDown}
+                  />
+                  <button
+                    type="button"
+                    className="order-jump-btn"
+                    data-testid="order-jump-btn"
+                    onClick={handleOrderJump}
+                  >
+                    {NAVIGATION_COPY.jumpBtn}
+                  </button>
+
+                  {orderJumpTip && (
+                    <div className="order-jump-popover" data-testid="order-jump-tip">
+                      <span className="order-jump-tip-text">{orderJumpTip.text}</span>
+                      {orderJumpTip.canSwitchToAll && (
+                        <button
+                          type="button"
+                          className="order-jump-switch-btn"
+                          data-testid="order-jump-switch-all"
+                          onClick={handleSwitchToAllAndJump}
+                        >
+                          {NAVIGATION_COPY.switchToAllAndJump}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* 全部 / 保留 / 剔除 筛选 Tabs（从汇总条移到这里，Issue #29 §3） */}
+                <div
+                  className="summary-chips filter-tabs"
+                  role="tablist"
+                  aria-label="内容块筛选"
+                  data-testid="filter-tabs"
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={currentFilter === 'all'}
+                    className={`summary-chip filter-tab ${currentFilter === 'all' ? 'is-active' : ''}`}
+                    data-testid="filter-tab-all"
+                    data-filter="all"
+                    onClick={() => handleFilterTabClick('all')}
+                  >
+                    {NAVIGATION_COPY.filterAll(session.snapshot.blocks.length)}
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={currentFilter === 'included'}
+                    className={`summary-chip filter-tab ${currentFilter === 'included' ? 'is-active' : ''}`}
+                    data-testid="filter-tab-included"
+                    data-filter="included"
+                    onClick={() => handleFilterTabClick('included')}
+                  >
+                    {NAVIGATION_COPY.filterIncluded(
+                      session.snapshot.blocks.filter((b) => b.included).length
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={currentFilter === 'excluded'}
+                    className={`summary-chip filter-tab ${currentFilter === 'excluded' ? 'is-active' : ''}`}
+                    data-testid="filter-tab-excluded"
+                    data-filter="excluded"
+                    onClick={() => handleFilterTabClick('excluded')}
+                  >
+                    {NAVIGATION_COPY.filterExcluded(
+                      session.snapshot.blocks.filter((b) => !b.included).length
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* 右侧操作区：回到原文看看（#31 检查结果和 #32 导出预留） */}
+              <div className="nav-toolbar-actions">
+                <button
+                  type="button"
+                  className="action-btn action-return"
+                  data-testid="action-return"
+                  onClick={() => handleReturnToOriginal(undefined, session.snapshot.source.url)}
+                >
+                  {NAVIGATION_COPY.returnToOriginal}
+                </button>
+              </div>
+            </nav>
+          )}
         </header>
 
         {/* 页边浮贴夹签（Margin Clip Note，受限页误触时的非模态通知） */}
@@ -748,19 +1143,14 @@ export const App: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* 顶部操作行（依据 Issue #28 已移除全页重新抓取按钮） */}
-                  <div className="slip-actions">
-                    <button
-                      type="button"
-                      className="action-btn action-return"
-                      onClick={() => handleReturnToOriginal(undefined, session.snapshot.source.url)}
-                    >
-                      回到原文看看
-                    </button>
-                  </div>
-
                   {/* 正文块流列表：ADR-0005 唯一渲染入口 */}
-                  <BlockList ref={blockListRef} blocks={session.snapshot.blocks} />
+                  <BlockList
+                    ref={blockListRef}
+                    blocks={session.snapshot.blocks}
+                    filter={currentFilter}
+                    onFilterChange={setCurrentFilter}
+                    onSearchStateChange={setSearchState}
+                  />
                 </div>
               )}
 
