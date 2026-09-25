@@ -8,7 +8,6 @@ export interface MatchLocation {
 }
 
 export interface BlockHit {
-  hitId: string;
   blockId: string;
   blockOrder: number;
   blockIncluded: boolean;
@@ -23,8 +22,15 @@ export interface SearchState {
   currentHitIndex: number; // 0-indexed, or -1 if no hits
   hiddenHitsCount: number;
   hiddenHitsFilter: 'excluded' | 'included' | null;
-  wrappedNotice: boolean;
 }
+
+export const EMPTY_SEARCH_STATE: SearchState = {
+  query: '',
+  totalHits: 0,
+  currentHitIndex: -1,
+  hiddenHitsCount: 0,
+  hiddenHitsFilter: null,
+};
 
 /**
  * 依据 Issue #29 设计简报 §5：
@@ -79,17 +85,24 @@ export class BlockPlainTextCache {
     return plainText;
   }
 
-  set(blockId: string, markdown: string, plainText: string) {
-    this.cache.set(blockId, { markdown, plainText });
-  }
-
   invalidate(blockId: string) {
     this.cache.delete(blockId);
   }
+}
 
-  clear() {
-    this.cache.clear();
+/**
+ * 大小写折叠且保证长度不变：个别字符（如 `İ`）转小写后长度会变，
+ * 直接 toLowerCase 会让匹配偏移与原文错位，这类字符保留原样。
+ */
+function foldCase(text: string): string {
+  const lower = text.toLowerCase();
+  if (lower.length === text.length) return lower;
+  let folded = '';
+  for (const ch of text) {
+    const lc = ch.toLowerCase();
+    folded += lc.length === ch.length ? lc : ch;
   }
+  return folded;
 }
 
 /**
@@ -98,8 +111,8 @@ export class BlockPlainTextCache {
 export function findMatchesInText(plainText: string, query: string): MatchLocation[] {
   if (!query || !query.trim() || !plainText) return [];
   const matches: MatchLocation[] = [];
-  const lowerText = plainText.toLowerCase();
-  const lowerQuery = query.toLowerCase();
+  const lowerText = foldCase(plainText);
+  const lowerQuery = foldCase(query);
   const queryLen = lowerQuery.length;
   let fromIndex = 0;
 
@@ -175,6 +188,65 @@ export function createRangeForOffsets(
       console.warn('[WeTrim Search] Failed to create range:', err);
       return null;
     }
+  }
+  return null;
+}
+
+/**
+ * Markdown 源码里不会渲染成可见文字的区间：图片整体、链接地址 `](url)`、HTML 标签（自动链接除外）。
+ */
+function collectInvisibleSourceRanges(markdown: string): Array<[number, number]> {
+  const ranges: Array<[number, number]> = [];
+  const patterns = [/!\[[^\]]*\]\([^)]*\)/g, /\]\([^)]*\)/g, /<(?!https?:)[^>\n]+>/g];
+  for (const re of patterns) {
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(markdown))) {
+      ranges.push([m.index, m.index + m[0].length]);
+    }
+  }
+  return ranges;
+}
+
+/**
+ * 编辑中的块：把「可见文字上的第 matchIndex 处匹配」换算为 textarea 中 Markdown 源码的选区。
+ * 命中计数基于渲染后的纯文本，源码里夹着 `**`、链接地址等符号，不能直接在源码上数第 n 处。
+ * 做法：将纯文本中的非空白字符按顺序贪心对齐到源码中可见区间的同一字符，得到偏移映射。
+ * 匹配跨越行内符号时（如 `**a**b` 搜「ab」），选区覆盖中间的符号。
+ * 超出可见匹配数时取最后一处；无法对齐时返回 null。
+ */
+export function locateVisibleMatchInMarkdown(
+  markdown: string,
+  query: string,
+  matchIndex: number
+): { start: number; end: number } | null {
+  const plainText = extractPlainTextFromMarkdown(markdown);
+  const matches = findMatchesInText(plainText, query.trim());
+  if (matches.length === 0) return null;
+  const match = matches[Math.min(Math.max(matchIndex, 0), matches.length - 1)];
+
+  const invisible = new Uint8Array(markdown.length);
+  for (const [from, to] of collectInvisibleSourceRanges(markdown)) {
+    invisible.fill(1, from, to);
+  }
+
+  const lastPlainIdx = match.endOffset - 1;
+  let sourceStart = -1;
+  let cursor = 0;
+  for (let i = 0; i <= lastPlainIdx; i++) {
+    const ch = plainText[i];
+    if (/\s/.test(ch)) continue;
+    let j = cursor;
+    while (j < markdown.length && (invisible[j] || markdown[j] !== ch)) j++;
+    // 源码里找不到该字符（如 `&lt;` 解码而来的 `<`）：跳过它，不推进游标
+    if (j >= markdown.length) {
+      if (i === match.startOffset || i === lastPlainIdx) return null;
+      continue;
+    }
+    if (i === match.startOffset) sourceStart = j;
+    if (i === lastPlainIdx) {
+      return sourceStart === -1 ? null : { start: sourceStart, end: j + 1 };
+    }
+    cursor = j + 1;
   }
   return null;
 }

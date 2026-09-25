@@ -1,4 +1,4 @@
-import React, { useEffect, useReducer, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import type { CaptureResult, CandidateRecord, Session } from '../shared/types';
 import { STORAGE_KEYS } from '../shared/storage-keys';
 import { PENDING_CAPTURE_MESSAGE_TYPE } from '../shared/messages';
@@ -15,7 +15,7 @@ import { CandidateConfirmDialog } from './components/CandidateConfirmDialog';
 import { CANDIDATE_COPY } from './copy/candidate';
 import { READ_ONLY_COPY } from './copy/read-only';
 import { NAVIGATION_COPY } from './copy/navigation';
-import type { SearchState } from './search/text-search';
+import { EMPTY_SEARCH_STATE, type SearchState } from './search/text-search';
 import { pickWriterContext } from '../shared/app-instance';
 import { renderMarkdown } from './preview/render';
 import { buildMarkdown } from './export/build-markdown';
@@ -64,14 +64,7 @@ export const App: React.FC = () => {
 
   // Issue #29: 搜索、序号定位与顶栏联动状态
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchState, setSearchState] = useState<SearchState>({
-    query: '',
-    totalHits: 0,
-    currentHitIndex: -1,
-    hiddenHitsCount: 0,
-    hiddenHitsFilter: null,
-    wrappedNotice: false,
-  });
+  const [searchState, setSearchState] = useState<SearchState>(EMPTY_SEARCH_STATE);
   const [orderInputValue, setOrderInputValue] = useState('');
   const [orderJumpTip, setOrderJumpTip] = useState<{
     text: string;
@@ -82,6 +75,36 @@ export const App: React.FC = () => {
   const [wrappedToast, setWrappedToast] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const wrappedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const headerRef = useRef<HTMLElement>(null);
+  const filterTabRefs = useRef<Partial<Record<BlockFilterMode, HTMLButtonElement | null>>>({});
+
+  // 固定顶栏实际高度（工具行折行、窄屏纵向排列、提示出现时会变高）下发为 CSS 变量，
+  // 供块条目 scroll-margin-top 使用，保证定位目标不被顶栏遮挡
+  const isStickyHeader = state.viewMode === 'cleaning';
+  useEffect(() => {
+    const header = headerRef.current;
+    const rootStyle = document.documentElement.style;
+    if (!isStickyHeader || !header || typeof ResizeObserver === 'undefined') {
+      rootStyle.removeProperty('--sticky-header-offset');
+      return;
+    }
+    const STICKY_HEADER_GAP = 12; // 与 .workbench-header.is-sticky 的 margin-bottom 一致
+    const syncOffset = () => {
+      rootStyle.setProperty('--sticky-header-offset', `${header.offsetHeight + STICKY_HEADER_GAP}px`);
+    };
+    syncOffset();
+    const observer = new ResizeObserver(syncOffset);
+    observer.observe(header);
+    return () => {
+      observer.disconnect();
+      rootStyle.removeProperty('--sticky-header-offset');
+    };
+  }, [isStickyHeader]);
+
+  // BlockList 在筛选视图变空时，把焦点交回当前筛选页签
+  const handleFilterFocusFallback = useCallback((filter: BlockFilterMode) => {
+    filterTabRefs.current[filter]?.focus();
+  }, []);
 
   // 快捷键支持（Issue #29 §6）：
   // 第一次按 Ctrl/⌘+F，焦点进入搜索框并全选里面的文字；焦点已经在搜索框时再按一次，交给浏览器原生查找
@@ -106,24 +129,14 @@ export const App: React.FC = () => {
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const q = e.target.value;
     setSearchQuery(q);
-    const res = blockListRef.current?.search(q);
-    if (res) {
-      setSearchState(res);
-    }
+    // 搜索状态经 BlockList 的 onSearchStateChange 回写
+    blockListRef.current?.search(q);
   };
 
   // 清空搜索
   const handleClearSearch = () => {
     setSearchQuery('');
     blockListRef.current?.clearSearch();
-    setSearchState({
-      query: '',
-      totalHits: 0,
-      currentHitIndex: -1,
-      hiddenHitsCount: 0,
-      hiddenHitsFilter: null,
-      wrappedNotice: false,
-    });
     setWrappedToast(false);
     searchInputRef.current?.focus();
   };
@@ -197,13 +210,9 @@ export const App: React.FC = () => {
   // 切到全部并跳过去
   const handleSwitchToAllAndJump = () => {
     if (orderJumpTip?.targetOrder) {
-      const targetOrder = orderJumpTip.targetOrder;
-      setCurrentFilter('all');
-      blockListRef.current?.setFilter('all');
+      // 由 BlockList 在「全部」下的块挂载完成后再定位，不依赖定时器猜测渲染时机
+      blockListRef.current?.setFilter('all', { thenLocateOrder: orderJumpTip.targetOrder });
       setOrderJumpTip(null);
-      setTimeout(() => {
-        blockListRef.current?.locateOrder(targetOrder);
-      }, 20);
     }
   };
 
@@ -219,7 +228,7 @@ export const App: React.FC = () => {
 
   // 筛选 Tab 点击
   const handleFilterTabClick = (nextFilter: BlockFilterMode) => {
-    setCurrentFilter(nextFilter);
+    // currentFilter 经 BlockList 的 onFilterChange 回写
     blockListRef.current?.setFilter(nextFilter);
     setOrderJumpTip(null);
   };
@@ -766,6 +775,7 @@ export const App: React.FC = () => {
       >
         {/* 顶部工作台状态条（清洗态下固定在顶部，提供搜索、定位与筛选工具，Issue #29） */}
         <header
+          ref={headerRef}
           className={`workbench-header ${viewMode === 'cleaning' ? 'is-sticky' : ''}`}
           data-testid="workbench-header"
         >
@@ -987,6 +997,9 @@ export const App: React.FC = () => {
                     aria-selected={currentFilter === 'all'}
                     className={`summary-chip filter-tab ${currentFilter === 'all' ? 'is-active' : ''}`}
                     data-testid="filter-tab-all"
+                    ref={(el) => {
+                      filterTabRefs.current.all = el;
+                    }}
                     data-filter="all"
                     onClick={() => handleFilterTabClick('all')}
                   >
@@ -998,6 +1011,9 @@ export const App: React.FC = () => {
                     aria-selected={currentFilter === 'included'}
                     className={`summary-chip filter-tab ${currentFilter === 'included' ? 'is-active' : ''}`}
                     data-testid="filter-tab-included"
+                    ref={(el) => {
+                      filterTabRefs.current.included = el;
+                    }}
                     data-filter="included"
                     onClick={() => handleFilterTabClick('included')}
                   >
@@ -1011,6 +1027,9 @@ export const App: React.FC = () => {
                     aria-selected={currentFilter === 'excluded'}
                     className={`summary-chip filter-tab ${currentFilter === 'excluded' ? 'is-active' : ''}`}
                     data-testid="filter-tab-excluded"
+                    ref={(el) => {
+                      filterTabRefs.current.excluded = el;
+                    }}
                     data-filter="excluded"
                     onClick={() => handleFilterTabClick('excluded')}
                   >
@@ -1150,6 +1169,7 @@ export const App: React.FC = () => {
                     filter={currentFilter}
                     onFilterChange={setCurrentFilter}
                     onSearchStateChange={setSearchState}
+                    onFocusFallback={handleFilterFocusFallback}
                   />
                 </div>
               )}

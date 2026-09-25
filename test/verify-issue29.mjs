@@ -578,6 +578,123 @@ async function run() {
     console.log('✓ Test 10 Passed: Keyboard shortcuts (Ctrl+F, Enter, Shift+Enter, Esc) verified');
 
     // --------------------------------------------------------------------------
+    // Test 10b: Review regressions (编辑块不抢焦点、选区换算、筛选切换后高亮、焦点回退、顶栏偏移)
+    // --------------------------------------------------------------------------
+    console.log('\n--- Test 10b: Review regressions ---');
+
+    const block5Markdown = '**骨**骼开篇，参见[骨骼](https://example.com/骨骼)，结尾再谈骨骼。';
+    await page.evaluate((md) => {
+      window.__wetrim.dispatch({ type: 'UPDATE_BLOCK', payload: { blockId: 'block-5', editedMarkdown: md } });
+    }, block5Markdown);
+    await page.click('[data-block-id="block-5"] [data-testid="block-action-edit"]');
+    await page.waitForSelector('[data-block-id="block-5"] [data-testid="block-editor-textarea"]');
+
+    // 10b.1 可见文字上的第 n 处匹配换算到源码选区：跨越 `**` 符号、跳过链接地址
+    await page.focus('[data-testid="search-input"]');
+    const editorSelections = await page.evaluate(() => {
+      const { blockListRef } = window.__wetrim;
+      const ta = document.querySelector('[data-block-id="block-5"] [data-testid="block-editor-textarea"]');
+      const total = blockListRef.current.getSearchState().totalHits;
+      const result = [];
+      for (let i = total - 3; i < total; i++) {
+        blockListRef.current.gotoHit(i);
+        result.push({
+          start: ta.selectionStart,
+          text: ta.value.substring(ta.selectionStart, ta.selectionEnd),
+          focusInSearch: document.activeElement?.getAttribute('data-testid') === 'search-input',
+        });
+      }
+      return { result, lastIndex: ta.value.lastIndexOf('骨骼'), linkIndex: ta.value.indexOf('[骨骼]') + 1 };
+    });
+    assert.strictEqual(editorSelections.result[0].text, '骨**骼', 'First visible match spans the ** markers');
+    assert.strictEqual(editorSelections.result[1].start, editorSelections.linkIndex, 'Second match selects link text, not URL');
+    assert.strictEqual(editorSelections.result[2].start, editorSelections.lastIndex, 'Third match skips the URL occurrence');
+    assert(editorSelections.result.every((r) => r.focusInSearch), 'Navigating hits keeps focus in the search input');
+
+    // 10b.2 在搜索框输入、按 Enter 时，命中落在编辑中的块也不得抢走焦点、不得改写正文
+    await page.click('[data-testid="search-clear-btn"]');
+    await page.type('[data-testid="search-input"]', '结尾');
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Enter');
+    const afterTyping = await page.evaluate(() => {
+      const ta = document.querySelector('[data-block-id="block-5"] [data-testid="block-editor-textarea"]');
+      return {
+        activeTestId: document.activeElement?.getAttribute('data-testid'),
+        searchValue: document.querySelector('[data-testid="search-input"]').value,
+        textareaValue: ta.value,
+      };
+    });
+    assert.strictEqual(afterTyping.activeTestId, 'search-input', 'Focus stays in search input while typing / pressing Enter');
+    assert.strictEqual(afterTyping.searchValue, '结尾', 'Search input receives every keystroke');
+    assert.strictEqual(afterTyping.textareaValue, block5Markdown, 'Editing block content is untouched');
+
+    await page.keyboard.press('Escape');
+    const afterEsc = await page.evaluate(() => {
+      const ta = document.querySelector('[data-block-id="block-5"] [data-testid="block-editor-textarea"]');
+      return {
+        focusInTextarea: document.activeElement === ta,
+        selected: ta.value.substring(ta.selectionStart, ta.selectionEnd),
+      };
+    });
+    assert.strictEqual(afterEsc.focusInTextarea, true, 'Esc hands focus to the editing textarea');
+    assert.strictEqual(afterEsc.selected, '结尾', 'Selection shows the current hit after Esc');
+
+    await page.click('[data-block-id="block-5"] [data-testid="block-action-finish-edit"]');
+    await page.waitForSelector('[data-block-id="block-5"] .block-rendered-content');
+
+    // 10b.3 从「剔除」切到「全部」后，新挂载块的高亮与页边刻痕按新 DOM 重建
+    await page.click('[data-testid="search-clear-btn"]');
+    await page.click('[data-testid="filter-tab-excluded"]');
+    await page.type('[data-testid="search-input"]', '骨骼');
+    await page.waitForSelector('[data-testid="search-switch-to-all"]');
+    await page.click('[data-testid="search-switch-to-all"]');
+    await page.waitForFunction(
+      () => document.querySelector('[data-testid="filter-tabs"] .is-active')?.getAttribute('data-filter') === 'all'
+    );
+    const highlightAfterSwitch = await page.evaluate(async () => {
+      await new Promise((r) => requestAnimationFrame(r));
+      const items = [...document.querySelectorAll('[data-testid="block-item"]')];
+      let expectedRanges = 0;
+      for (const el of items) {
+        const content = el.querySelector('.block-rendered-content');
+        if (content) expectedRanges += (content.textContent.match(/骨骼/g) || []).length;
+      }
+      const ranges =
+        (CSS.highlights.get('search-hit')?.size || 0) + (CSS.highlights.get('search-hit-current')?.size || 0);
+      const notched = items
+        .filter((el) => el.getAttribute('data-has-hit') === 'true')
+        .map((el) => el.getAttribute('data-block-id'));
+      return {
+        expectedRanges,
+        ranges,
+        notched,
+      };
+    });
+    assert(highlightAfterSwitch.expectedRanges > 0, 'Rendered blocks contain hits after switching to 全部');
+    assert.strictEqual(highlightAfterSwitch.ranges, highlightAfterSwitch.expectedRanges, 'Every rendered hit is highlighted after filter switch');
+    for (const id of ['block-1', 'block-2', 'block-4', 'block-5']) {
+      assert(highlightAfterSwitch.notched.includes(id), `Margin notch rendered on ${id} after filter switch`);
+    }
+    // 10b.4 块条目 scroll-margin-top 跟随固定顶栏实际高度（ResizeObserver 在布局后异步回调，等待同步）
+    await page.waitForFunction(
+      () => {
+        const item = document.querySelector('[data-testid="block-item"]');
+        const header = document.querySelector('[data-testid="workbench-header"]');
+        return getComputedStyle(item).scrollMarginTop === `${header.offsetHeight + 12}px`;
+      },
+      { timeout: 2000 }
+    );
+
+    // 10b.5 「剔除」视图最后一块被恢复、列表变空时，焦点回到当前激活的「剔除」页签
+    await page.click('[data-testid="filter-tab-excluded"]');
+    await page.click('[data-block-id="block-3"] [data-testid="block-action-restore"]');
+    await page.waitForFunction(() => document.activeElement?.getAttribute('data-filter') === 'excluded', {
+      timeout: 2000,
+    });
+    await page.click('[data-testid="filter-tab-all"]');
+    console.log('✓ Test 10b Passed: Review regressions verified');
+
+    // --------------------------------------------------------------------------
     // Test 11: Read-only Mode Hides Toolbar
     // --------------------------------------------------------------------------
     console.log('\n--- Test 11: Read-only Mode Hides Toolbar ---');

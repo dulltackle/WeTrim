@@ -1138,7 +1138,7 @@ button.save-status-error:focus-visible {
 
 .block-item {
   position: relative;
-  scroll-margin-top: 110px;
+  scroll-margin-top: var(--sticky-header-offset, 110px);
   background-color: #fff;
   border: 1px solid var(--sheet-border);
   border-radius: 2px;

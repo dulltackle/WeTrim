@@ -14,6 +14,8 @@ import {
   BlockPlainTextCache,
   findMatchesInText,
   createRangeForOffsets,
+  locateVisibleMatchInMarkdown,
+  EMPTY_SEARCH_STATE,
   type BlockHit,
   type SearchState,
 } from '../search/text-search';
@@ -43,7 +45,7 @@ export interface OrderLocateResult {
  * - scrollToBlock(id): 平滑滚动至指定块
  * - focusBlock(id): 滚动并聚焦至指定块
  * - queryVisible(): 返回当前处于视口内的全部块 id 列表
- * - setFilter(filter): 切换三态筛选（'all' | 'included' | 'excluded'）
+ * - setFilter(filter, options): 切换三态筛选（'all' | 'included' | 'excluded'），可指定切换渲染完成后定位的序号
  * - getFilter(): 获取当前筛选状态
  * - getFocusedBlockId(): 获取当前处于焦点状态的块 id
  * - restoreFocus(id): 恢复指定块焦点
@@ -61,7 +63,7 @@ export interface BlockListHandle {
   scrollToBlock: (id: string) => void;
   focusBlock: (id: string) => void;
   queryVisible: () => string[];
-  setFilter: (filter: BlockFilterMode) => void;
+  setFilter: (filter: BlockFilterMode, options?: { thenLocateOrder?: number }) => void;
   getFilter: () => BlockFilterMode;
   getFocusedBlockId: () => string | null;
   restoreFocus: (id: string | null) => void;
@@ -82,7 +84,8 @@ export interface BlockListProps {
   filter?: BlockFilterMode;
   onFilterChange?: (filter: BlockFilterMode) => void;
   onSearchStateChange?: (state: SearchState) => void;
-  showSummaryBarFilterTabs?: boolean;
+  /** 块从当前筛选视图中全部消失、没有可聚焦的块时，交由外部把焦点放回当前筛选页签 */
+  onFocusFallback?: (filter: BlockFilterMode) => void;
 }
 
 export const BlockList = forwardRef<BlockListHandle, BlockListProps>(
@@ -92,12 +95,11 @@ export const BlockList = forwardRef<BlockListHandle, BlockListProps>(
       filter: controlledFilter,
       onFilterChange,
       onSearchStateChange,
-      showSummaryBarFilterTabs = false,
+      onFocusFallback,
     },
     ref
   ) => {
     const { dispatch } = useAppContext();
-    const containerRef = useRef<HTMLDivElement>(null);
     const itemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
     const isControlledFilter = controlledFilter !== undefined;
@@ -125,14 +127,11 @@ export const BlockList = forwardRef<BlockListHandle, BlockListProps>(
     }, []);
     const lastTrimmedQueryRef = useRef<string>('');
     const prevBlocksRef = useRef(blocks);
-    const searchStateRef = useRef<SearchState>({
-      query: '',
-      totalHits: 0,
-      currentHitIndex: -1,
-      hiddenHitsCount: 0,
-      hiddenHitsFilter: null,
-      wrappedNotice: false,
-    });
+    const searchStateRef = useRef<SearchState>(EMPTY_SEARCH_STATE);
+    // 切换筛选后待定位的序号：须等新筛选下的块挂载完成才能滚动与聚焦
+    const pendingLocateOrderRef = useRef<number | null>(null);
+    const onFocusFallbackRef = useRef(onFocusFallback);
+    onFocusFallbackRef.current = onFocusFallback;
 
     const refCallbacksRef = useRef<Map<string, (el: HTMLDivElement | null) => void>>(new Map());
     const getRefCallback = useCallback((id: string) => {
@@ -175,12 +174,7 @@ export const BlockList = forwardRef<BlockListHandle, BlockListProps>(
 
     // 更新 CSS Custom Highlights 与页边刻痕属性
     const updateHighlightsAndNotches = useCallback(
-      (
-        query: string,
-        visibleHits: BlockHit[],
-        currentHitIdx: number,
-        activeTempExpandedId?: string | null
-      ) => {
+      (query: string, visibleHits: BlockHit[], currentHitIdx: number) => {
         if (typeof window === 'undefined') return;
 
         const currentHit = currentHitIdx >= 0 ? visibleHits[currentHitIdx] : null;
@@ -266,21 +260,14 @@ export const BlockList = forwardRef<BlockListHandle, BlockListProps>(
           // 块条目滚动到视口，scroll-margin-top 保证不被固定顶栏遮挡
           el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
-          // 命中在编辑中的块：把编辑框选区定位到这处匹配
+          // 命中在编辑中的块：把编辑框选区定位到这处匹配。
+          // 只设选区不抢焦点：焦点仍留在搜索框，否则后续输入与 Enter 会写进正文；Esc 交还焦点时选区随之显现。
+          // 以 textarea 当前值（含未保存的本地修改）换算，避免与防抖提交前的旧内容错位。
           const textarea = el.querySelector('textarea') as HTMLTextAreaElement | null;
           if (textarea) {
-            const val = textarea.value.toLowerCase();
-            const q = query.toLowerCase();
-            let matchIdx = -1;
-            let from = 0;
-            for (let i = 0; i <= hit.matchIndex; i++) {
-              matchIdx = val.indexOf(q, from);
-              if (matchIdx === -1) break;
-              from = matchIdx + q.length;
-            }
-            if (matchIdx !== -1) {
-              textarea.focus();
-              textarea.setSelectionRange(matchIdx, matchIdx + q.length);
+            const sel = locateVisibleMatchInMarkdown(textarea.value, query, hit.matchIndex);
+            if (sel) {
+              textarea.setSelectionRange(sel.start, sel.end);
             }
           }
         };
@@ -327,7 +314,8 @@ export const BlockList = forwardRef<BlockListHandle, BlockListProps>(
         query: string,
         currentFilter: BlockFilterMode,
         targetHitIndex?: number,
-        options?: { scroll?: boolean }
+        // highlight: false 用于重新渲染前调用的场景（筛选切换、blocks 变更），高亮交由提交后的 effect 按新 DOM 重建
+        options?: { scroll?: boolean; highlight?: boolean }
       ): SearchState => {
         searchQueryRef.current = query;
         const trimmed = query.trim();
@@ -339,17 +327,9 @@ export const BlockList = forwardRef<BlockListHandle, BlockListProps>(
           setTempExpandedBlockId(null);
           updateHighlightsAndNotches('', [], -1);
 
-          const emptyState: SearchState = {
-            query: '',
-            totalHits: 0,
-            currentHitIndex: -1,
-            hiddenHitsCount: 0,
-            hiddenHitsFilter: null,
-            wrappedNotice: false,
-          };
-          searchStateRef.current = emptyState;
-          onSearchStateChange?.(emptyState);
-          return emptyState;
+          searchStateRef.current = EMPTY_SEARCH_STATE;
+          onSearchStateChange?.(EMPTY_SEARCH_STATE);
+          return EMPTY_SEARCH_STATE;
         }
 
         // 1. 文档顺序匹配所有块（若 query 未改变则直接复用缓存的 allHits）
@@ -358,13 +338,11 @@ export const BlockList = forwardRef<BlockListHandle, BlockListProps>(
           allHits = allHitsRef.current;
         } else {
           allHits = [];
-          let hitCounter = 0;
           for (const block of blocks) {
             const plainText = plainTextCacheRef.current.get(block);
             const matches = findMatchesInText(plainText, trimmed);
             matches.forEach((m, matchIdx) => {
               allHits.push({
-                hitId: `hit-${hitCounter++}`,
                 blockId: block.id,
                 blockOrder: block.order,
                 blockIncluded: block.included,
@@ -414,13 +392,14 @@ export const BlockList = forwardRef<BlockListHandle, BlockListProps>(
           currentHitIndex: nextHitIndex,
           hiddenHitsCount: hiddenHits.length,
           hiddenHitsFilter,
-          wrappedNotice: false,
         };
         searchStateRef.current = newState;
         onSearchStateChange?.(newState);
 
         // 4. 更新高亮与活动状态
-        updateHighlightsAndNotches(query, visibleHits, nextHitIndex);
+        if (options?.highlight !== false) {
+          updateHighlightsAndNotches(query, visibleHits, nextHitIndex);
+        }
         if (options?.scroll !== false && nextHitIndex >= 0 && visibleHits[nextHitIndex]) {
           activateHit(visibleHits[nextHitIndex], trimmed);
         }
@@ -430,10 +409,52 @@ export const BlockList = forwardRef<BlockListHandle, BlockListProps>(
       [blocks, onSearchStateChange, updateHighlightsAndNotches, activateHit]
     );
 
+    // 序号定位：读取 ref 中的最新 blocks 与筛选，供切换筛选后的 effect 调用时不受闭包过期影响
+    const locateOrder = useCallback((n: number): OrderLocateResult => {
+      const curBlocks = blocksRef.current;
+      const curFilter = filterRef.current;
+      const total = curBlocks.length;
+      const targetBlock = Number.isInteger(n) ? curBlocks.find((b) => b.order === n) : undefined;
+      if (!targetBlock) {
+        return { status: 'out_of_range', totalBlocks: total };
+      }
+
+      const isVisible =
+        curFilter === 'all' ||
+        (curFilter === 'included' && targetBlock.included) ||
+        (curFilter === 'excluded' && !targetBlock.included);
+
+      if (!isVisible) {
+        return {
+          status: 'hidden_by_filter',
+          totalBlocks: total,
+          targetOrder: n,
+          targetBlockId: targetBlock.id,
+          hiddenInFilter: targetBlock.included ? 'included' : 'excluded',
+        };
+      }
+
+      const el = itemRefs.current.get(targetBlock.id);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        el.focus();
+      }
+
+      return {
+        status: 'success',
+        totalBlocks: total,
+        targetOrder: n,
+        targetBlockId: targetBlock.id,
+      };
+    }, []);
+
     // 筛选切换处理（保持滚动位置与合理焦点）
     const handleFilterChange = useCallback(
-      (nextFilter: BlockFilterMode) => {
-        if (nextFilter === filter) return;
+      (nextFilter: BlockFilterMode, thenLocateOrder?: number) => {
+        if (nextFilter === filter) {
+          if (thenLocateOrder !== undefined) locateOrder(thenLocateOrder);
+          return;
+        }
 
         // 检查当前活动焦点是否在某一个块内
         const activeEl = typeof document !== 'undefined' ? document.activeElement : null;
@@ -459,10 +480,17 @@ export const BlockList = forwardRef<BlockListHandle, BlockListProps>(
           setInternalFilter(nextFilter);
         }
         onFilterChange?.(nextFilter);
+        if (thenLocateOrder !== undefined) {
+          pendingLocateOrderRef.current = thenLocateOrder;
+        }
 
-        // 重新计算搜索状态（切换筛选保持阅读位置与滚动状态，不强制滚向首个命中）
+        // 重新计算搜索状态（切换筛选保持阅读位置与滚动状态，不强制滚向首个命中）。
+        // 此刻新筛选下的块尚未挂载，高亮与刻痕交由渲染后的 effect 重建
         if (searchQueryRef.current) {
-          executeSearch(searchQueryRef.current, nextFilter, undefined, { scroll: false });
+          executeSearch(searchQueryRef.current, nextFilter, undefined, {
+            scroll: false,
+            highlight: false,
+          });
         }
 
         // 若聚焦块在新筛选下不可见，平稳转移焦点：下一个可见块 -> 上一个 -> 筛选页签
@@ -480,15 +508,12 @@ export const BlockList = forwardRef<BlockListHandle, BlockListProps>(
               }
             } else {
               // 列表为空时回到筛选页签
-              const activeTab = document.querySelector(
-                '[data-testid="filter-tabs"] .is-active, [data-testid="filter-tabs"] button'
-              ) as HTMLElement | null;
-              activeTab?.focus();
+              onFocusFallbackRef.current?.(filterRef.current);
             }
           }, 0);
         }
       },
-      [blocks, filter, isControlledFilter, onFilterChange, executeSearch]
+      [blocks, filter, isControlledFilter, onFilterChange, executeSearch, locateOrder]
     );
 
     // 块取舍切换处理（在筛选视图下剔除/恢复导致块从视图消失时，焦点平稳前移）
@@ -540,10 +565,7 @@ export const BlockList = forwardRef<BlockListHandle, BlockListProps>(
             if (el) el.focus();
           } else {
             // 列表空了就回到筛选页签
-            const activeTab = document.querySelector(
-              '[data-testid="filter-tabs"] .is-active, [data-testid="filter-tabs"] button'
-            ) as HTMLElement | null;
-            activeTab?.focus();
+            onFocusFallbackRef.current?.(filterRef.current);
           }
         }, 0);
       },
@@ -559,28 +581,69 @@ export const BlockList = forwardRef<BlockListHandle, BlockListProps>(
       [dispatch]
     );
 
-    // 仅当 blocks 属性发生实质变更时更新高亮，避免 filter 切换时重复全量搜索；更新时不移动视口保持编辑位置
+    // 仅当 blocks 属性发生实质变更时重新搜索，避免 filter 切换时重复全量搜索；更新时不移动视口保持编辑位置。
+    // 高亮由下方 effect 统一重建（blocks 变更必然带来 visibleBlocks 变更）
     useEffect(() => {
       if (prevBlocksRef.current !== blocks) {
         prevBlocksRef.current = blocks;
         lastTrimmedQueryRef.current = '';
         if (searchQueryRef.current) {
-          executeSearch(searchQueryRef.current, filter, undefined, { scroll: false });
+          executeSearch(searchQueryRef.current, filter, undefined, {
+            scroll: false,
+            highlight: false,
+          });
         }
       }
     }, [blocks, filter, executeSearch]);
 
-    // 临时展开变更时，更新高亮范围
+    // 可见块集合（筛选切换、blocks 变更）或临时展开变更并完成挂载后，按新 DOM 重建高亮与页边刻痕
     useEffect(() => {
-      if (searchQueryRef.current && visibleHitsRef.current.length > 0) {
+      if (searchQueryRef.current.trim()) {
         updateHighlightsAndNotches(
           searchQueryRef.current,
           visibleHitsRef.current,
-          currentHitIndexRef.current,
-          tempExpandedBlockId
+          currentHitIndexRef.current
         );
       }
-    }, [tempExpandedBlockId, updateHighlightsAndNotches]);
+    }, [visibleBlocks, tempExpandedBlockId, updateHighlightsAndNotches]);
+
+    // 切换筛选时指定了待定位序号：新筛选下的块挂载完成后再滚动与聚焦
+    useEffect(() => {
+      const pending = pendingLocateOrderRef.current;
+      if (pending !== null) {
+        pendingLocateOrderRef.current = null;
+        locateOrder(pending);
+      }
+    }, [visibleBlocks, locateOrder]);
+
+    // 跳转到指定命中，越界时循环到另一端并返回 wrapped
+    const gotoHit = useCallback(
+      (index: number): { wrapped: boolean } => {
+        const hits = visibleHitsRef.current;
+        if (hits.length === 0) return { wrapped: false };
+
+        let targetIdx = index;
+        let wrapped = false;
+        if (targetIdx >= hits.length) {
+          targetIdx = 0;
+          wrapped = true;
+        } else if (targetIdx < 0) {
+          targetIdx = hits.length - 1;
+          wrapped = true;
+        }
+
+        currentHitIndexRef.current = targetIdx;
+        const updatedState: SearchState = { ...searchStateRef.current, currentHitIndex: targetIdx };
+        searchStateRef.current = updatedState;
+        onSearchStateChange?.(updatedState);
+
+        updateHighlightsAndNotches(searchQueryRef.current, hits, targetIdx);
+        activateHit(hits[targetIdx], searchQueryRef.current.trim());
+
+        return { wrapped };
+      },
+      [onSearchStateChange, updateHighlightsAndNotches, activateHit]
+    );
 
     useImperativeHandle(
       ref,
@@ -600,10 +663,14 @@ export const BlockList = forwardRef<BlockListHandle, BlockListProps>(
         },
         queryVisible: (): string[] => {
           const visibleIds: string[] = [];
-          const vTop = 110; // 固定顶栏高度约 110px，低于顶栏的区域才算可见
           const vBottom = typeof window !== 'undefined' ? window.innerHeight : 800;
+          // 低于固定顶栏的区域才算可见：顶栏实际高度经 scroll-margin-top 下发到块条目（见 app.css）
+          let vTop = 0;
 
           for (const [id, el] of itemRefs.current.entries()) {
+            if (vTop === 0) {
+              vTop = parseFloat(getComputedStyle(el).scrollMarginTop) || 0;
+            }
             const rect = el.getBoundingClientRect();
             if (rect.bottom > vTop && rect.top < vBottom) {
               visibleIds.push(id);
@@ -611,7 +678,8 @@ export const BlockList = forwardRef<BlockListHandle, BlockListProps>(
           }
           return visibleIds;
         },
-        setFilter: (f: BlockFilterMode) => handleFilterChange(f),
+        setFilter: (f: BlockFilterMode, options?: { thenLocateOrder?: number }) =>
+          handleFilterChange(f, options?.thenLocateOrder),
         getFilter: () => filter,
         getFocusedBlockId: (): string | null => {
           const activeEl = typeof document !== 'undefined' ? document.activeElement : null;
@@ -640,123 +708,15 @@ export const BlockList = forwardRef<BlockListHandle, BlockListProps>(
           executeSearch('', filter);
         },
 
-        gotoHit: (index: number): { wrapped: boolean } => {
-          const hits = visibleHitsRef.current;
-          if (hits.length === 0) return { wrapped: false };
+        gotoHit,
 
-          let targetIdx = index;
-          let wrapped = false;
-          if (targetIdx >= hits.length) {
-            targetIdx = 0;
-            wrapped = true;
-          } else if (targetIdx < 0) {
-            targetIdx = hits.length - 1;
-            wrapped = true;
-          }
+        gotoNextHit: (): { wrapped: boolean } => gotoHit(currentHitIndexRef.current + 1),
 
-          currentHitIndexRef.current = targetIdx;
-          const targetHit = hits[targetIdx];
+        gotoPrevHit: (): { wrapped: boolean } => gotoHit(currentHitIndexRef.current - 1),
 
-          const updatedState: SearchState = {
-            ...searchStateRef.current,
-            currentHitIndex: targetIdx,
-            wrappedNotice: wrapped,
-          };
-          searchStateRef.current = updatedState;
-          onSearchStateChange?.(updatedState);
+        locateOrder,
 
-          updateHighlightsAndNotches(searchQueryRef.current, hits, targetIdx);
-          activateHit(targetHit, searchQueryRef.current.trim());
-
-          return { wrapped };
-        },
-
-        gotoNextHit: (): { wrapped: boolean } => {
-          const hits = visibleHitsRef.current;
-          if (hits.length === 0) return { wrapped: false };
-          const nextIdx = currentHitIndexRef.current + 1;
-          const wrapped = nextIdx >= hits.length;
-          const targetIdx = wrapped ? 0 : nextIdx;
-
-          currentHitIndexRef.current = targetIdx;
-          const targetHit = hits[targetIdx];
-
-          const updatedState: SearchState = {
-            ...searchStateRef.current,
-            currentHitIndex: targetIdx,
-            wrappedNotice: wrapped,
-          };
-          searchStateRef.current = updatedState;
-          onSearchStateChange?.(updatedState);
-
-          updateHighlightsAndNotches(searchQueryRef.current, hits, targetIdx);
-          activateHit(targetHit, searchQueryRef.current.trim());
-
-          return { wrapped };
-        },
-
-        gotoPrevHit: (): { wrapped: boolean } => {
-          const hits = visibleHitsRef.current;
-          if (hits.length === 0) return { wrapped: false };
-          const prevIdx = currentHitIndexRef.current - 1;
-          const wrapped = prevIdx < 0;
-          const targetIdx = wrapped ? hits.length - 1 : prevIdx;
-
-          currentHitIndexRef.current = targetIdx;
-          const targetHit = hits[targetIdx];
-
-          const updatedState: SearchState = {
-            ...searchStateRef.current,
-            currentHitIndex: targetIdx,
-            wrappedNotice: wrapped,
-          };
-          searchStateRef.current = updatedState;
-          onSearchStateChange?.(updatedState);
-
-          updateHighlightsAndNotches(searchQueryRef.current, hits, targetIdx);
-          activateHit(targetHit, searchQueryRef.current.trim());
-
-          return { wrapped };
-        },
-
-        locateOrder: (n: number): OrderLocateResult => {
-          if (!Number.isInteger(n) || n < 1 || n > totalCount) {
-            return { status: 'out_of_range', totalBlocks: totalCount };
-          }
-          const targetBlock = blocks.find((b) => b.order === n);
-          if (!targetBlock) {
-            return { status: 'out_of_range', totalBlocks: totalCount };
-          }
-
-          const isVisible =
-            filter === 'all' ||
-            (filter === 'included' && targetBlock.included) ||
-            (filter === 'excluded' && !targetBlock.included);
-
-          if (!isVisible) {
-            return {
-              status: 'hidden_by_filter',
-              totalBlocks: totalCount,
-              targetOrder: n,
-              targetBlockId: targetBlock.id,
-              hiddenInFilter: targetBlock.included ? 'included' : 'excluded',
-            };
-          }
-
-          const el = itemRefs.current.get(targetBlock.id);
-          if (el) {
-            el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            el.focus();
-          }
-
-          return {
-            status: 'success',
-            totalBlocks: totalCount,
-            targetOrder: n,
-            targetBlockId: targetBlock.id,
-          };
-        },
-
+        // Esc 交还焦点：命中在编辑中的块时交给 textarea，已设好的选区随之显现
         focusCurrentHitBlock: () => {
           const hits = visibleHitsRef.current;
           const idx = currentHitIndexRef.current;
@@ -764,7 +724,8 @@ export const BlockList = forwardRef<BlockListHandle, BlockListProps>(
             const hit = hits[idx];
             const el = itemRefs.current.get(hit.blockId);
             if (el) {
-              el.focus();
+              const textarea = el.querySelector('textarea');
+              (textarea ?? el).focus();
             }
           }
         },
@@ -778,22 +739,20 @@ export const BlockList = forwardRef<BlockListHandle, BlockListProps>(
         }),
       }),
       [
-        blocks,
         filter,
         totalCount,
         includedCount,
         excludedCount,
         handleFilterChange,
         executeSearch,
-        onSearchStateChange,
-        updateHighlightsAndNotches,
-        activateHit,
+        gotoHit,
+        locateOrder,
       ]
     );
 
     return (
-      <div className="block-list" data-testid="block-list" ref={containerRef}>
-        {/* 块流汇总条：展示总块数（若需要在块流上方保留页签亦可，默认页签移至固定顶栏） */}
+      <div className="block-list" data-testid="block-list">
+        {/* 块流汇总条：展示总块数（筛选页签在固定顶栏，Issue #29 §3） */}
         <div className="block-list-summary-bar" data-testid="block-list-summary-bar">
           <div className="summary-title">
             <span className="summary-heading">内容块流</span>
@@ -802,48 +761,6 @@ export const BlockList = forwardRef<BlockListHandle, BlockListProps>(
             </span>
           </div>
 
-          {showSummaryBarFilterTabs && (
-            <div
-              className="summary-chips filter-tabs"
-              role="tablist"
-              aria-label="内容块筛选"
-              data-testid="filter-tabs"
-            >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={filter === 'all'}
-                className={`summary-chip filter-tab ${filter === 'all' ? 'is-active' : ''}`}
-                data-testid="filter-tab-all"
-                data-filter="all"
-                onClick={() => handleFilterChange('all')}
-              >
-                全部 {totalCount}
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={filter === 'included'}
-                className={`summary-chip filter-tab ${filter === 'included' ? 'is-active' : ''}`}
-                data-testid="filter-tab-included"
-                data-filter="included"
-                onClick={() => handleFilterChange('included')}
-              >
-                保留 {includedCount}
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={filter === 'excluded'}
-                className={`summary-chip filter-tab ${filter === 'excluded' ? 'is-active' : ''}`}
-                data-testid="filter-tab-excluded"
-                data-filter="excluded"
-                onClick={() => handleFilterChange('excluded')}
-              >
-                剔除 {excludedCount}
-              </button>
-            </div>
-          )}
         </div>
 
         {/* 筛选为空时的非模态说明 */}
