@@ -3,6 +3,7 @@ import React, {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -172,6 +173,66 @@ export const BlockList = forwardRef<BlockListHandle, BlockListProps>(
     const visibleBlocksRef = useRef(visibleBlocks);
     visibleBlocksRef.current = visibleBlocks;
 
+    // ADR-0005 接缝：块的滚动、聚焦与视口可见性判断只在这三处访问 DOM，搜索与序号定位都经由它们完成
+    const scrollToBlock = useCallback((id: string) => {
+      const el = itemRefs.current.get(id);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }, []);
+
+    const focusBlock = useCallback((id: string) => {
+      const el = itemRefs.current.get(id);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        el.focus();
+      }
+    }, []);
+
+    // 按文档顺序返回当前处于视口内的块 id
+    const queryVisible = useCallback((): string[] => {
+      const visibleIds: string[] = [];
+      const vBottom = typeof window !== 'undefined' ? window.innerHeight : 800;
+      // 低于固定顶栏的区域才算可见：顶栏实际高度经 scroll-margin-top 下发到块条目（见 app.css）
+      let vTop: number | null = null;
+
+      for (const b of visibleBlocksRef.current) {
+        const el = itemRefs.current.get(b.id);
+        if (!el) continue;
+        if (vTop === null) {
+          vTop = parseFloat(getComputedStyle(el).scrollMarginTop) || 0;
+        }
+        const rect = el.getBoundingClientRect();
+        if (rect.bottom > vTop && rect.top < vBottom) {
+          visibleIds.push(b.id);
+        }
+      }
+      return visibleIds;
+    }, []);
+
+    // 用户最近一次操作（获得焦点）的块：切换筛选时优先以它为阅读位置锚点
+    const lastInteractedBlockIdRef = useRef<string | null>(null);
+    const handleFocusWithin = useCallback((e: React.FocusEvent<HTMLDivElement>) => {
+      for (const [id, el] of itemRefs.current.entries()) {
+        if (el.contains(e.target as Node)) {
+          lastInteractedBlockIdRef.current = id;
+          return;
+        }
+      }
+    }, []);
+
+    // 切换筛选后待恢复的阅读位置：新筛选下的块提交后，把该块滚回它原来在视口中的位置
+    const pendingAnchorRef = useRef<{ id: string; top: number } | null>(null);
+    useLayoutEffect(() => {
+      const anchor = pendingAnchorRef.current;
+      if (!anchor) return;
+      pendingAnchorRef.current = null;
+      const el = itemRefs.current.get(anchor.id);
+      if (el) {
+        window.scrollBy({ top: el.getBoundingClientRect().top - anchor.top, behavior: 'instant' });
+      }
+    }, [visibleBlocks]);
+
     // 更新 CSS Custom Highlights 与页边刻痕属性
     const updateHighlightsAndNotches = useCallback(
       (query: string, visibleHits: BlockHit[], currentHitIdx: number) => {
@@ -258,7 +319,7 @@ export const BlockList = forwardRef<BlockListHandle, BlockListProps>(
 
         const applyTargetAction = (el: HTMLElement) => {
           // 块条目滚动到视口，scroll-margin-top 保证不被固定顶栏遮挡
-          el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          scrollToBlock(hit.blockId);
 
           // 命中在编辑中的块：把编辑框选区定位到这处匹配。
           // 只设选区不抢焦点：焦点仍留在搜索框，否则后续输入与 Enter 会写进正文；Esc 交还焦点时选区随之显现。
@@ -305,7 +366,7 @@ export const BlockList = forwardRef<BlockListHandle, BlockListProps>(
           if (el) applyTargetAction(el);
         }
       },
-      [blocks]
+      [blocks, scrollToBlock]
     );
 
     // 计算搜索状态并更新
@@ -434,11 +495,7 @@ export const BlockList = forwardRef<BlockListHandle, BlockListProps>(
         };
       }
 
-      const el = itemRefs.current.get(targetBlock.id);
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        el.focus();
-      }
+      focusBlock(targetBlock.id);
 
       return {
         status: 'success',
@@ -446,7 +503,7 @@ export const BlockList = forwardRef<BlockListHandle, BlockListProps>(
         targetOrder: n,
         targetBlockId: targetBlock.id,
       };
-    }, []);
+    }, [focusBlock]);
 
     // 筛选切换处理（保持滚动位置与合理焦点）
     const handleFilterChange = useCallback(
@@ -474,6 +531,30 @@ export const BlockList = forwardRef<BlockListHandle, BlockListProps>(
           nextVisible = blocks.filter((b) => b.included);
         } else if (nextFilter === 'excluded') {
           nextVisible = blocks.filter((b) => !b.included);
+        }
+
+        // 记录阅读位置锚点：刚操作过且仍在视口内的块优先，它在新筛选下被隐藏时由之后最近的可见块
+        // 接替它在视口中的位置（没有则取最后一块）；否则取视口内第一个在新筛选下仍可见的块，留在原位。
+        // 切换后要定位序号时由定位接管滚动，不做锚定
+        if (thenLocateOrder === undefined) {
+          const inView = queryVisible();
+          const survives = new Set(nextVisible.map((b) => b.id));
+          const lastId = lastInteractedBlockIdRef.current;
+          let anchorId: string | undefined;
+          let targetId: string | undefined;
+          if (lastId && inView.includes(lastId)) {
+            anchorId = lastId;
+            const lastBlock = blocks.find((b) => b.id === lastId);
+            targetId = survives.has(lastId)
+              ? lastId
+              : (nextVisible.find((b) => lastBlock && b.order > lastBlock.order) ?? nextVisible[nextVisible.length - 1])?.id;
+          } else {
+            anchorId = targetId = inView.find((id) => survives.has(id));
+          }
+          const anchorEl = anchorId ? itemRefs.current.get(anchorId) : undefined;
+          if (anchorEl && targetId) {
+            pendingAnchorRef.current = { id: targetId, top: anchorEl.getBoundingClientRect().top };
+          }
         }
 
         if (!isControlledFilter) {
@@ -513,7 +594,7 @@ export const BlockList = forwardRef<BlockListHandle, BlockListProps>(
           }, 0);
         }
       },
-      [blocks, filter, isControlledFilter, onFilterChange, executeSearch, locateOrder]
+      [blocks, filter, isControlledFilter, onFilterChange, executeSearch, locateOrder, queryVisible]
     );
 
     // 块取舍切换处理（在筛选视图下剔除/恢复导致块从视图消失时，焦点平稳前移）
@@ -648,36 +729,9 @@ export const BlockList = forwardRef<BlockListHandle, BlockListProps>(
     useImperativeHandle(
       ref,
       () => ({
-        scrollToBlock: (id: string) => {
-          const el = itemRefs.current.get(id);
-          if (el) {
-            el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-          }
-        },
-        focusBlock: (id: string) => {
-          const el = itemRefs.current.get(id);
-          if (el) {
-            el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            el.focus();
-          }
-        },
-        queryVisible: (): string[] => {
-          const visibleIds: string[] = [];
-          const vBottom = typeof window !== 'undefined' ? window.innerHeight : 800;
-          // 低于固定顶栏的区域才算可见：顶栏实际高度经 scroll-margin-top 下发到块条目（见 app.css）
-          let vTop = 0;
-
-          for (const [id, el] of itemRefs.current.entries()) {
-            if (vTop === 0) {
-              vTop = parseFloat(getComputedStyle(el).scrollMarginTop) || 0;
-            }
-            const rect = el.getBoundingClientRect();
-            if (rect.bottom > vTop && rect.top < vBottom) {
-              visibleIds.push(id);
-            }
-          }
-          return visibleIds;
-        },
+        scrollToBlock,
+        focusBlock,
+        queryVisible,
         setFilter: (f: BlockFilterMode, options?: { thenLocateOrder?: number }) =>
           handleFilterChange(f, options?.thenLocateOrder),
         getFilter: () => filter,
@@ -747,11 +801,14 @@ export const BlockList = forwardRef<BlockListHandle, BlockListProps>(
         executeSearch,
         gotoHit,
         locateOrder,
+        scrollToBlock,
+        focusBlock,
+        queryVisible,
       ]
     );
 
     return (
-      <div className="block-list" data-testid="block-list">
+      <div className="block-list" data-testid="block-list" onFocus={handleFocusWithin}>
         {/* 块流汇总条：展示总块数（筛选页签在固定顶栏，Issue #29 §3） */}
         <div className="block-list-summary-bar" data-testid="block-list-summary-bar">
           <div className="summary-title">
