@@ -1,6 +1,5 @@
 # Issue 追踪：GitHub
 
-
 ## 约定
 
 - **创建 issue**：`gh issue create --title "..." --body "..."`。多行正文用 heredoc。
@@ -11,6 +10,10 @@
 - **关闭 issue**：`gh issue close <number> --comment "..."`
 
 在 clone 内运行时 `gh` 会自动从 `git remote -v` 推断仓库。
+
+`gh` 命令必须单独成行执行：不加 `cd … &&` 前缀，不接管道、`;` 或 `&&`，过滤输出用 `--json` / `--jq`。
+
+原因是 `gh` 的 token 存在系统 keyring，只有命中沙箱 `excludedCommands` 的 `gh *` 规则时才在沙箱外运行；复合命令匹配不上，会落回沙箱，读不到 token，返回 `HTTP 401`。
 
 ## 把 Pull Request 当作 triage 入口
 
