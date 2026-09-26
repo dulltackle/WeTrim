@@ -13,3 +13,7 @@ Issue 存放在本仓库的 GitHub Issues，通过 `gh` CLI 操作。见 `docs/a
 ### Domain docs
 
 单上下文（single-context）：根目录 `CONTEXT.md` + `docs/adr/`。见 `docs/agents/domain.md`。
+
+## Verification
+
+浏览器测试（`npm test`、`npm run verify:*`、`node test/verify-*`）必须单独成行执行。见 `docs/agents/verification.md`。
