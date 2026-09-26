@@ -143,7 +143,7 @@ manifest 声明的权限就是这一组，**不多不少**：
 | `unlimitedStorage` | 解除 `storage.local` 的 10 MiB 默认配额 | **无** |
 | `host_permissions`：`*://mmbiz.qpic.cn/*`、`*://mmbiz.qlogo.cn/*` | 跨域取**图片资源**的字节 | 「读取和更改你在 mmbiz.qpic.cn、mmbiz.qlogo.cn 上的数据」 |
 
-**明确不声明**：`downloads`（用 File System Access API 写盘，不需要任何权限声明，避开「管理您的下载内容」警告）、`tabs`（判定页面是否可读靠「尝试注入并捕获失败」）、`declarativeNetRequestWithHostAccess`（实测未主动注入 `Referer` 也能下载成功；若实现期确认需要，用它补，不扩大警告面）、`mp.weixin.qq.com` 的 `host_permissions`（正文读取只靠 `activeTab`）。
+**明确不声明**：`downloads`（用 File System Access API 写盘，不需要任何权限声明，避开「管理您的下载内容」警告）、`tabs`（判定页面是否可读靠「尝试注入并捕获失败」）、`declarativeNetRequestWithHostAccess`（已抓取实际请求头证实 mmbiz 不需要 `Referer`，扩展页也不发送，见「已实测数字」）、`mp.weixin.qq.com` 的 `host_permissions`（正文读取只靠 `activeTab`）。
 
 - **用户在安装时只会看到一条警告**，来自 `host_permissions`。
 - 上架材料中隐私政策 URL、数据收集披露与有限使用认证必须提交，**逾 30 天不填会被下架**。首次提交会命中「新开发者 + 新扩展」的审核拖慢信号，要预留时间。
@@ -212,6 +212,10 @@ manifest 声明的权限就是这一组，**不多不少**：
   - 以上为切换筛选时保持阅读位置的修复（`71b1d75`）之后，`test/verify-issue29.mjs` Test 12 连跑 7 轮的范围，每轮每项只采一个样本，单次波动可达数倍。
   - 筛选切换的口径是「调用 `setFilter` 到下一帧 `requestAnimationFrame` 回调」，不保证已包含 React 提交与布局（0.2 ms 一类的值即属此情形），**不能当作「到渲染完成」的实测**；它只说明最差样本仍远低于 100 ms 预算。
   - 证实了 CSS Custom Highlight API 免 DOM 改动的性能优势与 `BlockPlainTextCache` 纯文本按内容缓存机制，各项指标均远低于 100 ms 感知预算。
+- **微信图片的 `Referer` 与防盗链占位图**（Issue #30 实测，Chrome 154）：
+  - 直接请求真实 mmbiz 图片：不带 `Referer` 或带 `https://mp.weixin.qq.com/` 时返回真图（200 `image/png`，1,662,001 字节，945×1265）；带外站或 `chrome-extension://` 的 `Referer` 时返回 **200 的 140×140 JPEG 占位图**（2,090 字节，「此图片来自微信公众平台 未经允许不可引用」），`onerror` 不会触发。
+  - 用 CDP 抓取扩展全页的实际请求头：清洗页 `<img>` 与导出用的 `fetch()` 都**不发送 `Referer`**，拿到的都是真图。为不依赖浏览器默认行为，`app.html` 显式声明 `<meta name="referrer" content="no-referrer">`。
+  - 回归检查为 `npm run verify:image-referer`（依赖外网；`npm run verify:image-referer -- --force-referer=https://example.com/` 可确认它能识别出占位图）。
 
 ### 现在不得当作已验证
 
@@ -223,7 +227,6 @@ manifest 声明的权限就是这一组，**不多不少**：
 | Turndown 转换 347 块的耗时 | **完全没测过**。深度长文每块约 16 个元素（其中 4,234 个 `span`），比合成样例杂乱得多；4× 降速下「百毫秒级」是**估算不是实测** |
 | 单块交互的真实耗时 | 取舍、开关编辑器、逐字输入测得的值全部等于双帧等待的量化地板，只能得出「低于一帧」 |
 | 「内存随图片数饱和」 | 只有 30 / 60 张**合成图**的证据。真实图片解码尺寸已证明同量级，但饱和结论本身未在真实数据上验证 |
-| 微信图片是否真需要 `Referer` | 探针未主动注入 Referer 也成功，但**未捕获实际请求头**，不是「抓包证实不存在」 |
 | `mmbiz.qlogo.cn` 是否真的用得上 | 未确认。能少一个域名就少一点警告面 |
 | 引用套列表 / 多段落引用 / 公式 / 空 `js_darkmode` `<pre>` 噪声 | **无真实样本**，结论全部来自手工构造的 HTML |
 | 微信提示页的文案种类 | **只观察到「参数错误」一种**。其余文案落在同一模板里是推断，无真实样本——这正是判定只看文案是否非空、口径只做转述的原因 |

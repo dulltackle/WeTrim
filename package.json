@@ -16,6 +16,7 @@
     "verify:issue27": "node test/verify-issue27.mjs",
     "verify:issue28": "node test/verify-issue28.mjs",
     "verify:issue29": "node test/verify-issue29.mjs && node test/verify-issue29-reading-position.mjs",
+    "verify:image-referer": "node test/verify-image-referer.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
