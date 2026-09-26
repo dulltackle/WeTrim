@@ -11,6 +11,8 @@ import React, {
 import { currentMarkdown, type Block } from '../../shared/types';
 import { truncateGraphemes } from '../../shared/grapheme';
 import { renderMarkdown } from '../preview/render';
+import { renderHtmlWithImages } from '../preview/html-to-react';
+import { IMAGE_COPY, NOTES_COPY } from '../copy/image-presentation';
 
 export interface BlockItemProps {
   block: Block;
@@ -239,6 +241,22 @@ export const BlockItem = memo(
       [isLocallyEmpty, isCollapsed, effectiveMarkdown]
     );
 
+    // 图片块元数据解析：折叠态显示行高小缩略图与 alt 文案
+    const imageInfo = useMemo(() => {
+      if (block.type !== 'image') return null;
+      const md = effectiveMarkdown.trim();
+      const mdMatch = md.match(/!\[(.*?)\]\((.*?)(?:\s+"(.*?)")?\)/);
+      if (mdMatch) {
+        return { alt: mdMatch[1] || '', src: mdMatch[2] || '' };
+      }
+      const htmlMatch = md.match(/<img\s+[^>]*src=["']([^"']+)["'][^>]*>/i);
+      if (htmlMatch) {
+        const altMatch = md.match(/alt=["']([^"']*)["']/i);
+        return { alt: altMatch ? altMatch[1] : '', src: htmlMatch[1] || '' };
+      }
+      return null;
+    }, [block.type, effectiveMarkdown]);
+
     // 整体块提示图标与浮层
     const compositeTip = isComposite ? (
       <span
@@ -315,7 +333,39 @@ export const BlockItem = memo(
           data-block-empty={isLocallyEmpty ? 'true' : 'false'}
           data-block-collapsed="true"
           data-block-editing="false"
+          aria-describedby={block.notes.length > 0 ? `block-notes-${block.id}` : undefined}
         >
+          {/* 折叠态页边批注栏短标记保留（Issue #30 设计简报 §3） */}
+          {block.notes.length > 0 && (
+            <div
+              className="block-margin-note-markers"
+              data-testid="block-margin-note-markers"
+              aria-hidden="true"
+            >
+              {block.notes.map((note, idx) => (
+                <span
+                  key={`${note.code}-${idx}`}
+                  className={`margin-note-marker marker-code-${note.code}`}
+                  title={note.message}
+                  data-note-code={note.code}
+                >
+                  {NOTES_COPY.shortBadges[note.code] || NOTES_COPY.shortBadges.fallback}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* 折叠态无障碍转换提示文本（供 aria-describedby 读屏技术关联） */}
+          {block.notes.length > 0 && (
+            <div
+              id={`block-notes-${block.id}`}
+              className="sr-only"
+              data-testid="block-notes-sr"
+            >
+              {block.notes.map((note) => note.message).join('；')}
+            </div>
+          )}
+
           <div className="block-item-meta block-collapsed-summary-bar">
             <span className="block-order-badge" data-testid="block-order-badge">
               #{block.order}
@@ -345,9 +395,29 @@ export const BlockItem = memo(
               剔除
             </span>
 
-            <span className="block-summary-preview" data-testid="block-summary-preview">
-              {summaryPreview}
-            </span>
+            {/* 折叠摘要带小图（Issue #30 设计简报 §3）：剔除折叠图片块放行高小图与 alt */}
+            {block.type === 'image' && imageInfo?.src ? (
+              <span
+                className="block-summary-image-preview"
+                data-testid="block-summary-image-preview"
+              >
+                <img
+                  src={imageInfo.src}
+                  alt={imageInfo.alt || IMAGE_COPY.defaultImageAlt}
+                  className="block-collapsed-thumb"
+                  data-testid="block-collapsed-thumb"
+                  loading="lazy"
+                  decoding="async"
+                />
+                <span className="block-collapsed-alt" data-testid="block-collapsed-alt">
+                  {imageInfo.alt || IMAGE_COPY.defaultImageAlt}
+                </span>
+              </span>
+            ) : (
+              <span className="block-summary-preview" data-testid="block-summary-preview">
+                {summaryPreview}
+              </span>
+            )}
 
             <div className="block-item-actions">
               <button
@@ -447,13 +517,7 @@ export const BlockItem = memo(
         </div>
       );
     } else {
-      contentNode = (
-        <div
-          className="block-rendered-content"
-          data-testid="block-rendered-content"
-          dangerouslySetInnerHTML={{ __html: renderedHtml }}
-        />
-      );
+      contentNode = renderHtmlWithImages(renderedHtml);
     }
 
     return (
@@ -474,7 +538,28 @@ export const BlockItem = memo(
         data-block-empty={isLocallyEmpty ? 'true' : 'false'}
         data-block-collapsed="false"
         data-block-editing={isEditing ? 'true' : 'false'}
+        aria-describedby={block.notes.length > 0 ? `block-notes-${block.id}` : undefined}
       >
+        {/* 页边批注栏短标记（Issue #30 设计简报 §3）：桌面端在左侧批注栏对齐顶端，窄屏退回块内 */}
+        {block.notes.length > 0 && (
+          <div
+            className="block-margin-note-markers"
+            data-testid="block-margin-note-markers"
+            aria-hidden="true"
+          >
+            {block.notes.map((note, idx) => (
+              <span
+                key={`${note.code}-${idx}`}
+                className={`margin-note-marker marker-code-${note.code}`}
+                title={note.message}
+                data-note-code={note.code}
+              >
+                {NOTES_COPY.shortBadges[note.code] || NOTES_COPY.shortBadges.fallback}
+              </span>
+            ))}
+          </div>
+        )}
+
         {/* 周边文字状态徽章与操作条 */}
         <div className="block-item-meta">
           <span className="block-order-badge" data-testid="block-order-badge">
@@ -573,11 +658,22 @@ export const BlockItem = memo(
           </div>
         </div>
 
+        {/* 块内展开的完整转换提示（Issue #30 设计简报 §3）：令牌化配色与 aria-describedby 关联 */}
         {block.notes.length > 0 && (
-          <div className="block-notes" data-testid="block-notes">
+          <div
+            id={`block-notes-${block.id}`}
+            className="block-notes"
+            data-testid="block-notes"
+          >
             {block.notes.map((note, idx) => (
-              <div key={`${note.code}-${idx}`} className={`block-note note-code-${note.code}`}>
-                <span className="note-badge">提示</span>
+              <div
+                key={`${note.code}-${idx}`}
+                id={`block-note-${block.id}-${idx}`}
+                className={`block-note note-code-${note.code}`}
+              >
+                <span className="note-badge">
+                  {NOTES_COPY.shortBadges[note.code] || NOTES_COPY.shortBadges.fallback}
+                </span>
                 <span className="note-message">{note.message}</span>
               </div>
             ))}

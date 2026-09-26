@@ -529,6 +529,7 @@ export const App: React.FC = () => {
           handleFilterTabClick,
           setSearchQuery,
           setOrderInputValue,
+          getState: () => stateRef.current,
         };
       }
     } catch (err) {
