@@ -89,7 +89,7 @@ export interface BlockListProps {
   onFocusFallback?: (filter: BlockFilterMode) => void;
 }
 
-export const BlockList = forwardRef<BlockListHandle, BlockListProps>(
+const BlockListInner = forwardRef<BlockListHandle, BlockListProps>(
   (
     {
       blocks,
@@ -847,4 +847,5 @@ export const BlockList = forwardRef<BlockListHandle, BlockListProps>(
   }
 );
 
+export const BlockList = React.memo(BlockListInner);
 BlockList.displayName = 'BlockList';

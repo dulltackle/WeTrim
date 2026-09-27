@@ -61,39 +61,59 @@ function domNodeToReact(node: Node, key: string): React.ReactNode {
       return <ImagePresentation key={`${key}-${src}`} src={src} alt={alt} title={title} />;
     }
 
+    const props: Record<string, unknown> = { key };
+    if (el.attributes.length > 0) {
+      for (let i = 0; i < el.attributes.length; i++) {
+        const attr = el.attributes[i];
+        let name = attr.name;
+        // React 不接受 option 上的 selected（应由 select 的 defaultValue 决定），只读展示直接忽略
+        if (name === 'selected') continue;
+        if (name in BOOLEAN_ATTR_PROPS) {
+          props[BOOLEAN_ATTR_PROPS[name]] = true;
+          continue;
+        }
+        if (name === 'value' && tagName === 'input') {
+          props.defaultValue = attr.value;
+          continue;
+        }
+        if (name === 'class') name = 'className';
+        else if (name === 'for') name = 'htmlFor';
+        else if (name === 'colspan') name = 'colSpan';
+        else if (name === 'rowspan') name = 'rowSpan';
+        else if (name === 'style') {
+          props.style = parseStyleString(attr.value);
+          continue;
+        } else if (name.startsWith('on')) {
+          continue;
+        }
+        props[name] = attr.value;
+      }
+    }
+
+    const VOID_ELEMENTS = new Set([
+      'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr',
+    ]);
+    if (VOID_ELEMENTS.has(tagName)) {
+      return React.createElement(tagName, props);
+    }
+
+    // 性能优化：若当前元素内部不包含 <img> 标签，直接使用 dangerouslySetInnerHTML 快速注入子节点，
+    // 避免对大规模纯文本段落（如 600 块长文）深层递归遍历全部 TextNode 与行内元素
+    const innerHtml = el.innerHTML;
+    if (!innerHtml) {
+      return React.createElement(tagName, props);
+    }
+    if (!innerHtml.includes('<img')) {
+      props.dangerouslySetInnerHTML = { __html: innerHtml };
+      return React.createElement(tagName, props);
+    }
+
     const children: React.ReactNode[] = [];
     for (let i = 0; i < el.childNodes.length; i++) {
       const childNode = domNodeToReact(el.childNodes[i], `${key}-${i}`);
       if (childNode !== null && childNode !== undefined) {
         children.push(childNode);
       }
-    }
-
-    const props: Record<string, unknown> = { key };
-    for (let i = 0; i < el.attributes.length; i++) {
-      const attr = el.attributes[i];
-      let name = attr.name;
-      // React 不接受 option 上的 selected（应由 select 的 defaultValue 决定），只读展示直接忽略
-      if (name === 'selected') continue;
-      if (name in BOOLEAN_ATTR_PROPS) {
-        props[BOOLEAN_ATTR_PROPS[name]] = true;
-        continue;
-      }
-      if (name === 'value' && tagName === 'input') {
-        props.defaultValue = attr.value;
-        continue;
-      }
-      if (name === 'class') name = 'className';
-      else if (name === 'for') name = 'htmlFor';
-      else if (name === 'colspan') name = 'colSpan';
-      else if (name === 'rowspan') name = 'rowSpan';
-      else if (name === 'style') {
-        props.style = parseStyleString(attr.value);
-        continue;
-      } else if (name.startsWith('on')) {
-        continue;
-      }
-      props[name] = attr.value;
     }
 
     return React.createElement(tagName, props, ...children);
@@ -135,12 +155,51 @@ export function renderHtmlWithImages(html: string): React.ReactNode {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, 'text/html');
   const nodes: React.ReactNode[] = [];
-  for (let i = 0; i < doc.body.childNodes.length; i++) {
-    const rNode = domNodeToReact(doc.body.childNodes[i], `r-${i}`);
-    if (rNode !== null && rNode !== undefined) {
-      nodes.push(rNode);
+  const total = doc.body.childNodes.length;
+  let chunkStart: Node | null = null;
+  let chunkEnd: Node | null = null;
+
+  const flushRangeChunk = (chunkIndex: number) => {
+    if (chunkStart && chunkEnd) {
+      const range = doc.createRange();
+      range.setStartBefore(chunkStart);
+      range.setEndAfter(chunkEnd);
+      const container = doc.createElement('div');
+      container.appendChild(range.cloneContents());
+      const chunkHtml = container.innerHTML;
+      if (chunkHtml) {
+        nodes.push(
+          <div
+            key={`chunk-${chunkIndex}`}
+            className="block-rendered-chunk"
+            dangerouslySetInnerHTML={{ __html: chunkHtml }}
+          />
+        );
+      }
+      chunkStart = null;
+      chunkEnd = null;
+    }
+  };
+
+  for (let i = 0; i < total; i++) {
+    const child = doc.body.childNodes[i];
+    const hasImg =
+      child.nodeType === Node.ELEMENT_NODE &&
+      ((child as HTMLElement).tagName.toLowerCase() === 'img' ||
+        (child as HTMLElement).querySelector('img') !== null);
+
+    if (hasImg) {
+      flushRangeChunk(i);
+      const rNode = domNodeToReact(child, `r-${i}`);
+      if (rNode !== null && rNode !== undefined) {
+        nodes.push(rNode);
+      }
+    } else {
+      if (!chunkStart) chunkStart = child;
+      chunkEnd = child;
     }
   }
+  flushRangeChunk(total);
 
   return (
     <div className="block-rendered-content" data-testid="block-rendered-content">

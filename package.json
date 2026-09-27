@@ -17,6 +17,7 @@
     "verify:issue28": "node test/verify-issue28.mjs",
     "verify:issue29": "node test/verify-issue29.mjs && node test/verify-issue29-reading-position.mjs",
     "verify:issue30": "node test/verify-issue30.mjs",
+    "verify:issue31": "node test/verify-issue31.mjs",
     "verify:image-referer": "node test/verify-image-referer.mjs",
     "typecheck": "tsc --noEmit"
   },

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type { CaptureResult, CandidateRecord, Session } from '../shared/types';
 import { STORAGE_KEYS } from '../shared/storage-keys';
 import { PENDING_CAPTURE_MESSAGE_TYPE } from '../shared/messages';
@@ -12,13 +12,20 @@ import {
 import { splitBlocks } from './parse/split-blocks';
 import { BlockList, type BlockListHandle, type BlockFilterMode } from './components/BlockList';
 import { CandidateConfirmDialog } from './components/CandidateConfirmDialog';
+import { PreviewDialog } from './components/PreviewDialog';
 import { CANDIDATE_COPY } from './copy/candidate';
 import { READ_ONLY_COPY } from './copy/read-only';
 import { NAVIGATION_COPY } from './copy/navigation';
+import { PREVIEW_COPY } from './copy/preview';
 import { EMPTY_SEARCH_STATE, type SearchState } from './search/text-search';
 import { pickWriterContext } from '../shared/app-instance';
 import { renderMarkdown } from './preview/render';
-import { buildMarkdown } from './export/build-markdown';
+import {
+  buildMarkdown,
+  buildResultFile,
+  buildFrontMatter,
+  stripBoundaryEmptyLines,
+} from './export/build-markdown';
 import { truncateGraphemes } from '../shared/grapheme';
 import { AppContext } from './state/session-context';
 import {
@@ -77,6 +84,21 @@ export const App: React.FC = () => {
   const wrappedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const headerRef = useRef<HTMLElement>(null);
   const filterTabRefs = useRef<Partial<Record<BlockFilterMode, HTMLButtonElement | null>>>({});
+
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const previewBtnRef = useRef<HTMLButtonElement>(null);
+  const isPreviewOpenRef = useRef(isPreviewOpen);
+  const focusPreviewBtnAfterCloseRef = useRef(false);
+  useEffect(() => {
+    isPreviewOpenRef.current = isPreviewOpen;
+    if (focusPreviewBtnAfterCloseRef.current && !isPreviewOpen) {
+      focusPreviewBtnAfterCloseRef.current = false;
+      const timer = setTimeout(() => {
+        previewBtnRef.current?.focus();
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+  }, [isPreviewOpen]);
 
   // 固定顶栏实际高度（工具行折行、窄屏纵向排列、提示出现时会变高）下发为 CSS 变量，
   // 供块条目 scroll-margin-top 使用，保证定位目标不被顶栏遮挡
@@ -231,6 +253,63 @@ export const App: React.FC = () => {
     // currentFilter 经 BlockList 的 onFilterChange 回写
     blockListRef.current?.setFilter(nextFilter);
     setOrderJumpTip(null);
+  };
+
+  // Issue #31: 检查结果汇总预览操作处理
+  const handleOpenPreview = () => {
+    if (typeof window !== 'undefined') {
+      savedScrollYRef.current = window.scrollY;
+    }
+    setIsPreviewOpen(true);
+  };
+
+  const handleClosePreview = () => {
+    focusPreviewBtnAfterCloseRef.current = true;
+    setIsPreviewOpen(false);
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: savedScrollYRef.current, behavior: 'instant' });
+    }
+    previewBtnRef.current?.focus();
+    setTimeout(() => {
+      previewBtnRef.current?.focus();
+    }, 0);
+  };
+
+  const handleJumpToBlockFromPreview = (order: number, id: string) => {
+    setIsPreviewOpen(false);
+    const targetBlock = state.session?.snapshot.blocks.find((b) => b.id === id);
+    const isVisible =
+      currentFilter === 'all' ||
+      (currentFilter === 'included' && targetBlock?.included) ||
+      (currentFilter === 'excluded' && !targetBlock?.included);
+
+    if (!isVisible) {
+      // 当前筛选下看不到该块时，先切到「全部」
+      blockListRef.current?.setFilter('all', { thenLocateOrder: order });
+    } else {
+      blockListRef.current?.focusBlock(id);
+    }
+  };
+
+  const handleRecoverExcludedFromPreview = () => {
+    setIsPreviewOpen(false);
+    // 全部块都被剔除：切到「剔除」筛选
+    blockListRef.current?.setFilter('excluded');
+  };
+
+  const handleJumpToEmptyBlockFromPreview = (order: number, id: string) => {
+    setIsPreviewOpen(false);
+    const targetBlock = state.session?.snapshot.blocks.find((b) => b.id === id);
+    const isVisible =
+      currentFilter === 'all' ||
+      (currentFilter === 'included' && targetBlock?.included) ||
+      (currentFilter === 'excluded' && !targetBlock?.included);
+
+    if (!isVisible) {
+      blockListRef.current?.setFilter('all', { thenLocateOrder: order });
+    } else {
+      blockListRef.current?.focusBlock(id);
+    }
   };
 
   // 1. marked + DOMPurify 真实渲染三步指引文案
@@ -508,6 +587,9 @@ export const App: React.FC = () => {
           convertBlocks,
           createTurndown,
           renderMarkdown,
+          buildResultFile,
+          buildFrontMatter,
+          stripBoundaryEmptyLines,
           splitBlocks,
           blockListRef,
           titleRef,
@@ -527,6 +609,9 @@ export const App: React.FC = () => {
           handlePrevHit,
           handleOrderJump,
           handleFilterTabClick,
+          handleOpenPreview,
+          handleClosePreview,
+          getIsPreviewOpen: () => isPreviewOpenRef.current,
           setSearchQuery,
           setOrderInputValue,
           getState: () => stateRef.current,
@@ -767,8 +852,10 @@ export const App: React.FC = () => {
       ? '等待处置'
       : '工作台就绪';
 
+  const contextValue = useMemo(() => ({ state, dispatch }), [state, dispatch]);
+
   return (
-    <AppContext.Provider value={{ state, dispatch }}>
+    <AppContext.Provider value={contextValue}>
       <div
         className="app-container"
         data-csp-eval-verified={selfTestPassed ? 'true' : 'false'}
@@ -1041,8 +1128,18 @@ export const App: React.FC = () => {
                 </div>
               </div>
 
-              {/* 右侧操作区：回到原文看看（#31 检查结果和 #32 导出预留） */}
+              {/* 右侧操作区：检查结果与回到原文看看（Issue #31） */}
               <div className="nav-toolbar-actions">
+                <button
+                  type="button"
+                  className="action-btn action-preview"
+                  data-testid="action-preview"
+                  ref={previewBtnRef}
+                  onClick={handleOpenPreview}
+                  aria-label={PREVIEW_COPY.openButtonAria}
+                >
+                  {PREVIEW_COPY.openButton}
+                </button>
                 <button
                   type="button"
                   className="action-btn action-return"
@@ -1130,7 +1227,11 @@ export const App: React.FC = () => {
 
               {/* 态 1: 清洗态 或 候选确认态（模态签条压在清洗页之上，旧会话照常渲染在背后并压暗，满足 §8.5「先呈现已有会话」） */}
               {session && (viewMode === 'cleaning' || viewMode === 'candidateConfirm') && (
-                <div className="manuscript-slip" data-testid="manuscript-slip" inert={isReadOnly}>
+                <div
+                  className={`manuscript-slip ${isPreviewOpen ? 'is-preview-active' : ''}`}
+                  data-testid="manuscript-slip"
+                  inert={isReadOnly}
+                >
                   {/* 稳定探测超时标注夹签 */}
                   {session.snapshot.captureWarnings?.some(
                     (w) => w.code === 'capture-unstable' || w.code === 'unstable-capture'
@@ -1187,6 +1288,18 @@ export const App: React.FC = () => {
                   onReturnToOriginal={() =>
                     handleReturnToOriginal(undefined, candidateSnapshot.source.url)
                   }
+                />
+              )}
+
+              {/* 检查结果汇总预览模态对话框（压在清洗页之上，原生 <dialog> showModal() - Issue #31） */}
+              {session && viewMode === 'cleaning' && !isReadOnly && (
+                <PreviewDialog
+                  isOpen={isPreviewOpen}
+                  snapshot={session.snapshot}
+                  onClose={handleClosePreview}
+                  onJumpToBlock={handleJumpToBlockFromPreview}
+                  onRecoverExcluded={handleRecoverExcludedFromPreview}
+                  onJumpToEmptyBlock={handleJumpToEmptyBlockFromPreview}
                 />
               )}
 

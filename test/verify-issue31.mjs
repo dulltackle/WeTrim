@@ -1,0 +1,663 @@
+import puppeteer from 'puppeteer';
+import path from 'path';
+import assert from 'assert';
+import { checkDomAccess } from './check-dom-access.mjs';
+
+async function run() {
+  console.log('==> Starting Issue #31 Verification (Inspection & Result Summary Preview)...');
+
+  // --------------------------------------------------------------------------
+  // Test 1: CI DOM access check rule outside BlockList
+  // --------------------------------------------------------------------------
+  console.log('\n--- Test 1: CI DOM access check rule outside BlockList ---');
+  const domCheckPassed = checkDomAccess();
+  assert.strictEqual(domCheckPassed, true, 'check-dom-access.mjs must pass with 0 violations in src/app');
+  console.log('✓ Test 1 Passed: No direct DOM queries outside BlockList in src/app');
+
+  // --------------------------------------------------------------------------
+  // Launch Chrome Extension with Puppeteer
+  // --------------------------------------------------------------------------
+  const distDir = path.resolve('dist');
+  const browser = await puppeteer.launch({
+    executablePath: '/usr/bin/google-chrome',
+    headless: true,
+    enableExtensions: [distDir],
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  });
+
+  let page;
+  try {
+    const workerTarget = await browser.waitForTarget(
+      (target) => target.type() === 'service_worker' && target.url().includes('background.js'),
+      { timeout: 10000 }
+    );
+    const worker = await workerTarget.worker();
+    const extId = await worker.evaluate(() => chrome.runtime.id);
+    console.log(`==> Extension loaded with ID: ${extId}`);
+
+    // Clean storage
+    await worker.evaluate(() => chrome.storage.local.clear());
+
+    page = await browser.newPage();
+    page.on('console', (msg) => {
+      const text = msg.text();
+      if (!text.includes('[WeTrim Self-Test]')) {
+        console.log('[Browser Console]', text);
+      }
+    });
+    page.on('pageerror', (err) => console.log('[Browser Page Error]', err));
+
+    await page.setViewport({ width: 1200, height: 800 });
+    const appUrl = `chrome-extension://${extId}/app.html`;
+    await page.goto(appUrl, { waitUntil: 'networkidle0' });
+    await page.waitForSelector('[data-csp-eval-verified="true"]', { timeout: 5000 });
+
+    // --------------------------------------------------------------------------
+    // Test 2: Pure Dialect & Serialization Tests (buildResultFile, buildFrontMatter, stripBoundaryEmptyLines, buildMarkdown)
+    // --------------------------------------------------------------------------
+    console.log('\n--- Test 2: Pure Dialect & Serialization Tests ---');
+
+    const dialectTestsPassed = await page.evaluate(() => {
+      const {
+        stripBoundaryEmptyLines,
+        buildMarkdown,
+        buildFrontMatter,
+        buildResultFile,
+      } = window.__wetrim;
+
+      // 2.1 stripBoundaryEmptyLines: 保留内部缩进与空行，仅去掉块首尾空行
+      const codeBlockText = '\n\n    def calculate_score(val):\n        return val * 10\n\n';
+      const strippedCode = stripBoundaryEmptyLines(codeBlockText);
+      if (strippedCode !== '    def calculate_score(val):\n        return val * 10') {
+        throw new Error(`stripBoundaryEmptyLines failed on indented code: got "${strippedCode}"`);
+      }
+
+      // 保留末尾两个空格的硬换行
+      const hardBreakText = '第一行文字  \n第二行文字\n\n';
+      const strippedHardBreak = stripBoundaryEmptyLines(hardBreakText);
+      if (strippedHardBreak !== '第一行文字  \n第二行文字') {
+        throw new Error(`stripBoundaryEmptyLines failed on hard break: got "${strippedHardBreak}"`);
+      }
+
+      // 2.2 buildMarkdown: 过滤剔除块、空白块，保留内部缩进
+      const sampleBlocks = [
+        {
+          id: 'b1',
+          order: 1,
+          type: 'paragraph',
+          originalHtml: '<p>前言段落</p>',
+          initialMarkdown: '前言段落',
+          editedMarkdown: null,
+          included: true,
+          notes: [],
+        },
+        {
+          id: 'b2',
+          order: 2,
+          type: 'code',
+          originalHtml: '<pre><code>    var x = 1;\n    var y = 2;</code></pre>',
+          initialMarkdown: '    var x = 1;\n    var y = 2;',
+          editedMarkdown: null,
+          included: true,
+          notes: [],
+        },
+        {
+          id: 'b3',
+          order: 3,
+          type: 'paragraph',
+          originalHtml: '<p>剔除段落</p>',
+          initialMarkdown: '剔除段落',
+          editedMarkdown: null,
+          included: false,
+          notes: [],
+        },
+        {
+          id: 'b4',
+          order: 4,
+          type: 'paragraph',
+          originalHtml: '<p>空白段落</p>',
+          initialMarkdown: '   \n  \t ',
+          editedMarkdown: null,
+          included: true,
+          notes: [],
+        },
+      ];
+
+      const mdOut = buildMarkdown(sampleBlocks);
+      const expectedMd = '前言段落\n\n    var x = 1;\n    var y = 2;';
+      if (mdOut !== expectedMd) {
+        throw new Error(`buildMarkdown output mismatch: got "${mdOut}"`);
+      }
+
+      // 2.3 buildFrontMatter: 固定四字段、转义、省略未知值、UTC+8日期
+      const fullSource = {
+        title: '谈谈"架构"与：规范',
+        account: '印厂技术谈',
+        publishedAt: '2026-09-01',
+        url: 'https://mp.weixin.qq.com/s/sample_1',
+      };
+      const fmFull = buildFrontMatter(fullSource);
+      if (!fmFull.includes('title: "谈谈\\"架构\\"与：规范"')) {
+        throw new Error(`FrontMatter title escaping failed: "${fmFull}"`);
+      }
+      if (!fmFull.includes('account: 印厂技术谈')) {
+        throw new Error(`FrontMatter account missing: "${fmFull}"`);
+      }
+      if (!fmFull.includes('date: 2026-09-01')) {
+        throw new Error(`FrontMatter date missing: "${fmFull}"`);
+      }
+      if (!fmFull.includes('source: "https://mp.weixin.qq.com/s/sample_1"')) {
+        throw new Error(`FrontMatter source escaping missing: "${fmFull}"`);
+      }
+
+      // 省略未知值与解析失败的日期
+      const partialSource = {
+        title: '仅有标题与非法日期',
+        account: null,
+        publishedAt: 'invalid-date',
+        url: '',
+      };
+      const fmPartial = buildFrontMatter(partialSource);
+      if (fmPartial.includes('account') || fmPartial.includes('date') || fmPartial.includes('source')) {
+        throw new Error(`FrontMatter did not omit unknown/invalid fields: "${fmPartial}"`);
+      }
+      if (!fmPartial.includes('title: 仅有标题与非法日期')) {
+        throw new Error(`FrontMatter partial title missing: "${fmPartial}"`);
+      }
+
+      // 全部字段为空时返回空字符串
+      const emptySource = { title: '', account: null, publishedAt: null, url: '' };
+      const fmEmpty = buildFrontMatter(emptySource);
+      if (fmEmpty !== '') {
+        throw new Error(`FrontMatter must be empty string when all fields omitted: "${fmEmpty}"`);
+      }
+
+      // 2.4 buildResultFile: 正文为空时不创建只含来源的文件
+      const emptyBlocksSnapshot = {
+        snapshotId: 's1',
+        capturedAt: new Date().toISOString(),
+        source: fullSource,
+        blocks: [],
+        images: [],
+        captureWarnings: [],
+      };
+      const resFileEmpty = buildResultFile(emptyBlocksSnapshot);
+      if (resFileEmpty.text !== '' || resFileEmpty.body !== '') {
+        throw new Error(`buildResultFile must return empty text when body is empty: "${resFileEmpty.text}"`);
+      }
+
+      const validBlocksSnapshot = {
+        snapshotId: 's2',
+        capturedAt: new Date().toISOString(),
+        source: fullSource,
+        blocks: sampleBlocks,
+        images: [],
+        captureWarnings: [],
+      };
+      const resFileValid = buildResultFile(validBlocksSnapshot);
+      if (!resFileValid.text.startsWith('---\n') || !resFileValid.text.endsWith('\n')) {
+        throw new Error(`buildResultFile text formatting incorrect: "${resFileValid.text}"`);
+      }
+      if (!resFileValid.text.includes(expectedMd)) {
+        throw new Error(`buildResultFile body content missing in text: "${resFileValid.text}"`);
+      }
+
+      return true;
+    });
+
+    assert.strictEqual(dialectTestsPassed, true, 'Dialect unit tests must pass');
+    console.log('✓ Test 2 Passed: Dialect functions (buildResultFile, buildMarkdown, buildFrontMatter) verified');
+
+    // --------------------------------------------------------------------------
+    // Test 3: Top Toolbar "检查结果" Entry & Visibility
+    // --------------------------------------------------------------------------
+    console.log('\n--- Test 3: Top Toolbar "检查结果" Entry & Visibility ---');
+
+    // 3.1 Initial empty state: toolbar and "检查结果" must NOT be rendered
+    const hasPreviewBtnInEmpty = await page.$('[data-testid="action-preview"]');
+    assert.strictEqual(hasPreviewBtnInEmpty, null, 'Action preview button must not exist in empty state');
+
+    // 3.2 Initialize a cleaning session
+    const testArticle = {
+      kind: 'article',
+      source: {
+        title: '深度解析：分布式系统的弹性架构',
+        account: '印厂技术谈',
+        publishedAt: '2026-09-01',
+        url: 'https://mp.weixin.qq.com/s/resilience-arch-2026',
+      },
+      contentHtml: `
+        <h1>深度解析：分布式系统的弹性架构</h1>
+        <p>这是第一段引言内容，讨论系统韧性。</p>
+        <p>这是第二段被剔除的插话广告。</p>
+        <table>
+          <tr><td>参数</td><td>阈值</td></tr>
+          <tr><td>超时</td><td>500ms</td></tr>
+        </table>
+        <p>这是包含图片的第四段：</p>
+        <img src="https://mmbiz.qpic.cn/mmbiz_png/sample1/0?wx_fmt=png" alt="弹性架构拓扑图" />
+        <p></p>
+      `,
+      unstable: false,
+    };
+
+    await page.evaluate(async (res) => {
+      await window.__wetrim.processCaptureResult(res);
+    }, testArticle);
+
+    await page.waitForSelector('[data-view-mode="cleaning"]', { timeout: 5000 });
+
+    // Tweak blocks: mark table block with table-degraded note, excluded paragraph excluded
+    await page.evaluate(() => {
+      const { dispatch, getState } = window.__wetrim;
+      const state = getState();
+      const blocks = state.session.snapshot.blocks.map((b) => {
+        if (b.initialMarkdown.includes('剔除')) {
+          return { ...b, included: false };
+        }
+        if (b.type === 'table') {
+          return {
+            ...b,
+            included: true,
+            notes: [
+              {
+                code: 'table-degraded',
+                message: '表格包含合并单元格或复杂嵌套，已降级为可读文本',
+              },
+            ],
+          };
+        }
+        return b;
+      });
+
+      dispatch({
+        type: 'SET_NEW_SESSION',
+        payload: {
+          session: {
+            ...state.session,
+            snapshot: {
+              ...state.session.snapshot,
+              blocks,
+            },
+          },
+          saveStatus: 'saved',
+        },
+      });
+    });
+
+    // 3.3 Verify "检查结果" button exists in cleaning mode right next to "回到原文看看"
+    const previewBtn = await page.$('[data-testid="action-preview"]');
+    assert(previewBtn !== null, 'Action preview button must exist in cleaning mode');
+    const previewBtnText = await page.$eval('[data-testid="action-preview"]', (el) => el.textContent.trim());
+    assert.strictEqual(previewBtnText, '检查结果', 'Button text must be "检查结果"');
+
+    console.log('✓ Test 3 Passed: "检查结果" button rendered in header toolbar in cleaning mode');
+
+    // --------------------------------------------------------------------------
+    // Test 4: Modal Dialog Open & Focus & Return Behavior
+    // --------------------------------------------------------------------------
+    console.log('\n--- Test 4: Modal Dialog Open, Focus & Return Behavior ---');
+
+    // Click "检查结果" to open preview dialog
+    await page.click('[data-testid="action-preview"]');
+    await page.waitForSelector('[data-testid="preview-dialog"][open]', { timeout: 3000 });
+
+    // 4.1 Focus must land on the view switcher tabs (default reading tab)
+    const activeElementTag = await page.evaluate(() => document.activeElement?.getAttribute('data-testid'));
+    assert.strictEqual(activeElementTag, 'preview-tab-reading', 'Focus must land on reading preview tab upon opening');
+
+    // 4.2 Stats line verification
+    const statsText = await page.$eval('[data-testid="preview-stats-line"]', (el) => el.textContent.trim());
+    console.log('Preview stats text:', statsText);
+    assert(statsText.includes('保留'), 'Stats text must state included blocks count');
+
+    // 4.3 Press Escape key to close dialog
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.querySelector('[data-testid="preview-dialog"]')?.hasAttribute('open'));
+
+    // 4.4 Focus must return to "检查结果" button
+    await page.waitForFunction(
+      () => document.activeElement?.getAttribute('data-testid') === 'action-preview',
+      { timeout: 3000 }
+    );
+    const activeAfterEsc = await page.evaluate(() => document.activeElement?.getAttribute('data-testid'));
+    assert.strictEqual(activeAfterEsc, 'action-preview', 'Focus must return to action-preview button after Esc');
+
+    // 4.5 Test "返回清洗" button closing
+    await page.click('[data-testid="action-preview"]');
+    await page.waitForSelector('[data-testid="preview-dialog"][open]', { timeout: 3000 });
+    await page.click('[data-testid="preview-btn-return"]');
+    await page.waitForFunction(() => !document.querySelector('[data-testid="preview-dialog"]')?.hasAttribute('open'));
+    await page.waitForFunction(
+      () => document.activeElement?.getAttribute('data-testid') === 'action-preview',
+      { timeout: 3000 }
+    );
+    const activeAfterReturn = await page.evaluate(() => document.activeElement?.getAttribute('data-testid'));
+    assert.strictEqual(activeAfterReturn, 'action-preview', 'Focus must return to action-preview button after clicking 返回清洗');
+
+    // 4.6 Test close "×" button closing
+    await page.click('[data-testid="action-preview"]');
+    await page.waitForSelector('[data-testid="preview-dialog"][open]', { timeout: 3000 });
+    await page.click('[data-testid="preview-btn-close"]');
+    await page.waitForFunction(() => !document.querySelector('[data-testid="preview-dialog"]')?.hasAttribute('open'));
+    await page.waitForFunction(
+      () => document.activeElement?.getAttribute('data-testid') === 'action-preview',
+      { timeout: 3000 }
+    );
+    const activeAfterClose = await page.evaluate(() => document.activeElement?.getAttribute('data-testid'));
+    assert.strictEqual(activeAfterClose, 'action-preview', 'Focus must return to action-preview button after clicking ×');
+
+    console.log('✓ Test 4 Passed: Dialog open, focus lands on tab, and closes cleanly returning focus to trigger button');
+
+    // --------------------------------------------------------------------------
+    // Test 5: Reading View & Markdown Source View with Lazy DOM Generation
+    // --------------------------------------------------------------------------
+    console.log('\n--- Test 5: Reading View & Markdown Source View with Lazy DOM Generation ---');
+
+    await page.click('[data-testid="action-preview"]');
+    await page.waitForSelector('[data-testid="preview-dialog"][open]', { timeout: 3000 });
+
+    // 5.1 Reading View (阅读预览) verification
+    const hasReadingPanel = await page.$eval('[data-testid="preview-panel-reading"]', (el) => el.style.display !== 'none');
+    assert.strictEqual(hasReadingPanel, true, 'Reading preview panel must be displayed by default');
+
+    // 稿头 verification
+    const headerTitle = await page.$eval('[data-testid="preview-article-header"] .preview-article-title', (el) => el.textContent.trim());
+    assert.strictEqual(headerTitle, '深度解析：分布式系统的弹性架构');
+
+    const headerAccount = await page.$eval('.preview-meta-account', (el) => el.textContent.trim());
+    assert(headerAccount.includes('印厂技术谈'), 'Account must be displayed in article header');
+
+    const headerDate = await page.$eval('.preview-meta-date', (el) => el.textContent.trim());
+    assert(headerDate.includes('2026-09-01'), 'Date must be displayed in article header');
+
+    // Verify raw YAML is NOT shown in reading view
+    const readingText = await page.$eval('[data-testid="preview-panel-reading"]', (el) => el.textContent);
+    assert(!readingText.includes('---\ntitle:'), 'Raw YAML must not appear in reading preview');
+
+    // 5.2 Lazy DOM: source <pre> must NOT exist yet!
+    const preBeforeSwitch = await page.$('[data-testid="preview-source-pre"]');
+    assert.strictEqual(preBeforeSwitch, null, 'Source <pre> DOM must NOT be created before user switches to source tab');
+
+    // 5.3 Switch to Source Tab using keyboard ArrowRight
+    await page.keyboard.press('ArrowRight');
+
+    const activeTabAria = await page.$eval('[data-testid="preview-tab-source"]', (el) => el.getAttribute('aria-selected'));
+    assert.strictEqual(activeTabAria, 'true', 'Source tab must become active upon ArrowRight');
+
+    // 5.4 Now source <pre> DOM must be generated
+    await page.waitForSelector('[data-testid="preview-source-pre"]', { timeout: 2000 });
+    const preText = await page.$eval('[data-testid="preview-source-pre"]', (el) => el.textContent);
+    assert(preText.includes('---\ntitle:'), 'Source pre must contain front-matter');
+    assert(preText.includes('这是第一段引言内容'), 'Source pre must contain body markdown');
+    assert(!preText.includes('这是第二段被剔除的插话广告'), 'Source pre must exclude excluded block');
+
+    console.log('✓ Test 5 Passed: Reading view header/body verified and source view lazy DOM creation verified');
+
+    // --------------------------------------------------------------------------
+    // Test 6: Degradation Summary Bar & Navigation
+    // --------------------------------------------------------------------------
+    console.log('\n--- Test 6: Degradation Summary Bar & Navigation ---');
+
+    // 6.1 Verify degradation summary bar
+    const degradationSummary = await page.$eval('[data-testid="degradation-summary-text"]', (el) => el.textContent.trim());
+    console.log('Degradation summary bar:', degradationSummary);
+    assert(degradationSummary.includes('表格降级 1 处'), 'Degradation summary must show "表格降级 1 处"');
+
+    // 6.2 Toggle expand
+    await page.click('[data-testid="degradation-summary-toggle"]');
+    await page.waitForSelector('[data-testid="degradation-items-list"]', { timeout: 2000 });
+
+    const itemText = await page.$eval('[data-testid="degradation-item-jump-btn"]', (el) => el.textContent.trim());
+    const expectedOrder = await page.evaluate(
+      () => window.__wetrim.getState().session.snapshot.blocks.find((b) => b.type === 'table')?.order
+    );
+    assert(
+      itemText.includes(`#${expectedOrder}`) && itemText.includes('表格降级'),
+      `Item must contain #${expectedOrder} and 表格降级`
+    );
+
+    // 6.3 Set cleaning page filter to 'excluded' so block 3 is currently hidden
+    // Close preview first
+    await page.click('[data-testid="preview-btn-return"]');
+    await page.waitForFunction(() => !document.querySelector('[data-testid="preview-dialog"]')?.hasAttribute('open'));
+
+    // Switch filter to 'excluded'
+    await page.click('[data-testid="filter-tab-excluded"]');
+    const filterAfterClick = await page.evaluate(() => window.__wetrim.blockListRef.current.getFilter());
+    assert.strictEqual(filterAfterClick, 'excluded', 'Main filter must be set to excluded');
+
+    // Reopen preview
+    await page.click('[data-testid="action-preview"]');
+    await page.waitForSelector('[data-testid="preview-dialog"][open]', { timeout: 3000 });
+
+    // Expand degradation bar and click item to jump
+    await page.click('[data-testid="degradation-summary-toggle"]');
+    await page.waitForSelector('[data-testid="degradation-items-list"]', { timeout: 2000 });
+
+    await page.click('[data-testid="degradation-item-jump-btn"]');
+
+    // 6.4 Preview dialog must close, filter must switch to 'all', and block 3 must be focused
+    await page.waitForFunction(() => !document.querySelector('[data-testid="preview-dialog"]')?.hasAttribute('open'));
+
+    const filterAfterJump = await page.evaluate(() => window.__wetrim.blockListRef.current.getFilter());
+    assert.strictEqual(filterAfterJump, 'all', 'Filter must automatically switch to all when jumping to hidden block');
+
+    const expectedTargetBlockId = await page.evaluate(
+      () => window.__wetrim.getState().session.snapshot.blocks.find((b) => b.type === 'table')?.id
+    );
+    const focusedBlockId = await page.evaluate(() => window.__wetrim.blockListRef.current.getFocusedBlockId());
+    assert.strictEqual(focusedBlockId, expectedTargetBlockId, 'Target degradation block must be focused');
+
+    console.log('✓ Test 6 Passed: Degradation summary bar counts, expands, and navigates back to block switching filter to all');
+
+    // --------------------------------------------------------------------------
+    // Test 7: Empty State Handlers
+    // --------------------------------------------------------------------------
+    console.log('\n--- Test 7: Empty State Handlers ---');
+
+    // 7.1 Case A: All blocks excluded
+    await page.evaluate(() => {
+      const { dispatch, getState } = window.__wetrim;
+      const state = getState();
+      const allExcludedBlocks = state.session.snapshot.blocks.map((b) => ({ ...b, included: false }));
+      dispatch({
+        type: 'SET_NEW_SESSION',
+        payload: {
+          session: {
+            ...state.session,
+            snapshot: {
+              ...state.session.snapshot,
+              blocks: allExcludedBlocks,
+            },
+          },
+          saveStatus: 'saved',
+        },
+      });
+    });
+
+    await page.click('[data-testid="action-preview"]');
+    await page.waitForSelector('[data-testid="preview-dialog"][open]', { timeout: 3000 });
+
+    const emptyTitleAllExcluded = await page.$eval('[data-testid="preview-empty-state"] .empty-state-title', (el) => el.textContent.trim());
+    assert.strictEqual(emptyTitleAllExcluded, '没有可导出的正文');
+
+    const recoverBtn = await page.$('[data-testid="preview-btn-recover-excluded"]');
+    assert(recoverBtn !== null, 'Button "去找回剔除的块" must be rendered');
+
+    // Click recover button: must close preview and switch filter to 'excluded'
+    await page.click('[data-testid="preview-btn-recover-excluded"]');
+    await page.waitForFunction(() => !document.querySelector('[data-testid="preview-dialog"]')?.hasAttribute('open'));
+
+    const filterAfterRecover = await page.evaluate(() => window.__wetrim.blockListRef.current.getFilter());
+    assert.strictEqual(filterAfterRecover, 'excluded', 'Filter must switch to excluded after clicking recover');
+
+    // 7.2 Case B: Included blocks all empty
+    await page.evaluate(() => {
+      const { dispatch, getState } = window.__wetrim;
+      const state = getState();
+      const allEmptyBlocks = state.session.snapshot.blocks.map((b) => ({
+        ...b,
+        included: true,
+        editedMarkdown: '',
+      }));
+      dispatch({
+        type: 'SET_NEW_SESSION',
+        payload: {
+          session: {
+            ...state.session,
+            snapshot: {
+              ...state.session.snapshot,
+              blocks: allEmptyBlocks,
+            },
+          },
+          saveStatus: 'saved',
+        },
+      });
+    });
+
+    await page.click('[data-testid="action-preview"]');
+    await page.waitForSelector('[data-testid="preview-dialog"][open]', { timeout: 3000 });
+
+    const jumpFirstEmptyBtn = await page.$('[data-testid="preview-btn-jump-first-empty"]');
+    assert(jumpFirstEmptyBtn !== null, 'Button "跳到第一个空块" must be rendered');
+
+    await page.click('[data-testid="preview-btn-jump-first-empty"]');
+    await page.waitForFunction(() => !document.querySelector('[data-testid="preview-dialog"]')?.hasAttribute('open'));
+
+    const focusedAfterJumpEmpty = await page.evaluate(() => window.__wetrim.blockListRef.current.getFocusedBlockId());
+    assert(focusedAfterJumpEmpty !== null, 'First empty block must be focused');
+
+    console.log('✓ Test 7 Passed: Empty states correctly show guidance and recovery buttons');
+
+    // --------------------------------------------------------------------------
+    // Test 8: 4× CPU Slowdown 600-Block Performance Benchmark (Budget ≤ 300 ms)
+    // --------------------------------------------------------------------------
+    console.log('\n--- Test 8: 4× CPU Slowdown 600-Block Performance Benchmark ---');
+
+    const client = await page.createCDPSession();
+    await client.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+    console.log('==> CPU throttling set to 4× slowdown');
+
+    // Generate 600 synthetic blocks with various types and images
+    const synthetic600 = [];
+    for (let i = 1; i <= 600; i++) {
+      const isImg = i % 25 === 0;
+      const isTable = i % 50 === 0;
+      const isHeading = i % 15 === 0;
+      synthetic600.push({
+        id: `synth-perf-${i}`,
+        order: i,
+        type: isHeading ? 'heading' : isImg ? 'image' : isTable ? 'table' : 'paragraph',
+        headingLevel: isHeading ? 2 : undefined,
+        originalHtml: isImg
+          ? `<img src="https://example.com/synth-${i}.png" alt="图 ${i}" />`
+          : `<p>第 ${i} 块合成长文段落内容：系统架构与持久化规范说明。</p>`,
+        initialMarkdown: isImg
+          ? `![图 ${i}](https://example.com/synth-${i}.png)`
+          : `第 ${i} 块合成长文段落内容：系统架构与持久化规范说明。`,
+        editedMarkdown: null,
+        included: i % 10 !== 0, // 90% 保留 (~540 块)
+        notes: isTable
+          ? [
+              {
+                code: 'table-degraded',
+                message: '表格降级提示',
+              },
+            ]
+          : [],
+      });
+    }
+
+    await page.evaluate((blocks) => {
+      const { dispatch } = window.__wetrim;
+      dispatch({
+        type: 'INIT_STORAGE_STATE',
+        payload: {
+          session: {
+            schemaVersion: 1,
+            sessionId: 'sess-perf-600',
+            revision: 1,
+            savedAt: new Date().toISOString(),
+            snapshot: {
+              snapshotId: 'snap-perf-600',
+              capturedAt: new Date().toISOString(),
+              source: {
+                url: 'https://example.com/synth-600',
+                title: '600块合成长文检查结果性能基准',
+                account: '印厂技术谈',
+                publishedAt: '2026-09-01',
+              },
+              blocks,
+              images: [],
+              captureWarnings: [],
+            },
+          },
+          candidateSnapshot: null,
+          corrupted: false,
+          isReadOnly: false,
+        },
+      });
+    }, synthetic600);
+
+    // Warm-up and wait for main cleaning page to mount blocks
+    await page.waitForFunction(() => document.querySelectorAll('[data-testid="block-item"]').length > 500, {
+      timeout: 20000,
+    });
+
+    // Measure: 从点击「检查结果」按钮起，到对话框打开且正文内容完成绘制（双 requestAnimationFrame 确保完成布局与绘制）
+    console.log('==> Measuring preview dialog open and draw latency on 600 blocks @ 4× CPU slowdown...');
+
+    const perfResult = await page.evaluate(async () => {
+      const btn = document.querySelector('[data-testid="action-preview"]');
+      const t0 = performance.now();
+      btn.click();
+
+      await new Promise((resolve) => {
+        function poll() {
+          const dialog = document.querySelector('[data-testid="preview-dialog"]');
+          const content = dialog?.querySelector('[data-testid="preview-article-content"]');
+          if (dialog && dialog.hasAttribute('open') && content && content.childNodes.length > 0) {
+            requestAnimationFrame(() => {
+              requestAnimationFrame(() => {
+                resolve();
+              });
+            });
+          } else {
+            setTimeout(poll, 2);
+          }
+        }
+        poll();
+      });
+
+      const t1 = performance.now();
+      return { latency: t1 - t0 };
+    });
+
+    console.log(`[Perf @ 4× CPU 600 Blocks] Click-to-draw complete latency: ${perfResult.latency.toFixed(2)} ms (budget ≤ 300 ms)`);
+    console.log('口径：从点击「检查结果」按钮时刻起，至 <dialog> 打开且正文 .preview-article-content 挂载完毕，并完成连续两帧 requestAnimationFrame 回调确保 React 提交、样式计算、DOM 布局与像素绘制完成为止的全部端到端耗时。');
+
+    assert(
+      perfResult.latency <= 300,
+      `Preview dialog draw latency ${perfResult.latency.toFixed(2)} ms must be ≤ 300 ms on 600 blocks @ 4× CPU slowdown`
+    );
+
+    // Reset CPU throttling
+    await client.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+    console.log('✓ Test 8 Passed: 600-block preview generation & paint well within ≤ 300 ms budget');
+
+    console.log('\n=======================================================');
+    console.log('🎉 ALL ISSUE #31 VERIFICATION TESTS PASSED SUCCESSFULLY!');
+    console.log('=======================================================');
+  } finally {
+    if (browser) {
+      await browser.close();
+    }
+  }
+}
+
+run().catch((err) => {
+  console.error('\n❌ Issue #31 Verification FAILED with error:');
+  console.error(err);
+  process.exit(1);
+});

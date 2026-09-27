@@ -7,5 +7,5 @@ import DOMPurify from 'dompurify';
 export function renderMarkdown(markdown: string): string {
   const rawHtml = marked.parse(markdown, { async: false }) as string;
   const purifier = typeof DOMPurify?.sanitize === 'function' ? DOMPurify : (DOMPurify as unknown as (w: Window) => typeof DOMPurify)(window);
-  return purifier.sanitize(rawHtml);
+  return purifier.sanitize(rawHtml, { USE_PROFILES: { html: true } });
 }
