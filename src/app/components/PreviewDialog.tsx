@@ -6,6 +6,7 @@ import { renderMarkdown } from '../preview/render';
 import { renderHtmlWithImages } from '../preview/html-to-react';
 import { truncateGraphemes } from '../../shared/grapheme';
 import { PREVIEW_COPY } from '../copy/preview';
+import { EXPORT_COPY } from '../copy/export';
 
 export interface DegradationItem {
   blockOrder: number;
@@ -22,6 +23,7 @@ export interface PreviewDialogProps {
   onJumpToBlock: (order: number, id: string) => void;
   onRecoverExcluded: () => void;
   onJumpToEmptyBlock: (order: number, id: string) => void;
+  onExport?: (snapshot: ArticleSnapshot, resultFile: ResultFile) => void;
 }
 
 /**
@@ -37,6 +39,7 @@ export const PreviewDialog: React.FC<PreviewDialogProps> = ({
   onJumpToBlock,
   onRecoverExcluded,
   onJumpToEmptyBlock,
+  onExport,
 }) => {
   const dialogRef = useRef<HTMLDialogElement | null>(null);
   const readingTabRef = useRef<HTMLButtonElement | null>(null);
@@ -449,7 +452,19 @@ export const PreviewDialog: React.FC<PreviewDialogProps> = ({
         </button>
 
         {/* 导出主操作预留位置（#31 不渲染假按钮，#32 接上） */}
-        <div className="preview-export-slot" data-testid="preview-export-slot" />
+        <div className="preview-export-slot" data-testid="preview-export-slot">
+          {hasBody && onExport && frozenSnapshot && (
+            <button
+              type="button"
+              className="action-btn action-export action-export-preview"
+              data-testid="preview-btn-export"
+              onClick={() => onExport(frozenSnapshot, resultFile)}
+              aria-label={EXPORT_COPY.previewExportAriaLabel}
+            >
+              {EXPORT_COPY.previewExportButton}
+            </button>
+          )}
+        </div>
       </div>
     </dialog>
   );

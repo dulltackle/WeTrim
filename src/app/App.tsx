@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import type { CaptureResult, CandidateRecord, Session } from '../shared/types';
+import type { CaptureResult, CandidateRecord, Session, ArticleSnapshot } from '../shared/types';
 import { STORAGE_KEYS } from '../shared/storage-keys';
 import { PENDING_CAPTURE_MESSAGE_TYPE } from '../shared/messages';
 import {
@@ -13,18 +13,28 @@ import { splitBlocks } from './parse/split-blocks';
 import { BlockList, type BlockListHandle, type BlockFilterMode } from './components/BlockList';
 import { CandidateConfirmDialog } from './components/CandidateConfirmDialog';
 import { PreviewDialog } from './components/PreviewDialog';
+import { ExportFeedbackDialog, type ExportFeedback } from './components/ExportFeedbackDialog';
 import { CANDIDATE_COPY } from './copy/candidate';
 import { READ_ONLY_COPY } from './copy/read-only';
 import { NAVIGATION_COPY } from './copy/navigation';
 import { PREVIEW_COPY } from './copy/preview';
+import { EXPORT_COPY } from './copy/export';
 import { EMPTY_SEARCH_STATE, type SearchState } from './search/text-search';
 import { pickWriterContext } from '../shared/app-instance';
 import { renderMarkdown } from './preview/render';
+import {
+  exportArticleWithPicker,
+  writeArticleDirectory,
+  type ExportArticleResult,
+} from './export/write-directory';
+import { sanitizeArticleTitle } from './export/sanitize-filename';
 import {
   buildMarkdown,
   buildResultFile,
   buildFrontMatter,
   stripBoundaryEmptyLines,
+  parseFrontMatterDate,
+  type ResultFile,
 } from './export/build-markdown';
 import { truncateGraphemes } from '../shared/grapheme';
 import { AppContext } from './state/session-context';
@@ -88,6 +98,8 @@ export const App: React.FC = () => {
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const previewBtnRef = useRef<HTMLButtonElement>(null);
   const isPreviewOpenRef = useRef(isPreviewOpen);
+  const exportBtnRef = useRef<HTMLButtonElement>(null);
+  const [exportFeedback, setExportFeedback] = useState<ExportFeedback | null>(null);
   // 预览关闭后要执行的焦点/定位动作：模态 <dialog> 打开期间背后清洗页是 inert 的，
   // 聚焦必须等对话框真正关闭（提交后）再做，否则 focus() 无效且会被对话框的焦点归还覆盖
   const afterPreviewCloseRef = useRef<(() => void) | null>(null);
@@ -302,6 +314,86 @@ export const App: React.FC = () => {
     closePreviewThen(() => {
       blockListRef.current?.setFilter('excluded');
     });
+  };
+
+  // Issue #32: 导出 Markdown 与目录写入操作处理
+  const performExport = async (
+    targetSnapshot: ArticleSnapshot,
+    targetResultFile?: ResultFile,
+    options?: {
+      showDirectoryPicker?: (opts?: { mode?: 'read' | 'readwrite' }) => Promise<FileSystemDirectoryHandle>;
+      parentHandle?: FileSystemDirectoryHandle;
+    }
+  ): Promise<ExportArticleResult> => {
+    const resultFile = targetResultFile ?? buildResultFile(targetSnapshot);
+
+    if (!resultFile.body || resultFile.body.trim() === '') {
+      setExportFeedback({
+        isOpen: true,
+        type: 'empty',
+        title: EXPORT_COPY.emptyBodyTitle,
+        desc: EXPORT_COPY.emptyBodyDesc,
+      });
+      return {
+        ok: false,
+        emptyBody: true,
+        message: EXPORT_COPY.emptyBodyTitle,
+        stage: 'prepare',
+      };
+    }
+
+    const res = await exportArticleWithPicker(targetSnapshot, {
+      resultFile,
+      showDirectoryPicker: options?.showDirectoryPicker,
+      parentHandle: options?.parentHandle,
+    });
+
+    if (res.ok) {
+      setExportFeedback({
+        isOpen: true,
+        type: 'success',
+        title: EXPORT_COPY.exportSuccessTitle,
+        desc: EXPORT_COPY.exportSuccessDesc(res.articleDirName, res.markdownFileName),
+      });
+      // 验收标准：导出成功不能把未保存状态改成已保存
+      // 保持现有的 sessionSaveQueue 和 state.saveState 完全不变
+    } else {
+      if (res.aborted) {
+        // 用户取消目录选择不是错误，静默返回
+        return res;
+      }
+      if (res.emptyBody) {
+        setExportFeedback({
+          isOpen: true,
+          type: 'empty',
+          title: EXPORT_COPY.emptyBodyTitle,
+          desc: EXPORT_COPY.emptyBodyDesc,
+        });
+        return res;
+      }
+      // 磁盘或权限导致写入失败时明确报告未完成及可能残留的本次目录，不报成功，不改动先前产物
+      setExportFeedback({
+        isOpen: true,
+        type: 'error',
+        title: EXPORT_COPY.exportFailedTitle,
+        desc: EXPORT_COPY.exportFailedDesc(res.attemptedDirName, res.message),
+      });
+    }
+    return res;
+  };
+
+  const handleToolbarExport = async () => {
+    if (!state.session) return;
+    // 从一次固定的当前内容生成本次产物：先让编辑器里防抖中的修改落入快照
+    blockListRef.current?.flushPendingEdits();
+    const snapshot = stateRef.current.session?.snapshot;
+    if (!snapshot) return;
+
+    await performExport(snapshot);
+  };
+
+  const handlePreviewExport = async (frozenSnapshot: ArticleSnapshot, frozenResultFile: ResultFile) => {
+    await performExport(frozenSnapshot, frozenResultFile);
   };
 
   // 1. marked + DOMPurify 真实渲染三步指引文案
@@ -581,6 +673,7 @@ export const App: React.FC = () => {
           renderMarkdown,
           buildResultFile,
           buildFrontMatter,
+          parseFrontMatterDate,
           stripBoundaryEmptyLines,
           splitBlocks,
           blockListRef,
@@ -604,6 +697,12 @@ export const App: React.FC = () => {
           handleOpenPreview,
           handleClosePreview,
           getIsPreviewOpen: () => isPreviewOpenRef.current,
+          sanitizeArticleTitle,
+          writeArticleDirectory,
+          exportArticleWithPicker,
+          performExport,
+          handleToolbarExport,
+          exportBtnRef,
           setSearchQuery,
           setOrderInputValue,
           getState: () => stateRef.current,
@@ -1120,7 +1219,7 @@ export const App: React.FC = () => {
                 </div>
               </div>
 
-              {/* 右侧操作区：检查结果与回到原文看看（Issue #31） */}
+              {/* 右侧操作区：检查结果、导出与回到原文看看（Issue #31 & Issue #32） */}
               <div className="nav-toolbar-actions">
                 <button
                   type="button"
@@ -1131,6 +1230,16 @@ export const App: React.FC = () => {
                   aria-label={PREVIEW_COPY.openButtonAria}
                 >
                   {PREVIEW_COPY.openButton}
+                </button>
+                <button
+                  type="button"
+                  className="action-btn action-export"
+                  data-testid="action-export"
+                  ref={exportBtnRef}
+                  onClick={handleToolbarExport}
+                  aria-label={EXPORT_COPY.toolbarExportAriaLabel}
+                >
+                  {EXPORT_COPY.toolbarExportButton}
                 </button>
                 <button
                   type="button"
@@ -1283,7 +1392,7 @@ export const App: React.FC = () => {
                 />
               )}
 
-              {/* 检查结果汇总预览模态对话框（压在清洗页之上，原生 <dialog> showModal() - Issue #31） */}
+              {/* 检查结果汇总预览模态对话框（压在清洗页之上，原生 <dialog> showModal() - Issue #31 & Issue #32） */}
               {session && viewMode === 'cleaning' && !isReadOnly && (
                 <PreviewDialog
                   isOpen={isPreviewOpen}
@@ -1292,8 +1401,21 @@ export const App: React.FC = () => {
                   onJumpToBlock={handleJumpToBlockFromPreview}
                   onRecoverExcluded={handleRecoverExcludedFromPreview}
                   onJumpToEmptyBlock={handleJumpToBlockFromPreview}
+                  onExport={handlePreviewExport}
                 />
               )}
+
+              {/* 导出结果反馈对话框（Issue #32） */}
+              <ExportFeedbackDialog
+                feedback={exportFeedback}
+                onClose={() => {
+                  setExportFeedback(null);
+                  if (!isPreviewOpenRef.current) {
+                    exportBtnRef.current?.focus({ preventScroll: true });
+                  }
+                }}
+                onOpenPreview={handleOpenPreview}
+              />
 
               {/* 态 3: 损坏记录态 (viewMode === 'corruptedRecord') - 最小壳 */}
               {viewMode === 'corruptedRecord' && (

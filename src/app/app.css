@@ -2910,6 +2910,161 @@ button.save-status-error:focus-visible {
   }
 }
 
+/* 顶栏与预览中的导出操作按钮 (Issue #32) */
+.action-export {
+  background-color: var(--vermilion, #c8352b);
+  color: #ffffff;
+  border-color: var(--vermilion, #c8352b);
+}
+
+.action-export:hover {
+  background-color: #ab2c23;
+  border-color: #ab2c23;
+}
+
+.action-export:focus-visible {
+  outline: 2px solid var(--vermilion, #c8352b);
+  outline-offset: 2px;
+}
+
+.action-export-preview {
+  margin-left: auto;
+}
+
+/* 导出结果反馈对话框 (Issue #32) */
+.export-dialog {
+  border: 1px solid var(--sheet-border);
+  border-radius: 3px;
+  background-color: var(--sheet-bg);
+  color: var(--ink-primary);
+  width: min(540px, calc(100vw - 32px));
+  box-shadow: 0 16px 36px rgba(26, 26, 24, 0.22);
+  margin: auto;
+  padding: 0;
+  overflow: hidden;
+}
+
+.export-dialog[open] {
+  display: flex;
+  flex-direction: column;
+  animation: slideInNote 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .export-dialog[open] {
+    animation: none;
+  }
+}
+
+.export-dialog::backdrop {
+  background-color: rgba(26, 26, 24, 0.5);
+}
+
+.export-dialog-header {
+  padding: 16px 20px 12px 20px;
+  border-bottom: 1px solid var(--sheet-border);
+  background-color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.export-title-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.export-dialog-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink-primary);
+  line-height: 1.3;
+}
+
+.export-stamp {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  padding: 1px 5px;
+  border-radius: 2px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  border: 1px solid var(--prussian-blue);
+  color: var(--prussian-blue);
+}
+
+.export-stamp.error-stamp {
+  border-color: var(--vermilion);
+  color: var(--vermilion);
+}
+
+.export-stamp.success-stamp {
+  border-color: #2e7d32;
+  color: #2e7d32;
+}
+
+.export-stamp.empty-stamp {
+  border-color: var(--ink-secondary);
+  color: var(--ink-secondary);
+}
+
+.export-dialog-close-btn {
+  appearance: none;
+  background: transparent;
+  border: 1px solid transparent;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--ink-tertiary);
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 2px;
+  transition: all 0.15s ease;
+}
+
+.export-dialog-close-btn:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+  color: var(--ink-primary);
+}
+
+.export-dialog-close-btn:focus-visible {
+  outline: 2px solid var(--prussian-blue);
+  outline-offset: 2px;
+}
+
+.export-dialog-body {
+  padding: 20px 24px;
+  background-color: #ffffff;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink-secondary);
+}
+
+.export-dialog-desc {
+  word-break: break-all;
+  white-space: pre-wrap;
+  margin: 0;
+}
+
+.export-dialog-footer {
+  padding: 12px 20px;
+  border-top: 1px solid var(--sheet-border);
+  background-color: var(--sheet-bg);
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.action-confirm-export {
+  background-color: var(--prussian-blue);
+  color: #ffffff;
+  border-color: var(--prussian-blue);
+}
+
+.action-confirm-export:hover {
+  background-color: #244b87;
+  border-color: #244b87;
+}
+
 
 
 

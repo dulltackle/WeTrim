@@ -102,12 +102,12 @@ export function parseFrontMatterDate(val: string | null | undefined): string | n
   const trimmed = val.trim();
   if (!trimmed) return null;
 
-  // 1. 若已经是 YYYY-MM-DD 格式，验证其日历合法性
-  const m = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (m) {
-    const year = parseInt(m[1], 10);
-    const month = parseInt(m[2], 10);
-    const day = parseInt(m[3], 10);
+  // 1. 若为 YYYY-MM-DD 或 YYYY/MM/DD 纯日期格式，验证其日历合法性并返回 YYYY-MM-DD
+  const mDateOnly = trimmed.match(/^(\d{4})[-/](\d{2})[-/](\d{2})$/);
+  if (mDateOnly) {
+    const year = parseInt(mDateOnly[1], 10);
+    const month = parseInt(mDateOnly[2], 10);
+    const day = parseInt(mDateOnly[3], 10);
     if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
       const testDate = new Date(Date.UTC(year, month - 1, day));
       if (
@@ -115,14 +115,45 @@ export function parseFrontMatterDate(val: string | null | undefined): string | n
         testDate.getUTCMonth() === month - 1 &&
         testDate.getUTCDate() === day
       ) {
-        return `${m[1]}-${m[2]}-${m[3]}`;
+        return `${mDateOnly[1]}-${mDateOnly[2]}-${mDateOnly[3]}`;
       }
     }
     return null;
   }
 
-  // 2. 若为纯数字时间戳（10 位秒或 13 位毫秒），换算为 UTC+8 的 YYYY-MM-DD
-  if (/^\d+$/.test(trimmed)) {
+  // 2. 若为不带时区偏移的日期时间格式（如微信文章常见的 "2026-09-26 20:00:00"），
+  //    因其为发布地（UTC+8）时间，直接提取其年月日并校验日历有效性，严防宿主机本地时区污染导致跨日
+  const mDateTimeNoTz = trimmed.match(
+    /^(\d{4})[-/](\d{2})[-/](\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/
+  );
+  if (mDateTimeNoTz) {
+    const year = parseInt(mDateTimeNoTz[1], 10);
+    const month = parseInt(mDateTimeNoTz[2], 10);
+    const day = parseInt(mDateTimeNoTz[3], 10);
+    const hour = parseInt(mDateTimeNoTz[4], 10);
+    const min = parseInt(mDateTimeNoTz[5], 10);
+    const sec = mDateTimeNoTz[6] ? parseInt(mDateTimeNoTz[6], 10) : 0;
+    if (
+      month >= 1 && month <= 12 &&
+      day >= 1 && day <= 31 &&
+      hour >= 0 && hour <= 23 &&
+      min >= 0 && min <= 59 &&
+      sec >= 0 && sec <= 59
+    ) {
+      const testDate = new Date(Date.UTC(year, month - 1, day, hour, min, sec));
+      if (
+        testDate.getUTCFullYear() === year &&
+        testDate.getUTCMonth() === month - 1 &&
+        testDate.getUTCDate() === day
+      ) {
+        return `${mDateTimeNoTz[1]}-${mDateTimeNoTz[2]}-${mDateTimeNoTz[3]}`;
+      }
+    }
+    return null;
+  }
+
+  // 3. 若为纯数字时间戳（10 位秒或 13 位毫秒），换算为 UTC+8 的 YYYY-MM-DD
+  if (/^\d{10}(\d{3})?$/.test(trimmed)) {
     const num = parseInt(trimmed, 10);
     const ms = trimmed.length === 10 ? num * 1000 : num;
     const d = new Date(ms + 8 * 3600 * 1000);
@@ -130,11 +161,20 @@ export function parseFrontMatterDate(val: string | null | undefined): string | n
     return d.toISOString().slice(0, 10);
   }
 
-  // 3. 若为标准日期字符串，解析后换算为 UTC+8 的 YYYY-MM-DD
-  const d = new Date(trimmed);
-  if (isNaN(d.getTime())) return null;
-  const utc8Date = new Date(d.getTime() + 8 * 3600 * 1000);
-  return utc8Date.toISOString().slice(0, 10);
+  // 4. 若为带明确时区标识的标准 ISO-8601 字符串（如包含 Z 或 +08:00 等），
+  //    解析得到绝对时刻（不受宿主机本地时区影响），再换算为 UTC+8 的 YYYY-MM-DD
+  const mIsoWithTz = trimmed.match(
+    /^(\d{4})[-/](\d{2})[-/](\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?(Z|[+-]\d{2}(?::?\d{2})?)$/i
+  );
+  if (mIsoWithTz) {
+    const d = new Date(trimmed);
+    if (isNaN(d.getTime())) return null;
+    const utc8Date = new Date(d.getTime() + 8 * 3600 * 1000);
+    return utc8Date.toISOString().slice(0, 10);
+  }
+
+  // 无法可靠解析则按验收标准省略该字段
+  return null;
 }
 
 /**
