@@ -716,6 +716,210 @@ async function run() {
     await client.send('Emulation.setCPUThrottlingRate', { rate: 1 });
     console.log('✓ Test 8 Passed: 600-block preview generation & paint well within ≤ 300 ms budget');
 
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.querySelector('[data-testid="preview-dialog"]')?.hasAttribute('open'));
+
+    // --------------------------------------------------------------------------
+    // Test 9: 返回清洗后滚动位置与编辑状态不丢失（沿用 Test 8 的 600 块长文）
+    // --------------------------------------------------------------------------
+    console.log('\n--- Test 9: Scroll Position & Editor State Survive Preview Round-trip ---');
+
+    await page.evaluate(() => window.scrollTo({ top: 20000, behavior: 'instant' }));
+    await new Promise((r) => setTimeout(r, 300));
+
+    // 取视口内第一个位于顶栏下方的保留块，直接点它的编辑按钮（已在视口内，点击不会引发滚动）
+    const t9TargetId = await page.evaluate(() => {
+      for (const el of document.querySelectorAll('[data-testid="block-item"]')) {
+        const rect = el.getBoundingClientRect();
+        const id = el.getAttribute('data-block-id');
+        const block = window.__wetrim.getState().session.snapshot.blocks.find((b) => b.id === id);
+        if (rect.top > 150 && rect.bottom < window.innerHeight && block?.included && block.type === 'paragraph') {
+          return id;
+        }
+      }
+      return null;
+    });
+    assert(t9TargetId, 'Must find a visible paragraph block in the middle of the long article');
+
+    await page.click(`[data-block-id="${t9TargetId}"] [data-testid="block-action-edit"]`);
+    const t9Textarea = `[data-block-id="${t9TargetId}"] [data-testid="block-editor-textarea"]`;
+    await page.waitForSelector(t9Textarea);
+    await page.type(t9Textarea, '【已落盘的编辑】');
+    await new Promise((r) => setTimeout(r, 800)); // 越过 500ms 防抖
+    await page.type(t9Textarea, '【防抖窗口内的编辑】');
+
+    const t9Before = await page.evaluate((sel) => {
+      const ta = document.querySelector(sel);
+      window.__t9Textarea = ta;
+      return {
+        scrollY: window.scrollY,
+        value: ta.value,
+        filter: window.__wetrim.blockListRef.current.getFilter(),
+      };
+    }, t9Textarea);
+    assert(t9Before.scrollY > 10000, `Page must be scrolled deep into the article, got scrollY=${t9Before.scrollY}`);
+
+    for (const [label, closeAction] of [
+      ['Esc', () => page.keyboard.press('Escape')],
+      ['返回清洗', () => page.click('[data-testid="preview-btn-return"]')],
+      ['×', () => page.click('[data-testid="preview-btn-close"]')],
+    ]) {
+      await page.click('[data-testid="action-preview"]');
+      await page.waitForSelector('[data-testid="preview-dialog"][open]', { timeout: 3000 });
+      await closeAction();
+      await page.waitForFunction(() => !document.querySelector('[data-testid="preview-dialog"]')?.hasAttribute('open'));
+      await page.waitForFunction(
+        () => document.activeElement?.getAttribute('data-testid') === 'action-preview',
+        { timeout: 3000 }
+      );
+      await new Promise((r) => setTimeout(r, 200));
+
+      const t9After = await page.evaluate((sel) => {
+        const ta = document.querySelector(sel);
+        return {
+          scrollY: window.scrollY,
+          sameTextarea: ta !== null && ta === window.__t9Textarea && ta.isConnected,
+          value: ta?.value ?? null,
+          filter: window.__wetrim.blockListRef.current.getFilter(),
+        };
+      }, t9Textarea);
+
+      assert(
+        Math.abs(t9After.scrollY - t9Before.scrollY) <= 1,
+        `[${label}] Scroll position must be kept: before=${t9Before.scrollY}, after=${t9After.scrollY}`
+      );
+      assert.strictEqual(t9After.sameTextarea, true, `[${label}] Open editor must stay mounted (same textarea node)`);
+      assert.strictEqual(t9After.value, t9Before.value, `[${label}] Editor text must be kept`);
+      assert.strictEqual(t9After.filter, t9Before.filter, `[${label}] Filter must be kept`);
+    }
+
+    const t9Stored = await page.evaluate(
+      (id) => window.__wetrim.getState().session.snapshot.blocks.find((b) => b.id === id)?.editedMarkdown,
+      t9TargetId
+    );
+    assert(
+      t9Stored?.includes('【已落盘的编辑】') && t9Stored.includes('【防抖窗口内的编辑】'),
+      'Edits (including the one pending at open time) must be kept in session state'
+    );
+
+    await page.click(`[data-block-id="${t9TargetId}"] [data-testid="block-action-finish-edit"]`);
+    console.log(`✓ Test 9 Passed: scrollY=${t9Before.scrollY} kept, open editor and its text kept across Esc / 返回清洗 / ×`);
+
+    // --------------------------------------------------------------------------
+    // Test 10: 阅读预览经 marked + DOMPurify 渲染，危险内容被净化；降级按 note code 计数提示
+    // --------------------------------------------------------------------------
+    console.log('\n--- Test 10: marked + DOMPurify Sanitization & Degradation Notice ---');
+
+    const unitSanitized = await page.evaluate(() =>
+      window.__wetrim.renderMarkdown('**粗** <script>window.__xssUnit=1</script><img src=x onerror="window.__xssUnit=1">')
+    );
+    assert(unitSanitized.includes('<strong>粗</strong>'), 'renderMarkdown must render Markdown via marked');
+    assert(!/<script|onerror/i.test(unitSanitized), `renderMarkdown must sanitize output, got: ${unitSanitized}`);
+
+    const mkBlock = (order, type, markdown, notes = []) => ({
+      id: `xss-${order}`,
+      order,
+      type,
+      originalHtml: '<p></p>',
+      initialMarkdown: markdown,
+      editedMarkdown: null,
+      included: true,
+      notes,
+    });
+    const xssBlocks = [
+      mkBlock(1, 'paragraph', '**粗体标记** 与 *斜体标记*'),
+      mkBlock(2, 'paragraph', '<script>window.__xssScript = 1</script>脚本之后的文字'),
+      mkBlock(3, 'paragraph', '<img src="https://invalid.example/x.png" onerror="window.__xssImg = 1">'),
+      mkBlock(4, 'paragraph', '[危险链接](javascript:window.__xssLink=1) 与 <a href="#" onclick="window.__xssClick=1">点我</a>'),
+      mkBlock(5, 'paragraph', '<iframe src="https://invalid.example/"></iframe><object data="https://invalid.example/"></object>框架之后'),
+      mkBlock(6, 'table', '参数：超时 500ms', [{ code: 'table-degraded', message: '表格降级' }]),
+      mkBlock(7, 'richMedia', '[视频：弹性架构演示]', [{ code: 'richmedia-placeholder', message: '富媒体占位' }]),
+      mkBlock(8, 'unknown', '无法识别的内容', [{ code: 'convert-failed', message: '未知内容' }]),
+    ];
+
+    await page.evaluate((blocks) => {
+      window.__wetrim.dispatch({
+        type: 'INIT_STORAGE_STATE',
+        payload: {
+          session: {
+            schemaVersion: 1,
+            sessionId: 'sess-xss',
+            revision: 1,
+            savedAt: new Date().toISOString(),
+            snapshot: {
+              snapshotId: 'snap-xss',
+              capturedAt: new Date().toISOString(),
+              source: { url: 'https://example.com/xss', title: '净化测试', account: null, publishedAt: null },
+              blocks,
+              images: [],
+              captureWarnings: [],
+            },
+          },
+          candidateSnapshot: null,
+          corrupted: false,
+          isReadOnly: false,
+        },
+      });
+    }, xssBlocks);
+    await page.waitForFunction(() => document.querySelectorAll('[data-testid="block-item"]').length === 8, {
+      timeout: 5000,
+    });
+
+    await page.click('[data-testid="action-preview"]');
+    await page.waitForSelector('[data-testid="preview-dialog"][open]', { timeout: 3000 });
+    await page.waitForSelector('[data-testid="preview-article-content"]');
+
+    // 触发内联事件处理器的机会：等待图片出错、点击残留链接
+    await page.evaluate(() => {
+      for (const a of document.querySelectorAll('[data-testid="preview-article-content"] a')) {
+        a.addEventListener('click', (e) => e.preventDefault(), { once: true });
+        a.click();
+      }
+    });
+    await new Promise((r) => setTimeout(r, 800));
+
+    const t10 = await page.evaluate(() => {
+      const content = document.querySelector('[data-testid="preview-article-content"]');
+      const all = [...content.querySelectorAll('*')];
+      return {
+        strong: content.querySelector('strong')?.textContent ?? null,
+        em: content.querySelector('em')?.textContent ?? null,
+        text: content.textContent,
+        dangerousTags: all.filter((el) => /^(SCRIPT|IFRAME|OBJECT|EMBED)$/.test(el.tagName)).map((el) => el.tagName),
+        inlineHandlers: all.flatMap((el) => [...el.attributes].filter((a) => /^on/i.test(a.name)).map((a) => `${el.tagName}.${a.name}`)),
+        jsHrefs: all.filter((el) => /^\s*javascript:/i.test(el.getAttribute('href') ?? '')).length,
+        fired: ['__xssScript', '__xssImg', '__xssLink', '__xssClick', '__xssUnit'].filter((k) => k in window),
+        summary: document.querySelector('[data-testid="degradation-summary-text"]')?.textContent.trim() ?? null,
+      };
+    });
+
+    assert.strictEqual(t10.strong, '粗体标记', 'Markdown bold must render as <strong> via marked');
+    assert.strictEqual(t10.em, '斜体标记', 'Markdown emphasis must render as <em> via marked');
+    assert(t10.text.includes('脚本之后的文字') && t10.text.includes('框架之后'), 'Safe text around stripped tags must remain');
+    assert.deepStrictEqual(t10.dangerousTags, [], `No script/iframe/object/embed may survive, got ${t10.dangerousTags}`);
+    assert.deepStrictEqual(t10.inlineHandlers, [], `No inline event handlers may survive, got ${t10.inlineHandlers}`);
+    assert.strictEqual(t10.jsHrefs, 0, 'No javascript: hrefs may survive');
+    assert.deepStrictEqual(t10.fired, [], `No injected code may execute, got ${t10.fired}`);
+    assert.strictEqual(
+      t10.summary,
+      '表格降级 1 处 · 富媒体占位 1 处 · 未知内容 1 处',
+      `Degradation summary must count by note code, got: ${t10.summary}`
+    );
+
+    // 源码视图以纯文本呈现原始 Markdown，不解析其中的 HTML
+    await page.click('[data-testid="preview-tab-source"]');
+    await page.waitForSelector('[data-testid="preview-source-pre"]', { timeout: 2000 });
+    const t10Source = await page.$eval('[data-testid="preview-source-pre"]', (el) => ({
+      text: el.textContent,
+      childElements: el.querySelectorAll('script, iframe, img').length,
+    }));
+    assert(t10Source.text.includes('<script>window.__xssScript = 1</script>'), 'Source view must show raw Markdown text');
+    assert.strictEqual(t10Source.childElements, 0, 'Source view must not parse Markdown HTML into elements');
+
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.querySelector('[data-testid="preview-dialog"]')?.hasAttribute('open'));
+    console.log('✓ Test 10 Passed: marked renders, DOMPurify strips script/iframe/object/handlers/javascript: hrefs, degradation counted by code');
+
     console.log('\n=======================================================');
     console.log('🎉 ALL ISSUE #31 VERIFICATION TESTS PASSED SUCCESSFULLY!');
     console.log('=======================================================');
