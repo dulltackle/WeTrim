@@ -831,10 +831,12 @@ async function run() {
       mkBlock(2, 'paragraph', '<script>window.__xssScript = 1</script>脚本之后的文字'),
       mkBlock(3, 'paragraph', '<img src="https://invalid.example/x.png" onerror="window.__xssImg = 1">'),
       mkBlock(4, 'paragraph', '[危险链接](javascript:window.__xssLink=1) 与 <a href="#" onclick="window.__xssClick=1">点我</a>'),
-      mkBlock(5, 'paragraph', '<iframe src="https://invalid.example/"></iframe><object data="https://invalid.example/"></object>框架之后'),
+      mkBlock(5, 'paragraph', '<iframe src="https://invalid.example/"></iframe><object data="https://invalid.example/"></object><form action="https://invalid.example/"><input name="q"></form>框架之后'),
       mkBlock(6, 'table', '参数：超时 500ms', [{ code: 'table-degraded', message: '表格降级' }]),
       mkBlock(7, 'richMedia', '[视频：弹性架构演示]', [{ code: 'richmedia-placeholder', message: '富媒体占位' }]),
       mkBlock(8, 'unknown', '无法识别的内容', [{ code: 'convert-failed', message: '未知内容' }]),
+      mkBlock(9, 'list', '- [ ] 待办事项\n- [x] 已办事项'),
+      { ...mkBlock(10, 'paragraph', '被剔除的广告段落'), included: false },
     ];
 
     await page.evaluate((blocks) => {
@@ -861,7 +863,7 @@ async function run() {
         },
       });
     }, xssBlocks);
-    await page.waitForFunction(() => document.querySelectorAll('[data-testid="block-item"]').length === 8, {
+    await page.waitForFunction(() => document.querySelectorAll('[data-testid="block-item"]').length === 10, {
       timeout: 5000,
     });
 
@@ -885,8 +887,9 @@ async function run() {
         strong: content.querySelector('strong')?.textContent ?? null,
         em: content.querySelector('em')?.textContent ?? null,
         text: content.textContent,
-        dangerousTags: all.filter((el) => /^(SCRIPT|IFRAME|OBJECT|EMBED)$/.test(el.tagName)).map((el) => el.tagName),
+        dangerousTags: all.filter((el) => /^(SCRIPT|IFRAME|OBJECT|EMBED|FORM)$/.test(el.tagName)).map((el) => el.tagName),
         inlineHandlers: all.flatMap((el) => [...el.attributes].filter((a) => /^on/i.test(a.name)).map((a) => `${el.tagName}.${a.name}`)),
+        taskCheckboxes: content.querySelectorAll('li > input[type="checkbox"]').length,
         jsHrefs: all.filter((el) => /^\s*javascript:/i.test(el.getAttribute('href') ?? '')).length,
         fired: ['__xssScript', '__xssImg', '__xssLink', '__xssClick', '__xssUnit'].filter((k) => k in window),
         summary: document.querySelector('[data-testid="degradation-summary-text"]')?.textContent.trim() ?? null,
@@ -896,8 +899,9 @@ async function run() {
     assert.strictEqual(t10.strong, '粗体标记', 'Markdown bold must render as <strong> via marked');
     assert.strictEqual(t10.em, '斜体标记', 'Markdown emphasis must render as <em> via marked');
     assert(t10.text.includes('脚本之后的文字') && t10.text.includes('框架之后'), 'Safe text around stripped tags must remain');
-    assert.deepStrictEqual(t10.dangerousTags, [], `No script/iframe/object/embed may survive, got ${t10.dangerousTags}`);
+    assert.deepStrictEqual(t10.dangerousTags, [], `No script/iframe/object/embed/form may survive, got ${t10.dangerousTags}`);
     assert.deepStrictEqual(t10.inlineHandlers, [], `No inline event handlers may survive, got ${t10.inlineHandlers}`);
+    assert.strictEqual(t10.taskCheckboxes, 2, 'GFM task list checkboxes must survive sanitization');
     assert.strictEqual(t10.jsHrefs, 0, 'No javascript: hrefs may survive');
     assert.deepStrictEqual(t10.fired, [], `No injected code may execute, got ${t10.fired}`);
     assert.strictEqual(
@@ -915,10 +919,17 @@ async function run() {
     }));
     assert(t10Source.text.includes('<script>window.__xssScript = 1</script>'), 'Source view must show raw Markdown text');
     assert.strictEqual(t10Source.childElements, 0, 'Source view must not parse Markdown HTML into elements');
+    // 表格降级、富媒体占位与未知内容块按其当前 Markdown 原样进入正文，提示不混入正文；剔除块不留标记
+    for (const kept of ['参数：超时 500ms', '[视频：弹性架构演示]', '无法识别的内容', '- [ ] 待办事项\n- [x] 已办事项']) {
+      assert(t10Source.text.includes(kept), `Source must contain kept block content: ${kept}`);
+    }
+    for (const absent of ['被剔除的广告段落', '表格降级', '富媒体占位', '未知内容']) {
+      assert(!t10Source.text.includes(absent), `Source must not contain: ${absent}`);
+    }
 
     await page.keyboard.press('Escape');
     await page.waitForFunction(() => !document.querySelector('[data-testid="preview-dialog"]')?.hasAttribute('open'));
-    console.log('✓ Test 10 Passed: marked renders, DOMPurify strips script/iframe/object/handlers/javascript: hrefs, degradation counted by code');
+    console.log('✓ Test 10 Passed: marked renders, DOMPurify strips script/iframe/object/form/handlers/javascript: hrefs (task checkboxes kept), placeholder rules hold, degradation counted by code');
 
     console.log('\n=======================================================');
     console.log('🎉 ALL ISSUE #31 VERIFICATION TESTS PASSED SUCCESSFULLY!');

@@ -7,5 +7,6 @@ import DOMPurify from 'dompurify';
 export function renderMarkdown(markdown: string): string {
   const rawHtml = marked.parse(markdown, { async: false }) as string;
   const purifier = typeof DOMPurify?.sanitize === 'function' ? DOMPurify : (DOMPurify as unknown as (w: Window) => typeof DOMPurify)(window);
-  return purifier.sanitize(rawHtml, { USE_PROFILES: { html: true } });
+  // 禁止 <form>，避免正文里的表单向外提交；<input> 保留给 GFM 任务列表的复选框
+  return purifier.sanitize(rawHtml, { USE_PROFILES: { html: true }, FORBID_TAGS: ['form'] });
 }
