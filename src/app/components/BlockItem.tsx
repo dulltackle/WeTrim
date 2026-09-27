@@ -240,6 +240,8 @@ export const BlockItem = memo(
       () => (!isLocallyEmpty && !isCollapsed ? renderMarkdown(effectiveMarkdown) : ''),
       [isLocallyEmpty, isCollapsed, effectiveMarkdown]
     );
+    // 含图片时要经 DOMParser 转成 React 树，同样按渲染结果缓存
+    const renderedNode = useMemo(() => renderHtmlWithImages(renderedHtml), [renderedHtml]);
 
     // 图片块元数据解析：折叠态显示行高小缩略图与 alt 文案
     const imageInfo = useMemo(() => {
@@ -256,6 +258,30 @@ export const BlockItem = memo(
       }
       return null;
     }, [block.type, effectiveMarkdown]);
+
+    // 折叠态小缩略图加载失败时退回只显示替代文字，不露出浏览器的破图图标；记下失败的地址，换图后自然复位
+    const [failedCollapsedThumbSrc, setFailedCollapsedThumbSrc] = useState<string | null>(null);
+
+    // 页边批注栏短标记：折叠态与展开态共用
+    const marginNoteMarkers =
+      block.notes.length > 0 ? (
+        <div
+          className="block-margin-note-markers"
+          data-testid="block-margin-note-markers"
+          aria-hidden="true"
+        >
+          {block.notes.map((note, idx) => (
+            <span
+              key={`${note.code}-${idx}`}
+              className={`margin-note-marker marker-code-${note.code}`}
+              title={note.message}
+              data-note-code={note.code}
+            >
+              {NOTES_COPY.shortBadges[note.code] || NOTES_COPY.shortBadges.fallback}
+            </span>
+          ))}
+        </div>
+      ) : null;
 
     // 整体块提示图标与浮层
     const compositeTip = isComposite ? (
@@ -336,24 +362,7 @@ export const BlockItem = memo(
           aria-describedby={block.notes.length > 0 ? `block-notes-${block.id}` : undefined}
         >
           {/* 折叠态页边批注栏短标记保留（Issue #30 设计简报 §3） */}
-          {block.notes.length > 0 && (
-            <div
-              className="block-margin-note-markers"
-              data-testid="block-margin-note-markers"
-              aria-hidden="true"
-            >
-              {block.notes.map((note, idx) => (
-                <span
-                  key={`${note.code}-${idx}`}
-                  className={`margin-note-marker marker-code-${note.code}`}
-                  title={note.message}
-                  data-note-code={note.code}
-                >
-                  {NOTES_COPY.shortBadges[note.code] || NOTES_COPY.shortBadges.fallback}
-                </span>
-              ))}
-            </div>
-          )}
+          {marginNoteMarkers}
 
           {/* 折叠态无障碍转换提示文本（供 aria-describedby 读屏技术关联） */}
           {block.notes.length > 0 && (
@@ -401,14 +410,17 @@ export const BlockItem = memo(
                 className="block-summary-image-preview"
                 data-testid="block-summary-image-preview"
               >
-                <img
-                  src={imageInfo.src}
-                  alt={imageInfo.alt || IMAGE_COPY.defaultImageAlt}
-                  className="block-collapsed-thumb"
-                  data-testid="block-collapsed-thumb"
-                  loading="lazy"
-                  decoding="async"
-                />
+                {failedCollapsedThumbSrc !== imageInfo.src && (
+                  <img
+                    src={imageInfo.src}
+                    alt={imageInfo.alt || IMAGE_COPY.defaultImageAlt}
+                    className="block-collapsed-thumb"
+                    data-testid="block-collapsed-thumb"
+                    loading="lazy"
+                    decoding="async"
+                    onError={() => setFailedCollapsedThumbSrc(imageInfo.src)}
+                  />
+                )}
                 <span className="block-collapsed-alt" data-testid="block-collapsed-alt">
                   {imageInfo.alt || IMAGE_COPY.defaultImageAlt}
                 </span>
@@ -517,7 +529,7 @@ export const BlockItem = memo(
         </div>
       );
     } else {
-      contentNode = renderHtmlWithImages(renderedHtml);
+      contentNode = renderedNode;
     }
 
     return (
@@ -541,24 +553,7 @@ export const BlockItem = memo(
         aria-describedby={block.notes.length > 0 ? `block-notes-${block.id}` : undefined}
       >
         {/* 页边批注栏短标记（Issue #30 设计简报 §3）：桌面端在左侧批注栏对齐顶端，窄屏退回块内 */}
-        {block.notes.length > 0 && (
-          <div
-            className="block-margin-note-markers"
-            data-testid="block-margin-note-markers"
-            aria-hidden="true"
-          >
-            {block.notes.map((note, idx) => (
-              <span
-                key={`${note.code}-${idx}`}
-                className={`margin-note-marker marker-code-${note.code}`}
-                title={note.message}
-                data-note-code={note.code}
-              >
-                {NOTES_COPY.shortBadges[note.code] || NOTES_COPY.shortBadges.fallback}
-              </span>
-            ))}
-          </div>
-        )}
+        {marginNoteMarkers}
 
         {/* 周边文字状态徽章与操作条 */}
         <div className="block-item-meta">

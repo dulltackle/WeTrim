@@ -129,6 +129,11 @@ export function findMatchesInText(plainText: string, query: string): MatchLocati
 }
 
 /**
+ * 标记「界面辅助文字」的属性：带此属性的子树不参与搜索偏移换算与高亮。
+ */
+export const SEARCH_IGNORE_ATTR = 'data-search-ignore';
+
+/**
  * 在容器节点的 Text 节点树上为指定的字符偏移区间构建 DOM Range。
  * 能够精确穿透 <strong>, <em>, <a> 等行内 DOM 标签，支持跨节点 Range。
  */
@@ -139,7 +144,14 @@ export function createRangeForOffsets(
 ): Range | null {
   if (typeof document === 'undefined') return null;
 
-  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
+  // 图片呈现层注入的界面文字（失败卡片、长图标记、原图浮层）不属于正文，
+  // 纯文本里没有它们，遍历时必须跳过，否则其后的高亮会整体错位（Issue #30）
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
+    acceptNode: (node) =>
+      node.parentElement?.closest(`[${SEARCH_IGNORE_ATTR}]`)
+        ? NodeFilter.FILTER_REJECT
+        : NodeFilter.FILTER_ACCEPT,
+  });
   let currentOffset = 0;
   let startNode: Node | null = null;
   let startNodeOffset = 0;

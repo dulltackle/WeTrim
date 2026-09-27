@@ -15,12 +15,29 @@ function parseStyleString(styleStr: string): React.CSSProperties {
     const rawProp = decl.slice(0, colonIdx).trim();
     const rawVal = decl.slice(colonIdx + 1).trim();
     if (!rawProp || !rawVal) continue;
-    // 将 kebab-case (如 text-align) 转换为 camelCase (如 textAlign)
-    const camelProp = rawProp.replace(/-([a-z])/g, (_, char) => char.toUpperCase());
-    styleObj[camelProp] = rawVal;
+    // CSS 自定义属性（--x）React 原样接受；其余 kebab-case (如 text-align) 转换为 camelCase (如 textAlign)
+    const prop = rawProp.startsWith('--')
+      ? rawProp
+      : rawProp.replace(/-([a-z])/g, (_, char) => char.toUpperCase());
+    styleObj[prop] = rawVal;
   }
   return styleObj;
 }
+
+/**
+ * HTML 布尔属性：DOM 上的值是空串（如 GFM 任务列表的 `<input checked="" disabled="">`），
+ * 原样交给 React 会被当成 false，必须转成 true。
+ * checked / value 用非受控写法，只读展示不需要 onChange。
+ */
+const BOOLEAN_ATTR_PROPS: Record<string, string> = {
+  checked: 'defaultChecked',
+  disabled: 'disabled',
+  readonly: 'readOnly',
+  hidden: 'hidden',
+  open: 'open',
+  reversed: 'reversed',
+  multiple: 'multiple',
+};
 
 /**
  * 将 DOMParser 解析得到的节点转换为 React 元素。
@@ -40,7 +57,8 @@ function domNodeToReact(node: Node, key: string): React.ReactNode {
       const src = el.getAttribute('src') || '';
       const alt = el.getAttribute('alt') || '';
       const title = el.getAttribute('title') || undefined;
-      return <ImagePresentation key={key} src={src} alt={alt} title={title} />;
+      // key 带上 src：地址变化时整体重挂载，加载状态与长图判定随之重置
+      return <ImagePresentation key={`${key}-${src}`} src={src} alt={alt} title={title} />;
     }
 
     const children: React.ReactNode[] = [];
@@ -51,10 +69,20 @@ function domNodeToReact(node: Node, key: string): React.ReactNode {
       }
     }
 
-    const props: Record<string, any> = { key };
+    const props: Record<string, unknown> = { key };
     for (let i = 0; i < el.attributes.length; i++) {
       const attr = el.attributes[i];
       let name = attr.name;
+      // React 不接受 option 上的 selected（应由 select 的 defaultValue 决定），只读展示直接忽略
+      if (name === 'selected') continue;
+      if (name in BOOLEAN_ATTR_PROPS) {
+        props[BOOLEAN_ATTR_PROPS[name]] = true;
+        continue;
+      }
+      if (name === 'value' && tagName === 'input') {
+        props.defaultValue = attr.value;
+        continue;
+      }
       if (name === 'class') name = 'className';
       else if (name === 'for') name = 'htmlFor';
       else if (name === 'colspan') name = 'colSpan';

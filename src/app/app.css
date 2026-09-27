@@ -2221,6 +2221,16 @@ button.save-status-error:focus-visible {
   margin: 0 !important;
 }
 
+/* 超长竖图：不再整张缩小进限高，而是按版心宽度铺开，由盒子的限高与 overflow 裁掉底部，只露顶部 */
+.image-thumbnail-box.is-tall {
+  display: block;
+  width: fit-content;
+}
+
+.image-thumbnail-box.is-tall .image-thumbnail-img {
+  max-height: none;
+}
+
 /* 超长竖图：底部渐隐与「长图」标记（Issue #30 简报 §3） */
 .image-tall-fade {
   position: absolute;

@@ -6,6 +6,16 @@ import React, {
   useState,
 } from 'react';
 import { IMAGE_COPY } from '../copy/image-presentation';
+import { SEARCH_IGNORE_ATTR } from '../search/text-search';
+
+/**
+ * 超长竖图判定阈值：高宽比超过它才算「长图」，只按原图比例判断，
+ * 不看显示尺寸——高清的普通横图、方图缩放后同样会低于原图高度，不能据此误判。
+ */
+const TALL_IMAGE_RATIO = 2;
+
+// 界面辅助文字的容器属性：不参与搜索偏移换算（见 text-search.ts）
+const searchIgnoreProps = { [SEARCH_IGNORE_ATTR]: 'true' };
 
 export interface ImagePresentationProps {
   src: string;
@@ -83,6 +93,7 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({ src, alt, onClose }
       role="dialog"
       aria-modal="true"
       aria-label={IMAGE_COPY.viewerTitle}
+      {...searchIgnoreProps}
       onKeyDown={handleKeyDown}
       onClick={handleBackdropClick}
     >
@@ -116,10 +127,10 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({ src, alt, onClose }
  * 清洗页专用的图片呈现层：
  * - 正常时直接把图片资源的远程 URL 放进 <img src> 显示缩略图；清洗期不 fetch 图片字节
  * - 限高缩略图：保留态下图片在版心内按原比例显示，限最大高度（约半屏，min(50vh, 480px)）
- * - 超长竖图：只显示顶部，底部加渐隐与「长图」标记
+ * - 超长竖图（高宽比 > TALL_IMAGE_RATIO）：按版心宽度铺开、只显示顶部，底部加渐隐与「长图」标记
  * - 查看原图：点击缩略图或聚焦后按回车，在浮层中看完整原图；Esc 关闭，焦点平稳回到原缩略图
  * - 图片失败：原位占位，写明「图片没有加载出来」，附域名与截短的地址，加「重试」按钮
- * - 重试只重新设置 DOM 上的 src，不改 Markdown 里保存的地址
+ * - 重试只让 <img> 以同一 src 重新请求，不改 Markdown 里保存的地址
  * - 所有图片用 loading="lazy" 与 decoding="async"，保证图片加载不阻塞逐字编辑
  * - 图片的 load/error 事件在组件内部处理，不越过 BlockList 去查 DOM
  * - 纯键盘操作与无障碍标签
@@ -132,7 +143,6 @@ export const ImagePresentation = memo<ImagePresentationProps>(
     const [loadAttempts, setLoadAttempts] = useState(0);
 
     const triggerContainerRef = useRef<HTMLDivElement | null>(null);
-    const imgRef = useRef<HTMLImageElement | null>(null);
 
     const { domain, path } = formatImageErrorUrl(src);
 
@@ -141,15 +151,8 @@ export const ImagePresentation = memo<ImagePresentationProps>(
       const img = e.currentTarget;
       setStatus('loaded');
 
-      // 判定是否为超长竖图：高宽比大于 1.8，或高度超出限制并被裁切
       if (img.naturalWidth > 0 && img.naturalHeight > 0) {
-        const ratio = img.naturalHeight / img.naturalWidth;
-        const reachedMaxHeight = img.clientHeight >= 340 && img.naturalHeight > img.clientHeight * 1.25;
-        if (ratio > 1.8 || reachedMaxHeight) {
-          setIsTall(true);
-        } else {
-          setIsTall(false);
-        }
+        setIsTall(img.naturalHeight / img.naturalWidth > TALL_IMAGE_RATIO);
       }
     }, []);
 
@@ -158,22 +161,12 @@ export const ImagePresentation = memo<ImagePresentationProps>(
       setStatus('error');
     }, []);
 
-    // 点击重试：只重设 DOM 上的 src，不改动 Markdown 保存的地址
-    const handleRetry = useCallback(
-      (e: React.MouseEvent) => {
-        e.stopPropagation();
-        setStatus('retrying');
-        setLoadAttempts((c) => c + 1);
-
-        if (imgRef.current) {
-          const currentUrl = src;
-          // 重新设置 src
-          imgRef.current.src = '';
-          imgRef.current.src = currentUrl;
-        }
-      },
-      [src]
-    );
+    // 点击重试：递增 key 让 <img> 以同一 src 重新挂载、重新请求，不改动 Markdown 保存的地址
+    const handleRetry = useCallback((e: React.MouseEvent) => {
+      e.stopPropagation();
+      setStatus('retrying');
+      setLoadAttempts((c) => c + 1);
+    }, []);
 
     // 打开全图浮层
     const handleOpenViewer = useCallback(() => {
@@ -187,14 +180,6 @@ export const ImagePresentation = memo<ImagePresentationProps>(
       setViewerOpen(false);
       triggerContainerRef.current?.focus();
     }, []);
-
-    const prevViewerOpenRef = useRef(false);
-    useEffect(() => {
-      if (prevViewerOpenRef.current && !viewerOpen) {
-        triggerContainerRef.current?.focus();
-      }
-      prevViewerOpenRef.current = viewerOpen;
-    }, [viewerOpen]);
 
     const handleKeyDown = useCallback(
       (e: React.KeyboardEvent) => {
@@ -218,8 +203,8 @@ export const ImagePresentation = memo<ImagePresentationProps>(
           <div
             className="image-error-card"
             data-testid="image-error-card"
-            role="alert"
             aria-live="polite"
+            {...searchIgnoreProps}
           >
             <div className="image-error-header">
               <span className="image-error-badge">!</span>
@@ -267,13 +252,13 @@ export const ImagePresentation = memo<ImagePresentationProps>(
           )}
 
           {/* 真实 <img>：原生 URL，loading="lazy" 与 decoding="async" */}
+          {/* 重试时容器处于视觉隐藏态，lazy 图片可能永远等不到进入视口，重试改为立即加载 */}
           <img
             key={`${src}-${loadAttempts}`}
-            ref={imgRef}
             src={src}
             alt={alt}
             title={title}
-            loading="lazy"
+            loading={loadAttempts > 0 ? 'eager' : 'lazy'}
             decoding="async"
             className="image-thumbnail-img"
             data-testid="image-thumbnail-img"
@@ -283,7 +268,12 @@ export const ImagePresentation = memo<ImagePresentationProps>(
 
           {/* 超长竖图：底部渐隐与「长图」标记 */}
           {status === 'loaded' && isTall && (
-            <div className="image-tall-fade" data-testid="image-tall-fade" aria-hidden="true">
+            <div
+              className="image-tall-fade"
+              data-testid="image-tall-fade"
+              aria-hidden="true"
+              {...searchIgnoreProps}
+            >
               <span className="image-tall-badge" data-testid="image-tall-badge">
                 <svg
                   className="tall-badge-icon"
