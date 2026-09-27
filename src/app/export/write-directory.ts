@@ -1,6 +1,7 @@
 import type { ArticleSnapshot } from '../../shared/types';
 import { buildResultFile, type ResultFile } from './build-markdown';
 import { sanitizeArticleTitle } from './sanitize-filename';
+import { EXPORT_COPY } from '../copy/export';
 
 export interface WriteDirectorySuccess {
   ok: true;
@@ -15,7 +16,10 @@ export interface WriteDirectoryFailure {
   error?: Error;
   emptyBody?: boolean;
   aborted?: boolean;
+  /** 已有一次导出在进行中，本次请求被忽略 */
+  busy?: boolean;
   message: string;
+  /** 仅在本次确实创建了文章目录后才填写：此时目录可能残留未完整内容 */
   attemptedDirName?: string;
   stage?: 'pick' | 'prepare' | 'check_name' | 'create_dir' | 'write_file';
 }
@@ -30,6 +34,47 @@ export interface ExportArticleOptions {
 
 export type ExportArticleResult = WriteDirectoryResult;
 
+// 建目录后发现目录非空（查名与建目录之间被别处占用）时换名重试的上限
+const MAX_CREATE_ATTEMPTS = 20;
+
+/** 清洗结果是否有可导出的非空正文（导出链路唯一的判断口径） */
+export function hasExportableBody(resultFile: ResultFile): boolean {
+  return !!resultFile.body && resultFile.body.trim() !== '';
+}
+
+function emptyBodyFailure(): WriteDirectoryFailure {
+  return {
+    ok: false,
+    emptyBody: true,
+    message: EXPORT_COPY.emptyBodyTitle,
+    stage: 'prepare',
+  };
+}
+
+function errorMessage(err: unknown): string {
+  return (err as Error)?.message || String(err);
+}
+
+function nameCandidate(baseName: string, counter: number): string {
+  return counter === 1 ? baseName : `${baseName} (${counter})`;
+}
+
+async function isEntryOccupied(
+  lookup: () => Promise<unknown>
+): Promise<boolean> {
+  try {
+    await lookup();
+    return true;
+  } catch (err: unknown) {
+    const errName = (err as Error)?.name;
+    // 同名条目存在但类型不同，同样视为被占用
+    if (errName === 'TypeMismatchError') return true;
+    if (errName === 'NotFoundError') return false;
+    // 其他错误（如权限被拒等），向上抛出
+    throw err;
+  }
+}
+
 /**
  * 依据 PRODUCT.md 「导出」与 Issue #32 验收标准：
  * 重名时依次找 <文章文件名> (2)、(3) 等未占用名称。
@@ -38,60 +83,34 @@ export type ExportArticleResult = WriteDirectoryResult;
  */
 export async function findAvailableArticleDirectoryName(
   parentHandle: FileSystemDirectoryHandle,
-  baseName: string
-): Promise<string> {
-  let candidate = baseName;
-  let counter = 1;
-
-  while (true) {
-    let occupied = false;
-
-    // 检查是否有同名目录
-    try {
-      await parentHandle.getDirectoryHandle(candidate, { create: false });
-      occupied = true;
-    } catch (err: unknown) {
-      const errName = (err as Error)?.name;
-      if (errName === 'TypeMismatchError') {
-        // 同名条目存在但为文件，同样视为被占用
-        occupied = true;
-      } else if (errName !== 'NotFoundError') {
-        // 其他错误（如权限被拒等），向上抛出
-        throw err;
-      }
-    }
-
-    if (occupied) {
-      counter++;
-      candidate = `${baseName} (${counter})`;
+  baseName: string,
+  startCounter = 1
+): Promise<{ name: string; counter: number }> {
+  for (let counter = startCounter; ; counter++) {
+    const candidate = nameCandidate(baseName, counter);
+    if (await isEntryOccupied(() => parentHandle.getDirectoryHandle(candidate, { create: false }))) {
       continue;
     }
-
-    // 目录未占用，进一步检查是否有同名文件
-    if (typeof parentHandle.getFileHandle === 'function') {
-      try {
-        await parentHandle.getFileHandle(candidate, { create: false });
-        occupied = true;
-      } catch (err: unknown) {
-        const errName = (err as Error)?.name;
-        if (errName === 'TypeMismatchError') {
-          // 同名条目为目录（防御性标记）
-          occupied = true;
-        } else if (errName !== 'NotFoundError') {
-          throw err;
-        }
-      }
-    }
-
-    if (occupied) {
-      counter++;
-      candidate = `${baseName} (${counter})`;
+    if (
+      typeof parentHandle.getFileHandle === 'function' &&
+      (await isEntryOccupied(() => parentHandle.getFileHandle(candidate, { create: false })))
+    ) {
       continue;
     }
-
-    // 既无同名目录也无同名文件，该名称可用
-    return candidate;
+    return { name: candidate, counter };
   }
+}
+
+/**
+ * getDirectoryHandle(create: true) 遇到已存在的目录会直接返回它，没有「仅新建」语义。
+ * 建完后确认目录为空，才能保证写入不会覆盖或合并到别处刚产生的同名目录。
+ * lib.dom 未收录异步迭代器类型，这里按需探测。
+ */
+async function directoryHasEntries(dir: FileSystemDirectoryHandle): Promise<boolean> {
+  const keys = (dir as unknown as { keys?: () => AsyncIterator<string> }).keys;
+  if (typeof keys !== 'function') return false;
+  const first = await keys.call(dir).next();
+  return !first.done;
 }
 
 /**
@@ -109,13 +128,8 @@ export async function writeArticleDirectory(
   const resultFile = options?.resultFile ?? buildResultFile(snapshot);
 
   // 2. 清洗结果没有非空正文时提示「没有可导出的正文」，不创建只含来源信息的文件
-  if (!resultFile.body || resultFile.body.trim() === '') {
-    return {
-      ok: false,
-      emptyBody: true,
-      message: '没有可导出的正文',
-      stage: 'prepare',
-    };
+  if (!hasExportableBody(resultFile)) {
+    return emptyBodyFailure();
   }
 
   // 3. 文件名清理：保留中文与 emoji，不反写 ArticleSource.title
@@ -124,29 +138,57 @@ export async function writeArticleDirectory(
 
   let articleDirName = baseName;
   let articleDirHandle: FileSystemDirectoryHandle | null = null;
+  let nextCounter = 1;
 
-  try {
-    // 4. 重名时依次找 <文章文件名> (2)、(3)；后缀只用于外层目录
-    articleDirName = await findAvailableArticleDirectoryName(parentHandle, baseName);
-  } catch (err: unknown) {
-    return {
-      ok: false,
-      error: err as Error,
-      message: `检查目录名称时失败: ${(err as Error)?.message || String(err)}`,
-      attemptedDirName: articleDirName,
-      stage: 'check_name',
-    };
+  // 4. 重名时依次找 <文章文件名> (2)、(3)；后缀只用于外层目录
+  //    查名与建目录之间若同名目录被别处创建，换下一个名字重试
+  for (let attempt = 0; attempt < MAX_CREATE_ATTEMPTS && !articleDirHandle; attempt++) {
+    try {
+      const found = await findAvailableArticleDirectoryName(parentHandle, baseName, nextCounter);
+      articleDirName = found.name;
+      nextCounter = found.counter + 1;
+    } catch (err: unknown) {
+      // 尚未创建任何目录，不存在本次残留
+      return {
+        ok: false,
+        error: err as Error,
+        message: `检查目录名称时失败: ${errorMessage(err)}`,
+        stage: 'check_name',
+      };
+    }
+
+    let created: FileSystemDirectoryHandle;
+    try {
+      // 5. 创建文章目录
+      created = await parentHandle.getDirectoryHandle(articleDirName, { create: true });
+    } catch (err: unknown) {
+      return {
+        ok: false,
+        error: err as Error,
+        message: `创建文章目录失败: ${errorMessage(err)}`,
+        stage: 'create_dir',
+      };
+    }
+
+    try {
+      if (!(await directoryHasEntries(created))) {
+        articleDirHandle = created;
+      }
+    } catch (err: unknown) {
+      return {
+        ok: false,
+        error: err as Error,
+        message: `检查文章目录时失败: ${errorMessage(err)}`,
+        stage: 'create_dir',
+      };
+    }
   }
 
-  try {
-    // 5. 创建文章目录
-    articleDirHandle = await parentHandle.getDirectoryHandle(articleDirName, { create: true });
-  } catch (err: unknown) {
+  if (!articleDirHandle) {
     return {
       ok: false,
-      error: err as Error,
-      message: `创建文章目录失败: ${(err as Error)?.message || String(err)}`,
-      attemptedDirName: articleDirName,
+      error: new Error('找不到可用的文章目录名'),
+      message: '找不到可用的文章目录名',
       stage: 'create_dir',
     };
   }
@@ -172,7 +214,7 @@ export async function writeArticleDirectory(
   } catch (err: unknown) {
     if (writable) {
       try {
-        await (writable as FileSystemWritableFileStream).abort();
+        await writable.abort();
       } catch {
         // 忽略中止失败
       }
@@ -181,7 +223,7 @@ export async function writeArticleDirectory(
     return {
       ok: false,
       error: err as Error,
-      message: `写入文件未完成，可能残留目录「${articleDirName}」: ${(err as Error)?.message || String(err)}`,
+      message: `写入文件未完成: ${errorMessage(err)}`,
       attemptedDirName: articleDirName,
       stage: 'write_file',
     };
@@ -202,13 +244,8 @@ export async function exportArticleWithPicker(
 ): Promise<ExportArticleResult> {
   const resultFile = options?.resultFile ?? buildResultFile(snapshot);
 
-  if (!resultFile.body || resultFile.body.trim() === '') {
-    return {
-      ok: false,
-      emptyBody: true,
-      message: '没有可导出的正文',
-      stage: 'prepare',
-    };
+  if (!hasExportableBody(resultFile)) {
+    return emptyBodyFailure();
   }
 
   let parentHandle = options?.parentHandle;
@@ -224,7 +261,7 @@ export async function exportArticleWithPicker(
     if (!pickerFn) {
       return {
         ok: false,
-        error: new Error('当前环境不支持 showDirectoryPicker'),
+        error: new Error('当前浏览器环境不支持文件夹选择 API'),
         message: '当前浏览器环境不支持文件夹选择 API',
         stage: 'pick',
       };
@@ -245,7 +282,7 @@ export async function exportArticleWithPicker(
       return {
         ok: false,
         error: err as Error,
-        message: `选择文件夹失败: ${(err as Error)?.message || String(err)}`,
+        message: `选择文件夹失败: ${errorMessage(err)}`,
         stage: 'pick',
       };
     }

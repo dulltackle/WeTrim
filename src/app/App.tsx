@@ -100,6 +100,10 @@ export const App: React.FC = () => {
   const isPreviewOpenRef = useRef(isPreviewOpen);
   const exportBtnRef = useRef<HTMLButtonElement>(null);
   const [exportFeedback, setExportFeedback] = useState<ExportFeedback | null>(null);
+  // 同一时刻只允许一次导出，避免重复触发时两次写入争抢同一目录名
+  const exportInFlightRef = useRef(false);
+  // 顶栏导出请求计数：flush 防抖编辑后要等新快照提交，再在 effect 里用最新内容导出
+  const [toolbarExportRequest, setToolbarExportRequest] = useState(0);
   // 预览关闭后要执行的焦点/定位动作：模态 <dialog> 打开期间背后清洗页是 inert 的，
   // 聚焦必须等对话框真正关闭（提交后）再做，否则 focus() 无效且会被对话框的焦点归还覆盖
   const afterPreviewCloseRef = useRef<(() => void) | null>(null);
@@ -325,28 +329,20 @@ export const App: React.FC = () => {
       parentHandle?: FileSystemDirectoryHandle;
     }
   ): Promise<ExportArticleResult> => {
-    const resultFile = targetResultFile ?? buildResultFile(targetSnapshot);
-
-    if (!resultFile.body || resultFile.body.trim() === '') {
-      setExportFeedback({
-        isOpen: true,
-        type: 'empty',
-        title: EXPORT_COPY.emptyBodyTitle,
-        desc: EXPORT_COPY.emptyBodyDesc,
-      });
-      return {
-        ok: false,
-        emptyBody: true,
-        message: EXPORT_COPY.emptyBodyTitle,
-        stage: 'prepare',
-      };
+    if (exportInFlightRef.current) {
+      return { ok: false, busy: true, message: '已有导出正在进行' };
     }
-
-    const res = await exportArticleWithPicker(targetSnapshot, {
-      resultFile,
-      showDirectoryPicker: options?.showDirectoryPicker,
-      parentHandle: options?.parentHandle,
-    });
+    exportInFlightRef.current = true;
+    let res: ExportArticleResult;
+    try {
+      res = await exportArticleWithPicker(targetSnapshot, {
+        resultFile: targetResultFile,
+        showDirectoryPicker: options?.showDirectoryPicker,
+        parentHandle: options?.parentHandle,
+      });
+    } finally {
+      exportInFlightRef.current = false;
+    }
 
     if (res.ok) {
       setExportFeedback({
@@ -357,40 +353,57 @@ export const App: React.FC = () => {
       });
       // 验收标准：导出成功不能把未保存状态改成已保存
       // 保持现有的 sessionSaveQueue 和 state.saveState 完全不变
-    } else {
-      if (res.aborted) {
-        // 用户取消目录选择不是错误，静默返回
-        return res;
-      }
-      if (res.emptyBody) {
-        setExportFeedback({
-          isOpen: true,
-          type: 'empty',
-          title: EXPORT_COPY.emptyBodyTitle,
-          desc: EXPORT_COPY.emptyBodyDesc,
-        });
-        return res;
-      }
-      // 磁盘或权限导致写入失败时明确报告未完成及可能残留的本次目录，不报成功，不改动先前产物
+      return res;
+    }
+    if (res.aborted) {
+      // 用户取消目录选择不是错误，静默返回
+      return res;
+    }
+    if (res.emptyBody) {
+      setExportFeedback({
+        isOpen: true,
+        type: 'empty',
+        title: EXPORT_COPY.emptyBodyTitle,
+        desc: EXPORT_COPY.emptyBodyDesc,
+      });
+      return res;
+    }
+    const errorDetail = res.error?.message || res.message;
+    if (res.stage === 'pick') {
+      // 目录选择本身失败：还没写入任何东西，不提残留与磁盘空间
       setExportFeedback({
         isOpen: true,
         type: 'error',
-        title: EXPORT_COPY.exportFailedTitle,
-        desc: EXPORT_COPY.exportFailedDesc(res.attemptedDirName, res.message),
+        title: EXPORT_COPY.pickFailedTitle,
+        desc: EXPORT_COPY.pickFailedDesc(errorDetail),
       });
+      return res;
     }
+    // 磁盘或权限导致写入失败时明确报告未完成；只有本次确实建了目录才提示可能残留
+    setExportFeedback({
+      isOpen: true,
+      type: 'error',
+      title: EXPORT_COPY.exportFailedTitle,
+      desc: EXPORT_COPY.exportFailedDesc(res.attemptedDirName, errorDetail),
+    });
     return res;
   };
 
-  const handleToolbarExport = async () => {
-    if (!state.session) return;
-    // 从一次固定的当前内容生成本次产物：先让编辑器里防抖中的修改落入快照
+  const handleToolbarExport = () => {
+    if (!state.session || exportInFlightRef.current) return;
+    // 从一次固定的当前内容生成本次产物：先让编辑器里防抖中的修改落入快照。
+    // flush 只是派发更新，新快照要到下次提交才可见，所以与导出请求同批提交，在 effect 里读取
     blockListRef.current?.flushPendingEdits();
-    const snapshot = stateRef.current.session?.snapshot;
-    if (!snapshot) return;
-
-    await performExport(snapshot);
+    setToolbarExportRequest((n) => n + 1);
   };
+
+  // 只响应新的导出请求；state 取本次提交（已含 flush 后的编辑）的值
+  useEffect(() => {
+    if (toolbarExportRequest === 0) return;
+    const snapshot = state.session?.snapshot;
+    if (!snapshot) return;
+    void performExport(snapshot);
+  }, [toolbarExportRequest]);
 
   const handlePreviewExport = async (frozenSnapshot: ArticleSnapshot, frozenResultFile: ResultFile) => {
     await performExport(frozenSnapshot, frozenResultFile);

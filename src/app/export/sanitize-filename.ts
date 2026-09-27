@@ -4,14 +4,15 @@
  * 1. 保留中文与 emoji（按完整字素，不切断肤色修饰符与 ZWJ 序列）
  * 2. 将 / \ : * ? " < > | 与控制字符（0x00-0x1F, 0x7F）替换为下划线 _
  * 3. 清除结尾的点与空格
- * 4. Windows 保留名加前缀下划线（CON, PRN, AUX, NUL, COM1-9, LPT1-9，不区分大小写）
+ * 4. Windows 保留名加前缀下划线（CON, PRN, AUX, NUL, COM1-9, LPT1-9, COM¹²³, LPT¹²³, CONIN$, CONOUT$，
+ *    不区分大小写；Windows 只看第一个点之前的部分，「NUL.txt」「AUX.2026 总结」同样不可用）
  * 5. 清理后为空用「未命名文章」
  * 6. 基名最多 60 个可见字素并按完整字素截断，同时不超过 180 UTF-8 字节，并对最终组件再校验
  * 7. 纯函数，不反写 ArticleSource.title
  */
 
 const FORBIDDEN_AND_CONTROL_CHARS = /[/\\:*?"<>|\x00-\x1f\x7f]/g;
-const WINDOWS_RESERVED_NAMES = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/i;
+const WINDOWS_RESERVED_NAMES = /^(?:CON|PRN|AUX|NUL|COM[1-9¹²³]|LPT[1-9¹²³]|CONIN\$|CONOUT\$) *(?:\.|$)/i;
 export const DEFAULT_ARTICLE_TITLE = '未命名文章';
 
 export function sanitizeArticleTitle(rawTitle?: string | null): string {

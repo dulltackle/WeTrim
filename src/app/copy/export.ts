@@ -28,4 +28,11 @@ export const EXPORT_COPY = {
       errorMsg ? `（错误详情：${errorMsg}）` : ''
     }`,
   btnConfirmFailed: '知道了',
+
+  // 目录选择本身失败（非用户取消）：尚未写入任何内容
+  pickFailedTitle: '无法选择文件夹',
+  pickFailedDesc: (errorMsg?: string): string =>
+    `没能打开或使用所选文件夹，本次没有写入任何内容。${
+      errorMsg ? `（错误详情：${errorMsg}）` : ''
+    }`,
 } as const;

@@ -96,6 +96,8 @@ export function formatYamlString(value: string): string {
 /**
  * front-matter 日期字段解析与 UTC+8 校验（PRODUCT.md 与 Issue #31）：
  * 固定四字段之一，按 UTC+8 硬编码换算，解析不了就省略（返回 null）。
+ * 抓取端 extractDate 已把发布日期规整为 YYYY-MM-DD，走的是第 1 支；
+ * 其余分支是防御性保留，兜住旧会话记录或将来抓取格式变化，保证任何输入都不随导出设备时区跨日。
  */
 export function parseFrontMatterDate(val: string | null | undefined): string | null {
   if (!val) return null;

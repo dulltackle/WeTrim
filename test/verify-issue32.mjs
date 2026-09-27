@@ -93,6 +93,15 @@ async function run() {
         assert.strictEqual(sanitizeArticleTitle(name), `_${name}`);
       }
       assert.strictEqual(sanitizeArticleTitle('CONNECT'), 'CONNECT');
+      // Windows 只看第一个点之前的部分：带扩展名的保留名同样不可用
+      assert.strictEqual(sanitizeArticleTitle('NUL.txt'), '_NUL.txt');
+      assert.strictEqual(sanitizeArticleTitle('aux.2026 总结'), '_aux.2026 总结');
+      assert.strictEqual(sanitizeArticleTitle('CON .md'), '_CON .md');
+      assert.strictEqual(sanitizeArticleTitle('CONIN$'), '_CONIN$');
+      assert.strictEqual(sanitizeArticleTitle('conout$'), '_conout$');
+      assert.strictEqual(sanitizeArticleTitle('COM¹'), '_COM¹');
+      assert.strictEqual(sanitizeArticleTitle('CONSOLE.txt'), 'CONSOLE.txt');
+      assert.strictEqual(sanitizeArticleTitle('COM10'), 'COM10');
 
       // 2.5 清理后为空用「未命名文章」
       assert.strictEqual(sanitizeArticleTitle(''), '未命名文章');
@@ -452,6 +461,11 @@ async function run() {
     assert.strictEqual(failTitle, '导出未完成', 'Title should state "导出未完成"');
     assert(failDesc.includes('语义一致性验证文章'), 'Description must mention the attempted directory name');
     assert(failDesc.includes('QuotaExceededError') || failDesc.includes('Disk quota'), 'Description should report details');
+    assert.strictEqual(
+      failDesc.split('语义一致性验证文章').length - 1,
+      1,
+      'Residual directory name must be mentioned exactly once (no duplicated message)'
+    );
 
     // 关闭错误提示对话框
     await page.click('[data-testid="export-dialog-btn-close"]');
@@ -504,6 +518,150 @@ async function run() {
     assert(exportLabel && exportLabel.length > 0, 'Export button must have descriptive aria-label');
 
     console.log('✓ Test 10 Passed: Toolbar and preview export triggers verified');
+
+    // --------------------------------------------------------------------------
+    // Test 11: Toolbar Export Includes Edits Pending in the Debounce Window (AC 10)
+    // --------------------------------------------------------------------------
+    console.log('\n--- Test 11: Toolbar Export Includes Pending Debounced Edits ---');
+    const t11BlockId = await page.evaluate(
+      () => window.__wetrim.getState().session.snapshot.blocks.find((b) => b.included).id
+    );
+    const t11Textarea = `[data-block-id="${t11BlockId}"] [data-testid="block-editor-textarea"]`;
+    await page.click(`[data-block-id="${t11BlockId}"] [data-testid="block-action-edit"]`);
+    await page.waitForSelector(t11Textarea);
+    await page.evaluate(async () => {
+      const rootDir = await navigator.storage.getDirectory();
+      const target = await rootDir.getDirectoryHandle('toolbar-export-target', { create: true });
+      window.showDirectoryPicker = async () => target;
+    });
+    await page.type(t11Textarea, '【顶栏导出前防抖中的编辑】');
+    // 500ms 防抖到期前立即点顶栏导出
+    await page.click('[data-testid="action-export"]');
+    await page.waitForSelector('[data-testid="export-dialog"][open]', { timeout: 3000 });
+    const t11Title = await page.$eval('[data-testid="export-dialog-title"]', (el) => el.textContent.trim());
+    assert.strictEqual(t11Title, '导出完成', 'Toolbar export should succeed');
+    const t11Text = await page.evaluate(async () => {
+      delete window.showDirectoryPicker;
+      const rootDir = await navigator.storage.getDirectory();
+      const target = await rootDir.getDirectoryHandle('toolbar-export-target', { create: false });
+      const dir = await target.getDirectoryHandle('语义一致性验证文章', { create: false });
+      const file = await dir.getFileHandle('语义一致性验证文章.md', { create: false });
+      return (await file.getFile()).text();
+    });
+    assert(
+      t11Text.includes('【顶栏导出前防抖中的编辑】'),
+      'Toolbar export must include edits still pending in the debounce window'
+    );
+    await page.click('[data-testid="export-dialog-btn-close"]');
+    await page.waitForFunction(() => !document.querySelector('[data-testid="export-dialog"]'), { timeout: 3000 });
+    console.log('✓ Test 11 Passed: Toolbar export flushes pending edits before generating the file');
+
+    // --------------------------------------------------------------------------
+    // Test 12: No Overwrite When Directory Appears Between Check and Create; Re-entrancy Guard (AC 3)
+    // --------------------------------------------------------------------------
+    console.log('\n--- Test 12: Race Between Name Check and Create & Re-entrancy Guard ---');
+    const t12 = await page.evaluate(async () => {
+      const rootDir = await navigator.storage.getDirectory();
+      const raceRoot = await rootDir.getDirectoryHandle('race-target', { create: true });
+      const title = '语义一致性验证文章';
+      // 先放一份「以前的结果」
+      const prevDir = await raceRoot.getDirectoryHandle(title, { create: true });
+      const prevFile = await prevDir.getFileHandle(`${title}.md`, { create: true });
+      const w = await prevFile.createWritable();
+      await w.write('PREVIOUS');
+      await w.close();
+
+      // 模拟查名时它还不存在、建目录时已被别处创建
+      let hidden = true;
+      const racingParent = {
+        kind: 'directory',
+        async getDirectoryHandle(name, opts) {
+          if (!opts?.create && name === title && hidden) {
+            hidden = false;
+            const err = new Error('not found');
+            err.name = 'NotFoundError';
+            throw err;
+          }
+          return raceRoot.getDirectoryHandle(name, opts);
+        },
+        async getFileHandle(name, opts) {
+          return raceRoot.getFileHandle(name, opts);
+        },
+      };
+      const state = window.__wetrim.getState();
+      const res = await window.__wetrim.performExport(state.session.snapshot, undefined, {
+        parentHandle: racingParent,
+      });
+      const prevText = await (await prevFile.getFile()).text();
+
+      // 两次导出同时触发：第二次应被忽略
+      const concurrentRoot = await rootDir.getDirectoryHandle('concurrent-target', { create: true });
+      const [first, second] = await Promise.all([
+        window.__wetrim.performExport(state.session.snapshot, undefined, { parentHandle: concurrentRoot }),
+        window.__wetrim.performExport(state.session.snapshot, undefined, { parentHandle: concurrentRoot }),
+      ]);
+      const concurrentNames = [];
+      for await (const name of concurrentRoot.keys()) concurrentNames.push(name);
+
+      return { res, prevText, first, second, concurrentNames };
+    });
+    assert.strictEqual(t12.res.ok, true, 'Export should still succeed after race');
+    assert.strictEqual(t12.res.articleDirName, '语义一致性验证文章 (2)', 'Race must fall through to the next suffix');
+    assert.strictEqual(t12.prevText, 'PREVIOUS', 'Previous result must not be overwritten');
+    assert.strictEqual(t12.first.ok, true, 'First concurrent export succeeds');
+    assert.strictEqual(t12.second.busy, true, 'Second concurrent export is rejected as busy');
+    assert.deepStrictEqual(t12.concurrentNames, ['语义一致性验证文章'], 'Only one directory created by concurrent triggers');
+    await page.waitForSelector('[data-testid="export-dialog"][open]', { timeout: 3000 });
+    await page.click('[data-testid="export-dialog-btn-close"]');
+    await page.waitForFunction(() => !document.querySelector('[data-testid="export-dialog"]'), { timeout: 3000 });
+    console.log('✓ Test 12 Passed: No overwrite on check/create race; concurrent triggers guarded');
+
+    // --------------------------------------------------------------------------
+    // Test 13: Failure Copy Does Not Blame Previous Results (AC 12)
+    // --------------------------------------------------------------------------
+    console.log('\n--- Test 13: Failure Copy Per Stage ---');
+    // 查名阶段失败：尚未建目录，不能把同名的旧结果说成残留
+    await page.evaluate(async () => {
+      const deniedParent = {
+        kind: 'directory',
+        async getDirectoryHandle() {
+          const err = new Error('Permission denied (simulated)');
+          err.name = 'NotAllowedError';
+          throw err;
+        },
+      };
+      const state = window.__wetrim.getState();
+      await window.__wetrim.performExport(state.session.snapshot, undefined, { parentHandle: deniedParent });
+    });
+    await page.waitForSelector('[data-testid="export-dialog"][open]', { timeout: 3000 });
+    const t13CheckTitle = await page.$eval('[data-testid="export-dialog-title"]', (el) => el.textContent.trim());
+    const t13CheckDesc = await page.$eval('[data-testid="export-dialog-desc"]', (el) => el.textContent.trim());
+    assert.strictEqual(t13CheckTitle, '导出未完成');
+    assert(!t13CheckDesc.includes('残留'), 'Check-name failure must not claim a residual directory');
+    assert(t13CheckDesc.includes('Permission denied'), 'Check-name failure should report details');
+    await page.click('[data-testid="export-dialog-btn-close"]');
+    await page.waitForFunction(() => !document.querySelector('[data-testid="export-dialog"]'), { timeout: 3000 });
+
+    // 目录选择本身失败（非取消）：单独文案，不提磁盘与残留
+    await page.evaluate(async () => {
+      const state = window.__wetrim.getState();
+      await window.__wetrim.performExport(state.session.snapshot, undefined, {
+        showDirectoryPicker: async () => {
+          const err = new Error('Picker blocked (simulated)');
+          err.name = 'SecurityError';
+          throw err;
+        },
+      });
+    });
+    await page.waitForSelector('[data-testid="export-dialog"][open]', { timeout: 3000 });
+    const t13PickTitle = await page.$eval('[data-testid="export-dialog-title"]', (el) => el.textContent.trim());
+    const t13PickDesc = await page.$eval('[data-testid="export-dialog-desc"]', (el) => el.textContent.trim());
+    assert.strictEqual(t13PickTitle, '无法选择文件夹');
+    assert(!t13PickDesc.includes('残留') && !t13PickDesc.includes('磁盘'), 'Pick failure copy must not mention residue or disk');
+    assert(t13PickDesc.includes('Picker blocked'), 'Pick failure should report details');
+    await page.click('[data-testid="export-dialog-btn-close"]');
+    await page.waitForFunction(() => !document.querySelector('[data-testid="export-dialog"]'), { timeout: 3000 });
+    console.log('✓ Test 13 Passed: Failure copy distinguishes pick / check-name / write stages');
 
     console.log('\n============================================================');
     console.log('==> All Issue #32 Verification Tests Passed Successfully! <==');
