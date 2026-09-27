@@ -32,8 +32,19 @@ import {
   exportArticleWithPicker,
   writeArticleDirectory,
   type ExportArticleResult,
+  type ExportArticleOptions,
 } from './export/write-directory';
 import { sanitizeArticleTitle } from './export/sanitize-filename';
+import {
+  collectExportImageReferences,
+  formatImageBaseName,
+} from './export/collect-images';
+import {
+  detectImageFormat,
+  fetchImageResource,
+  fetchAllExportImages,
+} from './export/fetch-images';
+import { rewriteMarkdownImagePaths } from './export/rewrite-markdown';
 import {
   buildMarkdown,
   buildResultFile,
@@ -349,14 +360,11 @@ export const App: React.FC = () => {
     });
   };
 
-  // Issue #32: 导出 Markdown 与目录写入操作处理
+  // Issue #32 & Issue #33: 导出 Markdown 与目录写入操作处理
   const performExport = async (
     targetSnapshot: ArticleSnapshot,
     targetResultFile?: ResultFile,
-    options?: {
-      showDirectoryPicker?: (opts?: { mode?: 'read' | 'readwrite' }) => Promise<FileSystemDirectoryHandle>;
-      parentHandle?: FileSystemDirectoryHandle;
-    }
+    options?: ExportArticleOptions
   ): Promise<ExportArticleResult> => {
     if (exportInFlightRef.current) {
       return { ok: false, busy: true, message: WORKBENCH_COPY.exportBusy };
@@ -368,6 +376,8 @@ export const App: React.FC = () => {
         resultFile: targetResultFile,
         showDirectoryPicker: options?.showDirectoryPicker,
         parentHandle: options?.parentHandle,
+        onProgress: options?.onProgress,
+        fetchFn: options?.fetchFn,
       });
     } finally {
       exportInFlightRef.current = false;
@@ -741,6 +751,12 @@ export const App: React.FC = () => {
           sanitizeArticleTitle,
           writeArticleDirectory,
           exportArticleWithPicker,
+          collectExportImageReferences,
+          formatImageBaseName,
+          detectImageFormat,
+          fetchImageResource,
+          fetchAllExportImages,
+          rewriteMarkdownImagePaths,
           performExport,
           handleToolbarExport,
           exportBtnRef,

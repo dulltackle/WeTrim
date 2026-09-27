@@ -1,6 +1,14 @@
 import type { ArticleSnapshot } from '../../shared/types';
 import { buildResultFile, type ResultFile } from './build-markdown';
 import { sanitizeArticleTitle } from './sanitize-filename';
+import { collectExportImageReferences } from './collect-images';
+import {
+  fetchAllExportImages,
+  type FetchProgress,
+  type FetchedImageSuccess,
+  type FetchedImageFailure,
+} from './fetch-images';
+import { rewriteMarkdownImagePaths } from './rewrite-markdown';
 import { EXPORT_COPY } from '../copy/export';
 
 export interface WriteDirectorySuccess {
@@ -9,6 +17,9 @@ export interface WriteDirectorySuccess {
   markdownFileName: string;
   articleDirHandle: FileSystemDirectoryHandle;
   parentHandle: FileSystemDirectoryHandle;
+  localizedImagesCount?: number;
+  totalImagesCount?: number;
+  failedImagesCount?: number;
 }
 
 export interface WriteDirectoryFailure {
@@ -26,10 +37,15 @@ export interface WriteDirectoryFailure {
 
 export type WriteDirectoryResult = WriteDirectorySuccess | WriteDirectoryFailure;
 
-export interface ExportArticleOptions {
+export interface WriteDirectoryOptions {
+  resultFile?: ResultFile;
+  onProgress?: (progress: FetchProgress) => void;
+  fetchFn?: typeof fetch;
+}
+
+export interface ExportArticleOptions extends WriteDirectoryOptions {
   parentHandle?: FileSystemDirectoryHandle;
   showDirectoryPicker?: (options?: { mode?: 'read' | 'readwrite' }) => Promise<FileSystemDirectoryHandle>;
-  resultFile?: ResultFile;
 }
 
 export type ExportArticleResult = WriteDirectoryResult;
@@ -122,17 +138,56 @@ async function directoryHasEntries(dir: FileSystemDirectoryHandle): Promise<bool
 export async function writeArticleDirectory(
   parentHandle: FileSystemDirectoryHandle,
   snapshot: ArticleSnapshot,
-  options?: { resultFile?: ResultFile }
+  options?: WriteDirectoryOptions
 ): Promise<WriteDirectoryResult> {
   // 1. 生成本次产物：从一次固定的当前内容生成
-  const resultFile = options?.resultFile ?? buildResultFile(snapshot);
+  const baseResultFile = options?.resultFile ?? buildResultFile(snapshot);
 
   // 2. 清洗结果没有非空正文时提示「没有可导出的正文」，不创建只含来源信息的文件
-  if (!hasExportableBody(resultFile)) {
+  if (!hasExportableBody(baseResultFile)) {
     return emptyBodyFailure();
   }
 
-  // 3. 文件名清理：保留中文与 emoji，不反写 ArticleSource.title
+  // 3. 从保留块当前内容中的有效图片引用计算集合（ARCHITECTURE.md §10.1 与 Issue #33）
+  const imageRefs = collectExportImageReferences(baseResultFile.body, snapshot.source?.url);
+
+  // 4. 下载图片字节并判定格式（全页自己 fetch，service worker 不经手）
+  let localizedUrlMap = new Map<string, string>();
+  let succeededImages: FetchedImageSuccess[] = [];
+  let failedImages: FetchedImageFailure[] = [];
+
+  if (imageRefs.length > 0) {
+    try {
+      const fetchResult = await fetchAllExportImages(imageRefs, {
+        onProgress: options?.onProgress,
+        fetchFn: options?.fetchFn,
+      });
+      succeededImages = fetchResult.succeeded;
+      failedImages = fetchResult.failed;
+      localizedUrlMap = fetchResult.urlToRelativePathMap;
+    } catch {
+      // 容错：个别网络异常不中断导出流程
+    }
+  }
+
+  // 5. 改写 Markdown 副本（成功本地化的改为 images/…，未成功的保留原 URL，其余文本逐字一致，不回写清洗会话）
+  let finalMarkdownText: string;
+  if (localizedUrlMap.size > 0) {
+    const rewrittenBody = rewriteMarkdownImagePaths(
+      baseResultFile.body,
+      localizedUrlMap,
+      snapshot.source?.url
+    );
+    if (baseResultFile.frontMatter) {
+      finalMarkdownText = `${baseResultFile.frontMatter}\n\n${rewrittenBody}\n`;
+    } else {
+      finalMarkdownText = `${rewrittenBody}\n`;
+    }
+  } else {
+    finalMarkdownText = baseResultFile.text;
+  }
+
+  // 6. 文件名清理：保留中文与 emoji，不反写 ArticleSource.title
   const baseName = sanitizeArticleTitle(snapshot.source?.title);
   const markdownFileName = `${baseName}.md`;
 
@@ -140,7 +195,7 @@ export async function writeArticleDirectory(
   let articleDirHandle: FileSystemDirectoryHandle | null = null;
   let nextCounter = 1;
 
-  // 4. 重名时依次找 <文章文件名> (2)、(3)；后缀只用于外层目录
+  // 7. 重名时依次找 <文章文件名> (2)、(3)；后缀只用于外层目录
   //    查名与建目录之间若同名目录被别处创建，换下一个名字重试
   for (let attempt = 0; attempt < MAX_CREATE_ATTEMPTS && !articleDirHandle; attempt++) {
     try {
@@ -159,7 +214,7 @@ export async function writeArticleDirectory(
 
     let created: FileSystemDirectoryHandle;
     try {
-      // 5. 创建文章目录
+      // 创建文章目录
       created = await parentHandle.getDirectoryHandle(articleDirName, { create: true });
     } catch (err: unknown) {
       return {
@@ -193,23 +248,53 @@ export async function writeArticleDirectory(
     };
   }
 
+  // 8. 写入图片：没有本地图片时不创建 images/；有本地图片时创建 images/ 并写入字节
+  if (succeededImages.length > 0) {
+    try {
+      const imagesDirHandle = await articleDirHandle.getDirectoryHandle('images', { create: true });
+      for (const img of succeededImages) {
+        const imgFileHandle = await imagesDirHandle.getFileHandle(img.fileName, { create: true });
+        const imgWritable = await imgFileHandle.createWritable();
+        try {
+          await imgWritable.write(img.bytes as unknown as BufferSource);
+          await imgWritable.close();
+        } catch (err) {
+          try {
+            await imgWritable.abort();
+          } catch {}
+          throw err;
+        }
+      }
+    } catch (err: unknown) {
+      return {
+        ok: false,
+        error: err as Error,
+        message: `写入图片文件未完成: ${errorMessage(err)}`,
+        attemptedDirName: articleDirName,
+        stage: 'write_file',
+      };
+    }
+  }
+
   let writable: FileSystemWritableFileStream | null = null;
   try {
-    // 6. 写入 Markdown 文件，结构为 <文章文件名>/<文章文件名>.md
+    // 9. 写入 Markdown 文件，结构为 <文章文件名>/<文章文件名>.md
     // 即使外层目录带 (2) 后缀，内部 Markdown 文件仍使用原清理后的文件名
     const fileHandle = await articleDirHandle.getFileHandle(markdownFileName, { create: true });
     writable = await fileHandle.createWritable();
-    await writable.write(resultFile.text);
+    await writable.write(finalMarkdownText);
     await writable.close();
     writable = null;
 
-    // 本票不含图片下载（#33），因此「没有本地图片时不创建 images/」成立
     return {
       ok: true,
       articleDirName,
       markdownFileName,
       articleDirHandle,
       parentHandle,
+      localizedImagesCount: succeededImages.length,
+      failedImagesCount: failedImages.length,
+      totalImagesCount: imageRefs.length,
     };
   } catch (err: unknown) {
     if (writable) {
@@ -251,11 +336,12 @@ export async function exportArticleWithPicker(
   let parentHandle = options?.parentHandle;
 
   if (!parentHandle) {
-    const win = typeof window !== 'undefined'
-      ? (window as unknown as {
-          showDirectoryPicker?: (options?: { mode?: 'read' | 'readwrite' }) => Promise<FileSystemDirectoryHandle>;
-        })
-      : null;
+    const win =
+      typeof window !== 'undefined'
+        ? (window as unknown as {
+            showDirectoryPicker?: (options?: { mode?: 'read' | 'readwrite' }) => Promise<FileSystemDirectoryHandle>;
+          })
+        : null;
     const pickerFn = options?.showDirectoryPicker ?? win?.showDirectoryPicker?.bind(win);
 
     if (!pickerFn) {
@@ -298,5 +384,7 @@ export async function exportArticleWithPicker(
 
   return await writeArticleDirectory(parentHandle, snapshot, {
     resultFile,
+    onProgress: options?.onProgress,
+    fetchFn: options?.fetchFn,
   });
 }
