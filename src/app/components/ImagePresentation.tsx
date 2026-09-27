@@ -1,7 +1,7 @@
 import React, {
   memo,
   useCallback,
-  useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from 'react';
@@ -53,48 +53,42 @@ interface ImageViewerModalProps {
 }
 
 const ImageViewerModal: React.FC<ImageViewerModalProps> = ({ src, alt, onClose }) => {
+  const dialogRef = useRef<HTMLDialogElement | null>(null);
   const closeBtnRef = useRef<HTMLButtonElement | null>(null);
 
-  useEffect(() => {
-    closeBtnRef.current?.focus();
-
-    const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        e.preventDefault();
-        onClose();
-      }
-    };
-
-    window.addEventListener('keydown', handleGlobalKeyDown);
-    return () => {
-      window.removeEventListener('keydown', handleGlobalKeyDown);
-    };
-  }, [onClose]);
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      e.stopPropagation();
-      e.preventDefault();
-      onClose();
+  // 原生 showModal()：浏览器负责把焦点限制在浮层内、让背后页面 inert，与其余对话框一致
+  useLayoutEffect(() => {
+    const dialog = dialogRef.current;
+    if (dialog && !dialog.open) {
+      dialog.showModal();
     }
+    closeBtnRef.current?.focus();
+  }, []);
+
+  // 先关闭模态、解除背后页面的 inert，再交给 onClose 卸载并把焦点还给缩略图；顺序反了焦点会落空
+  const close = () => {
+    dialogRef.current?.close();
+    onClose();
   };
 
-  const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleBackdropClick = (e: React.MouseEvent<HTMLElement>) => {
     if (e.target === e.currentTarget) {
-      onClose();
+      close();
     }
   };
 
   return (
-    <div
+    <dialog
+      ref={dialogRef}
       className="image-viewer-overlay"
       data-testid="image-viewer-overlay"
-      role="dialog"
-      aria-modal="true"
       aria-label={IMAGE_COPY.viewerTitle}
       {...searchIgnoreProps}
-      onKeyDown={handleKeyDown}
+      onCancel={(e) => {
+        // Esc：阻止浏览器自行关闭，走同一条关闭路径
+        e.preventDefault();
+        close();
+      }}
       onClick={handleBackdropClick}
     >
       <div className="image-viewer-toolbar">
@@ -105,7 +99,7 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({ src, alt, onClose }
           className="image-viewer-close-btn"
           data-testid="image-viewer-close-btn"
           aria-label={IMAGE_COPY.viewerCloseAria}
-          onClick={onClose}
+          onClick={close}
         >
           {IMAGE_COPY.viewerClose}
         </button>
@@ -113,12 +107,12 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({ src, alt, onClose }
       <div className="image-viewer-body" onClick={handleBackdropClick}>
         <img
           src={src}
-          alt={alt}
+          alt={alt || IMAGE_COPY.defaultImageAlt}
           className="image-viewer-full-img"
           data-testid="image-viewer-full-img"
         />
       </div>
-    </div>
+    </dialog>
   );
 };
 

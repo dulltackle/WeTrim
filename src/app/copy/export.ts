@@ -35,4 +35,8 @@ export const EXPORT_COPY = {
     `没能打开或使用所选文件夹，本次没有写入任何内容。${
       errorMsg ? `（错误详情：${errorMsg}）` : ''
     }`,
+  stampSuccess: '印毕',
+  stampError: '未完',
+  stampEmpty: '空白',
+  dialogCloseAria: '关闭提示',
 } as const;

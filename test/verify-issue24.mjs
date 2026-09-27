@@ -200,7 +200,8 @@ async function run() {
     assert.strictEqual(corruptedState.viewMode, 'corruptedRecord', 'View mode must be "corruptedRecord"');
     assert.strictEqual(corruptedState.hasCard, true, 'Corrupted record shell card must be rendered');
     assert(corruptedState.quote?.includes('缺失 snapshotId'), 'Corrupted card must display details');
-    assert(corruptedState.tip?.includes('#35'), 'Corrupted card must mention #35 placeholder');
+    assert(corruptedState.tip?.includes('原记录已妥善保留'), 'Corrupted card must state the original record is kept');
+    assert(!corruptedState.tip?.includes('#35'), 'Corrupted card must not expose internal issue numbers to users');
 
     console.log('✓ Test 2 Passed: 4-state state machine renders correctly');
 

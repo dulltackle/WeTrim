@@ -1,16 +1,41 @@
+/*
+ * 颜色 token：界面只允许引用这里的变量。
+ * 文字色（ink / *-ink / 主色本身）在 sheet、canvas 与对应 subtle 底色上都 ≥ 4.5:1；
+ * 纯色块（--amber、--ok）只作圆点、描边与徽章底色，不作浅底上的文字色。
+ */
 :root {
   --canvas-bg: #eef1ef;
   --sheet-bg: #fafbf9;
+  --sheet-bg-alt: #fbfbf9;
   --sheet-border: #d4dad4;
+  --surface-raised: #ffffff;
+  --surface-muted: #f7f9f7;
+  --surface-hover: #eef2ee;
   --ink-primary: #1a1a18;
   --ink-secondary: #585d56;
-  --ink-tertiary: #8a9088;
+  --ink-tertiary: #666c64;
+  --ink-inverse: #ffffff;
   --vermilion: #c8352b;
+  --vermilion-strong: #ab2c23;
   --vermilion-subtle: #faeceb;
+  --vermilion-subtle-hover: #f7dedc;
+  --vermilion-border: #eec4c0;
   --prussian-blue: #2f5fa8;
+  --prussian-blue-strong: #244b87;
   --prussian-blue-subtle: #ebf1fa;
+  --prussian-blue-subtle-hover: #dde7f5;
+  --prussian-blue-border: #c3d3eb;
   --amber: #fa9d3b;
+  --amber-ink: #a35200;
   --amber-subtle: #fdf5ea;
+  --amber-border: #f5d3a8;
+  --ok: #07c160;
+  --ok-ink: #2e7d32;
+  --highlight-yellow: #ffd100;
+  --cmyk-cyan: #00a3e0;
+  --cmyk-magenta: #e4007c;
+  --cmyk-yellow: #ffd100;
+  --cmyk-black: #1a1a18;
   --registration-hairline: #c4cdc4;
   --margin-track-width: 84px;
 }
@@ -75,7 +100,7 @@ body {
   font-size: 12px;
   color: var(--ink-secondary);
   min-width: 0;
-  transition: all 0.2s ease;
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .workbench-header.is-sticky {
@@ -140,10 +165,10 @@ body {
   width: 100%;
   height: 28px;
   font-size: 12px;
-  padding: 3px 22px 3px 8px;
+  padding: 3px 28px 3px 8px;
   border: 1px solid var(--sheet-border);
   border-radius: 2px;
-  background-color: #fff;
+  background-color: var(--surface-raised);
   color: var(--ink-primary);
   font-family: inherit;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
@@ -161,13 +186,15 @@ body {
 
 .search-clear-btn {
   position: absolute;
-  right: 5px;
+  right: 2px;
+  min-width: 24px;
+  min-height: 24px;
   background: none;
   border: none;
   cursor: pointer;
   font-size: 13px;
   color: var(--ink-tertiary);
-  padding: 0 3px;
+  padding: 0;
   line-height: 1;
   display: flex;
   align-items: center;
@@ -183,7 +210,7 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  background-color: #fff;
+  background-color: var(--surface-raised);
   border: 1px solid var(--sheet-border);
   border-radius: 2px;
   padding: 2px 4px;
@@ -199,23 +226,23 @@ body {
 }
 
 .search-nav-btn {
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background-color: #f7f9f7;
+  background-color: var(--surface-muted);
   border: 1px solid var(--sheet-border);
   border-radius: 2px;
   cursor: pointer;
   font-size: 11px;
   font-weight: 600;
   color: var(--ink-secondary);
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 .search-nav-btn:hover:not(:disabled) {
-  background-color: #eef2ee;
+  background-color: var(--surface-hover);
   color: var(--ink-primary);
 }
 
@@ -263,7 +290,7 @@ body {
 }
 
 .search-switch-btn {
-  background-color: #fff;
+  background-color: var(--surface-raised);
   border: 1px solid var(--sheet-border);
   border-radius: 2px;
   color: var(--ink-primary);
@@ -274,7 +301,7 @@ body {
 }
 
 .search-switch-btn:hover {
-  background-color: #f7f9f7;
+  background-color: var(--surface-muted);
   border-color: var(--ink-secondary);
 }
 
@@ -293,7 +320,7 @@ body {
   text-align: center;
   border: 1px solid var(--sheet-border);
   border-radius: 2px;
-  background-color: #fff;
+  background-color: var(--surface-raised);
   color: var(--ink-primary);
   font-family: inherit;
 }
@@ -309,16 +336,16 @@ body {
   padding: 0 8px;
   font-size: 11px;
   font-weight: 500;
-  background-color: #f7f9f7;
+  background-color: var(--surface-muted);
   border: 1px solid var(--sheet-border);
   border-radius: 2px;
   color: var(--ink-secondary);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 .order-jump-btn:hover {
-  background-color: #eef2ee;
+  background-color: var(--surface-hover);
   color: var(--ink-primary);
 }
 
@@ -332,7 +359,7 @@ body {
   top: calc(100% + 6px);
   left: 0;
   z-index: 60;
-  background-color: #fff;
+  background-color: var(--surface-raised);
   border: 1px solid var(--sheet-border);
   border-radius: 2px;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
@@ -361,46 +388,13 @@ body {
 }
 
 .order-jump-switch-btn:hover {
-  background-color: #f7dedc;
+  background-color: var(--vermilion-subtle-hover);
   border-color: var(--vermilion);
 }
 
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(-2px); }
   to { opacity: 1; transform: translateY(0); }
-}
-
-@media (max-width: 720px) {
-  .header-nav-toolbar {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
-  }
-  .nav-toolbar-main {
-    width: 100%;
-  }
-  .nav-toolbar-actions {
-    width: 100%;
-    justify-content: flex-end;
-  }
-  /* 窄屏批注栏收起与版心边距适配（Issue #30 设计简报 §6） */
-  .margin-track {
-    display: none !important;
-  }
-  .main-bed {
-    padding: 24px 16px 40px !important;
-  }
-  /* 批注标记在窄屏下退回块内 meta 行下方 */
-  .block-margin-note-markers {
-    position: static !important;
-    display: flex !important;
-    flex-direction: row !important;
-    flex-wrap: wrap !important;
-    align-items: center !important;
-    gap: 6px !important;
-    margin-top: 4px !important;
-    margin-bottom: 2px !important;
-  }
 }
 
 .ticket-slug {
@@ -412,7 +406,7 @@ body {
 
 .ticket-tag {
   background-color: var(--vermilion);
-  color: #fff;
+  color: var(--ink-inverse);
   font-size: 11px;
   font-weight: 600;
   padding: 2px 6px;
@@ -433,6 +427,11 @@ body {
   border-radius: 50%;
   background-color: var(--prussian-blue);
 }
+
+.status-dot-ok { background-color: var(--ok); }
+.status-dot-pending { background-color: var(--amber); }
+.status-dot-error { background-color: var(--vermilion); }
+.status-dot-muted { background-color: var(--ink-secondary); }
 
 .header-status-group {
   display: flex;
@@ -459,7 +458,7 @@ body {
 }
 
 .save-status-dot-saved {
-  background-color: #07c160;
+  background-color: var(--ok);
 }
 
 .save-status-dot-saving {
@@ -487,7 +486,7 @@ button.save-status-error {
 }
 
 button.save-status-error:hover {
-  background-color: #f7dedc;
+  background-color: var(--vermilion-subtle-hover);
   border-color: var(--vermilion);
 }
 
@@ -531,13 +530,13 @@ button.save-status-error:focus-visible {
   border-radius: 1px;
 }
 
-.proof-marks-info {
-  font-size: 11px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  color: var(--ink-tertiary);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
+.cmyk-swatch-cyan { background-color: var(--cmyk-cyan); }
+.cmyk-swatch-magenta { background-color: var(--cmyk-magenta); }
+.cmyk-swatch-yellow { background-color: var(--cmyk-yellow); }
+.cmyk-swatch-black { background-color: var(--cmyk-black); }
+.cmyk-swatch-vermilion { background-color: var(--vermilion); }
+.cmyk-swatch-prussian { background-color: var(--prussian-blue); }
+
 
 /* 套准十字线 */
 .reg-cross {
@@ -594,29 +593,8 @@ button.save-status-error:focus-visible {
   background-color: rgba(0, 0, 0, 0.005);
 }
 
-.track-header {
-  font-size: 10px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  color: var(--ink-tertiary);
-  letter-spacing: 0.1em;
-  writing-mode: vertical-rl;
-  text-orientation: mixed;
-}
 
-.track-stub {
-  width: 100%;
-  height: 1px;
-  background-color: var(--sheet-border);
-}
 
-.line-numbers {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 11px;
-  color: var(--ink-tertiary);
-}
 
 /* 右侧版心 */
 .main-bed {
@@ -654,7 +632,7 @@ button.save-status-error:focus-visible {
 
 /* 渲染的三步指引 Markdown 内容 */
 .steps-container {
-  background-color: #fff;
+  background-color: var(--surface-raised);
   border: 1px solid var(--sheet-border);
   border-radius: 3px;
   padding: 24px 28px;
@@ -713,24 +691,7 @@ button.save-status-error:focus-visible {
 }
 
 /* 底部防差错与自检证明栏 */
-.proof-footer {
-  padding: 12px 20px;
-  border-top: 1px solid var(--sheet-border);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 11px;
-  color: var(--ink-tertiary);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-}
 
-.proof-stamp {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--prussian-blue);
-  font-weight: 500;
-}
 
 /* ==========================================================================
    Issue #16 UI 状态样式：夹签、审读签条、退单与键盘可达
@@ -745,7 +706,6 @@ button.save-status-error:focus-visible {
   max-width: 380px;
   background-color: var(--vermilion-subtle);
   border: 1px solid rgba(200, 53, 43, 0.35);
-  border-left: 4px solid var(--vermilion);
   box-shadow: 0 4px 16px rgba(200, 53, 43, 0.12), 0 1px 3px rgba(0, 0, 0, 0.05);
   border-radius: 2px;
   animation: slideInNote 0.25s cubic-bezier(0.16, 1, 0.3, 1);
@@ -783,6 +743,8 @@ button.save-status-error:focus-visible {
   font-size: 16px;
   color: var(--ink-secondary);
   cursor: pointer;
+  min-width: 28px;
+  min-height: 28px;
   padding: 2px 6px;
   border-radius: 2px;
   line-height: 1;
@@ -856,7 +818,6 @@ button.save-status-error:focus-visible {
   gap: 10px;
   background-color: var(--prussian-blue-subtle);
   border: 1px solid rgba(47, 95, 168, 0.3);
-  border-left: 3px solid var(--prussian-blue);
   padding: 8px 14px;
   border-radius: 2px;
   font-size: 13px;
@@ -867,7 +828,7 @@ button.save-status-error:focus-visible {
 
 .note-badge {
   background-color: var(--prussian-blue);
-  color: #fff;
+  color: var(--ink-inverse);
   font-size: 11px;
   font-weight: 600;
   padding: 1px 6px;
@@ -886,7 +847,7 @@ button.save-status-error:focus-visible {
 }
 
 .stat-card {
-  background: #fff;
+  background: var(--surface-raised);
   border: 1px solid var(--sheet-border);
   padding: 12px 16px;
   border-radius: 2px;
@@ -924,30 +885,30 @@ button.save-status-error:focus-visible {
   padding: 8px 18px;
   border-radius: 2px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
   font-family: inherit;
 }
 
 .action-return {
-  background-color: #fff;
+  background-color: var(--surface-raised);
   border: 1px solid var(--sheet-border);
   color: var(--ink-primary);
 }
 
 .action-return:hover {
   border-color: var(--ink-secondary);
-  background-color: #f7f9f7;
+  background-color: var(--surface-muted);
 }
 
 .action-retry {
   background-color: var(--vermilion);
   border: 1px solid var(--vermilion);
-  color: #fff;
+  color: var(--ink-inverse);
 }
 
 .action-retry:hover {
-  background-color: #b52e25;
-  border-color: #b52e25;
+  background-color: var(--vermilion-strong);
+  border-color: var(--vermilion-strong);
 }
 
 .action-btn:focus-visible,
@@ -977,9 +938,8 @@ button.save-status-error:focus-visible {
 
 /* 3. 审校退单 (Return Notice Card) */
 .return-notice-card {
-  background: #fff;
+  background: var(--surface-raised);
   border: 1px solid var(--sheet-border);
-  border-left: 4px solid var(--vermilion);
   border-radius: 2px;
   padding: 32px 36px;
   position: relative;
@@ -1022,7 +982,7 @@ button.save-status-error:focus-visible {
 }
 
 .notice-verbatim-quote {
-  background-color: #fbfbf9;
+  background-color: var(--sheet-bg-alt);
   border-left: 3px solid var(--sheet-border);
   padding: 14px 18px;
   font-size: 15px;
@@ -1036,9 +996,8 @@ button.save-status-error:focus-visible {
 
 /* 4. 整篇级失败卡片 (Article Failure Card) */
 .article-failure-card {
-  background: #fff;
+  background: var(--surface-raised);
   border: 1px solid var(--sheet-border);
-  border-left: 4px solid var(--vermilion);
   border-radius: 2px;
   padding: 32px 36px;
   position: relative;
@@ -1071,7 +1030,7 @@ button.save-status-error:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  background-color: #fff;
+  background-color: var(--surface-raised);
   border: 1px solid var(--sheet-border);
   padding: 14px 18px;
   border-radius: 2px;
@@ -1113,7 +1072,7 @@ button.save-status-error:focus-visible {
   padding: 2px 8px;
   border-radius: 2px;
   border: 1px solid var(--sheet-border);
-  background-color: #f7f9f7;
+  background-color: var(--surface-muted);
   color: var(--ink-secondary);
   font-variant-numeric: tabular-nums;
   line-height: 1.4;
@@ -1121,23 +1080,23 @@ button.save-status-error:focus-visible {
 
 .filter-tab {
   cursor: pointer;
-  background-color: #f7f9f7;
+  background-color: var(--surface-muted);
   border: 1px solid var(--sheet-border);
   color: var(--ink-secondary);
   font-family: inherit;
   user-select: none;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 .filter-tab:hover {
-  background-color: #eef2ee;
+  background-color: var(--surface-hover);
   color: var(--ink-primary);
   border-color: var(--ink-tertiary);
 }
 
 .filter-tab.is-active {
   background-color: var(--ink-primary);
-  color: #fff;
+  color: var(--ink-inverse);
   border-color: var(--ink-primary);
   font-weight: 600;
 }
@@ -1147,17 +1106,6 @@ button.save-status-error:focus-visible {
   outline-offset: 1px;
 }
 
-.chip-paragraph { border-color: #d1d5db; color: #374151; }
-.chip-heading   { border-color: #93c5fd; background-color: #eff6ff; color: #1d4ed8; }
-.chip-image     { border-color: #86efac; background-color: #f0fdf4; color: #15803d; }
-.chip-code      { border-color: #fde047; background-color: #fefce8; color: #854d0e; }
-.chip-list      { border-color: #c4b5fd; background-color: #f5f3ff; color: #6d28d9; }
-.chip-quote     { border-color: #fdba74; background-color: #fff7ed; color: #c2410c; }
-.chip-table     { border-color: #67e8f9; background-color: #ecfeff; color: #0e7490; }
-.chip-divider   { border-color: #cbd5e1; color: #64748b; }
-.chip-formula   { border-color: #f472b6; background-color: #fdf2f8; color: #be185d; }
-.chip-richMedia { border-color: #fca5a5; background-color: #fef2f2; color: #b91c1c; }
-.chip-unknown   { border-color: #e5e7eb; background-color: #f9fafb; color: #9ca3af; }
 
 .block-items-stream {
   display: flex;
@@ -1170,7 +1118,7 @@ button.save-status-error:focus-visible {
 .block-item {
   position: relative;
   scroll-margin-top: var(--sticky-header-offset, 110px);
-  background-color: #fff;
+  background-color: var(--surface-raised);
   border: 1px solid var(--sheet-border);
   border-radius: 2px;
   padding: 10px 14px;
@@ -1198,7 +1146,7 @@ button.save-status-error:focus-visible {
   background-color: var(--ink-primary); /* 其他命中：墨色 */
   border-radius: 2px 0 0 2px;
   pointer-events: none;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease;
 }
 
 .block-item[data-is-current-hit="true"]::before {
@@ -1212,13 +1160,13 @@ button.save-status-error:focus-visible {
 
 /* CSS Custom Highlight API 高亮样式 (Issue #29 §3, §7) */
 ::highlight(search-hit) {
-  background-color: #ffd100; /* 校样黄底 */
+  background-color: var(--highlight-yellow); /* 校样黄底 */
   color: var(--ink-primary);
 }
 
 ::highlight(search-hit-current) {
   background-color: var(--vermilion); /* 当前处朱红底 */
-  color: #ffffff;
+  color: var(--ink-inverse);
 }
 
 .block-item:hover {
@@ -1241,24 +1189,19 @@ button.save-status-error:focus-visible {
 }
 
 .block-type-badge {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   padding: 1px 6px;
   border-radius: 2px;
-  border: 1px solid transparent;
+  border: 1px solid var(--sheet-border);
+  background-color: var(--surface-muted);
+  color: var(--ink-secondary);
 }
 
-.block-type-paragraph { background-color: #f3f4f6; color: #374151; }
-.block-type-heading   { background-color: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
-.block-type-image     { background-color: #f0fdf4; color: #15803d; border-color: #bbf7d0; }
-.block-type-code      { background-color: #fefce8; color: #854d0e; border-color: #fef08a; }
-.block-type-list      { background-color: #f5f3ff; color: #6d28d9; border-color: #ddd6fe; }
-.block-type-quote     { background-color: #fff7ed; color: #c2410c; border-color: #fed7aa; }
-.block-type-table     { background-color: #ecfeff; color: #0e7490; border-color: #a5f3fc; }
-.block-type-divider   { background-color: #f1f5f9; color: #64748b; }
-.block-type-formula   { background-color: #fdf2f8; color: #be185d; border-color: #fbcfe8; }
-.block-type-richMedia { background-color: #fef2f2; color: #b91c1c; border-color: #fecaca; }
-.block-type-unknown   { background-color: #f9fafb; color: #9ca3af; }
+/* 块类型只靠文字区分，不再按类型上色；未知内容用虚线框提示它是占位 */
+.block-type-unknown {
+  border-style: dashed;
+}
 
 .block-status-tag {
   margin-left: auto;
@@ -1269,7 +1212,7 @@ button.save-status-error:focus-visible {
 
 .block-html-summary {
   font-size: 11px;
-  background-color: #fbfbf9;
+  background-color: var(--sheet-bg-alt);
   border: 1px solid rgba(0, 0, 0, 0.04);
   padding: 6px 10px;
   border-radius: 2px;
@@ -1318,7 +1261,7 @@ button.save-status-error:focus-visible {
 .margin-note-marker.marker-code-table-degraded {
   background-color: var(--amber-subtle);
   border: 1px solid rgba(250, 157, 59, 0.45);
-  color: #a35200;
+  color: var(--amber-ink);
 }
 
 .margin-note-marker.marker-code-richmedia-placeholder {
@@ -1357,42 +1300,41 @@ button.save-status-error:focus-visible {
 .block-note.note-code-table-degraded {
   background-color: var(--amber-subtle);
   border: 1px solid rgba(250, 157, 59, 0.35);
-  border-left: 3px solid var(--amber);
   color: var(--ink-primary);
 }
 .block-note.note-code-table-degraded .note-badge {
   background-color: var(--amber);
-  color: #fff;
+  color: var(--ink-primary);
 }
 
 .block-note.note-code-richmedia-placeholder {
   background-color: var(--prussian-blue-subtle);
   border: 1px solid rgba(47, 95, 168, 0.25);
-  border-left: 3px solid var(--prussian-blue);
   color: var(--ink-primary);
 }
 .block-note.note-code-richmedia-placeholder .note-badge {
   background-color: var(--prussian-blue);
-  color: #fff;
+  color: var(--ink-inverse);
 }
 
 .block-note.note-code-convert-failed {
   background-color: var(--vermilion-subtle);
   border: 1px solid rgba(200, 53, 43, 0.25);
-  border-left: 3px solid var(--vermilion);
   color: var(--ink-primary);
 }
 .block-note.note-code-convert-failed .note-badge {
   background-color: var(--vermilion);
-  color: #fff;
+  color: var(--ink-inverse);
 }
 
-.note-badge {
+/* 限定在块内转换提示：与夹签用的 .note-badge 同名，不限定会把夹签徽章改成浅底白字 */
+.block-note .note-badge {
   font-weight: 700;
-  font-size: 10px;
+  font-size: 11px;
   text-transform: uppercase;
   padding: 1px 5px;
   background-color: rgba(0, 0, 0, 0.08);
+  color: var(--ink-primary);
   border-radius: 2px;
   flex-shrink: 0;
 }
@@ -1405,13 +1347,13 @@ button.save-status-error:focus-visible {
 /* 5. 换稿通知单与候选确认 (Candidate Confirm Modal - Issue #28) */
 .candidate-stamp {
   border-color: var(--amber);
-  color: var(--amber);
+  color: var(--amber-ink);
 }
 
 .candidate-confirm-dialog {
   border: 1px solid var(--sheet-border);
   border-radius: 3px;
-  background-color: #ffffff;
+  background-color: var(--surface-raised);
   color: var(--ink-primary);
   max-width: 520px;
   width: calc(100% - 32px);
@@ -1464,7 +1406,7 @@ button.save-status-error:focus-visible {
 }
 
 .candidate-new-section .section-label-badge {
-  color: var(--amber);
+  color: var(--amber-ink);
 }
 
 .candidate-old-section .section-label-badge {
@@ -1549,13 +1491,13 @@ button.save-status-error:focus-visible {
 .candidate-actions .action-continue {
   background-color: var(--prussian-blue);
   border: 1px solid var(--prussian-blue);
-  color: #fff;
+  color: var(--ink-inverse);
   font-weight: 600;
 }
 
 .candidate-actions .action-continue:hover {
-  background-color: #244b85;
-  border-color: #244b85;
+  background-color: var(--prussian-blue-strong);
+  border-color: var(--prussian-blue-strong);
 }
 
 .candidate-actions .action-replace {
@@ -1570,13 +1512,13 @@ button.save-status-error:focus-visible {
 }
 
 .candidate-actions .action-return {
-  background-color: #fff;
+  background-color: var(--surface-raised);
   border: 1px solid var(--sheet-border);
   color: var(--ink-secondary);
 }
 
 .candidate-actions .action-return:hover {
-  background-color: #f4f6f4;
+  background-color: var(--surface-muted);
   color: var(--ink-primary);
   border-color: var(--ink-secondary);
 }
@@ -1595,9 +1537,8 @@ button.save-status-error:focus-visible {
   margin-bottom: 16px;
   padding: 8px 14px;
   border: 1px solid var(--sheet-border);
-  border-left: 3px solid var(--ink-secondary);
   border-radius: 2px;
-  background-color: #fff;
+  background-color: var(--surface-raised);
   font-size: 13px;
   color: var(--ink-primary);
   line-height: 1.5;
@@ -1605,7 +1546,7 @@ button.save-status-error:focus-visible {
 
 .read-only-note .note-badge {
   background-color: var(--ink-secondary);
-  color: #fff;
+  color: var(--ink-inverse);
 }
 
 .read-only-note-text {
@@ -1615,9 +1556,8 @@ button.save-status-error:focus-visible {
 
 /* 6. 损坏记录卡片 (Corrupted Record Card - Issue #24 最小壳) */
 .corrupted-record-card {
-  background: #fff;
+  background: var(--surface-raised);
   border: 1px solid var(--sheet-border);
-  border-left: 4px solid var(--vermilion);
   border-radius: 2px;
   padding: 32px 36px;
   position: relative;
@@ -1650,7 +1590,7 @@ button.save-status-error:focus-visible {
 
 .block-item.block-excluded {
   opacity: 0.85;
-  background-color: #fafbf9;
+  background-color: var(--sheet-bg);
 }
 
 .block-item.block-collapsed {
@@ -1685,14 +1625,15 @@ button.save-status-error:focus-visible {
 
 .block-toggle-btn,
 .block-action-btn {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
-  padding: 2px 8px;
+  min-height: 26px;
+  padding: 3px 10px;
   border-radius: 2px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
   border: 1px solid var(--sheet-border);
-  background-color: #fff;
+  background-color: var(--surface-raised);
   color: var(--ink-secondary);
   font-family: inherit;
   line-height: 1.4;
@@ -1701,7 +1642,7 @@ button.save-status-error:focus-visible {
 
 .block-toggle-btn:hover,
 .block-action-btn:hover {
-  background-color: #f4f6f4;
+  background-color: var(--surface-muted);
   color: var(--ink-primary);
   border-color: var(--ink-secondary);
 }
@@ -1720,64 +1661,64 @@ button.save-status-error:focus-visible {
 
 .block-action-restore {
   color: var(--prussian-blue);
-  border-color: #bfdbfe;
-  background-color: #eff6ff;
+  border-color: var(--prussian-blue-border);
+  background-color: var(--prussian-blue-subtle);
   font-weight: 600;
 }
 
 .block-action-restore:hover {
-  background-color: #dbeafe;
-  color: #1d4ed8;
-  border-color: #93c5fd;
+  background-color: var(--prussian-blue-subtle-hover);
+  color: var(--prussian-blue-strong);
+  border-color: var(--prussian-blue);
 }
 
 .block-action-expand,
 .block-action-collapse {
   color: var(--ink-secondary);
-  background-color: #f7f9f7;
+  background-color: var(--surface-muted);
 }
 
 .block-action-expand:hover,
 .block-action-collapse:hover {
-  background-color: #eef2ee;
+  background-color: var(--surface-hover);
   color: var(--ink-primary);
 }
 
 .block-action-edit {
   color: var(--ink-secondary);
-  background-color: #f7f9f7;
+  background-color: var(--surface-muted);
 }
 
 .block-action-edit:hover {
-  background-color: #eef2ee;
+  background-color: var(--surface-hover);
   color: var(--ink-primary);
   border-color: var(--ink-secondary);
 }
 
 .block-action-finish-edit {
-  color: #fff;
+  color: var(--ink-inverse);
   background-color: var(--prussian-blue);
   border-color: var(--prussian-blue);
   font-weight: 600;
 }
 
 .block-action-finish-edit:hover {
-  background-color: #234880;
-  border-color: #234880;
-  color: #fff;
+  background-color: var(--prussian-blue-strong);
+  border-color: var(--prussian-blue-strong);
+  color: var(--ink-inverse);
 }
 
 .block-action-restore-content {
-  color: #b91c1c;
-  background-color: #fef2f2;
-  border-color: #fecaca;
+  color: var(--vermilion);
+  background-color: var(--vermilion-subtle);
+  border-color: var(--vermilion-border);
   font-weight: 500;
 }
 
 .block-action-restore-content:hover {
-  background-color: #fee2e2;
-  color: #991b1b;
-  border-color: #f87171;
+  background-color: var(--vermilion-subtle-hover);
+  color: var(--vermilion-strong);
+  border-color: var(--vermilion);
 }
 
 .restore-confirm-inline {
@@ -1785,39 +1726,39 @@ button.save-status-error:focus-visible {
   align-items: center;
   gap: 6px;
   padding: 2px 8px;
-  background-color: #fff7ed;
-  border: 1px solid #fed7aa;
+  background-color: var(--amber-subtle);
+  border: 1px solid var(--amber-border);
   border-radius: 2px;
 }
 
 .restore-confirm-tip {
   font-size: 11px;
-  color: #c2410c;
+  color: var(--amber-ink);
   font-weight: 500;
   white-space: nowrap;
 }
 
 .block-action-confirm-restore {
-  color: #fff;
+  color: var(--ink-inverse);
   background-color: var(--vermilion);
   border-color: var(--vermilion);
   font-weight: 600;
 }
 
 .block-action-confirm-restore:hover {
-  background-color: #a72820;
-  border-color: #a72820;
-  color: #fff;
+  background-color: var(--vermilion-strong);
+  border-color: var(--vermilion-strong);
+  color: var(--ink-inverse);
 }
 
 .block-action-cancel-restore {
   color: var(--ink-secondary);
-  background-color: #fff;
+  background-color: var(--surface-raised);
   border-color: var(--sheet-border);
 }
 
 .block-action-cancel-restore:hover {
-  background-color: #f3f4f6;
+  background-color: var(--surface-muted);
   color: var(--ink-primary);
 }
 
@@ -1842,7 +1783,7 @@ button.save-status-error:focus-visible {
   padding: 8px 12px;
   border: 1px solid var(--sheet-border);
   border-radius: 2px;
-  background-color: #fafbf9;
+  background-color: var(--sheet-bg);
   color: var(--ink-primary);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 15px;
@@ -1856,7 +1797,7 @@ button.save-status-error:focus-visible {
   outline: 2px solid var(--prussian-blue);
   outline-offset: 1px;
   border-color: var(--prussian-blue);
-  background-color: #fff;
+  background-color: var(--surface-raised);
 }
 
 .block-editor-toolbar {
@@ -1895,7 +1836,7 @@ button.save-status-error:focus-visible {
   left: 50%;
   transform: translateX(-50%);
   background-color: var(--ink-primary);
-  color: #fff;
+  color: var(--ink-inverse);
   font-size: 11px;
   line-height: 1.4;
   padding: 4px 8px;
@@ -1935,14 +1876,11 @@ button.save-status-error:focus-visible {
   color: var(--ink-secondary);
   border: 1px dashed var(--sheet-border);
   border-radius: 2px;
-  background-color: #fafbf9;
+  background-color: var(--sheet-bg);
   margin: 16px 0;
 }
 
-.block-item.block-is-edited {
-  border-left: 3px solid #d97706;
-}
-
+/* 已修改只靠「已修改」文字徽章表达，不再加侧边色条 */
 .block-item.block-is-empty {
   border-style: dashed;
 }
@@ -1952,9 +1890,9 @@ button.save-status-error:focus-visible {
   font-weight: 600;
   padding: 1px 6px;
   border-radius: 2px;
-  background-color: #fef3c7;
-  color: #92400e;
-  border: 1px solid #fde68a;
+  background-color: var(--amber-subtle);
+  color: var(--amber-ink);
+  border: 1px solid var(--amber-border);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
@@ -1963,19 +1901,19 @@ button.save-status-error:focus-visible {
   font-weight: 500;
   padding: 1px 6px;
   border-radius: 2px;
-  background-color: #f3f4f6;
-  color: #4b5563;
-  border: 1px solid #e5e7eb;
+  background-color: var(--surface-muted);
+  color: var(--ink-secondary);
+  border: 1px solid var(--sheet-border);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 .block-status-tag.status-included {
-  color: #15803d;
+  color: var(--ok-ink);
   font-weight: 600;
 }
 
 .block-status-tag.status-excluded {
-  color: #b91c1c;
+  color: var(--vermilion);
   font-weight: 600;
 }
 
@@ -2054,7 +1992,7 @@ button.save-status-error:focus-visible {
 .block-rendered-content blockquote {
   border-left: 3px solid var(--sheet-border);
   padding: 8px 16px;
-  background-color: #fbfbf9;
+  background-color: var(--sheet-bg-alt);
   color: var(--ink-secondary);
   margin: 8px 0;
   border-radius: 2px;
@@ -2078,12 +2016,12 @@ button.save-status-error:focus-visible {
 }
 
 .block-rendered-content th {
-  background-color: #f4f6f4;
+  background-color: var(--surface-muted);
   font-weight: 600;
 }
 
 .block-rendered-content pre {
-  background-color: #f8faf8;
+  background-color: var(--surface-muted);
   border: 1px solid var(--sheet-border);
   padding: 10px 14px;
   border-radius: 2px;
@@ -2113,7 +2051,8 @@ button.save-status-error:focus-visible {
   margin: 12px 0;
 }
 
-.block-rendered-content img {
+/* :where() 把特异性降到单类选择器，让后面的缩略图类规则按源码顺序覆盖，无需 !important */
+.block-rendered-content :where(img) {
   max-width: 100%;
   height: auto;
   border-radius: 2px;
@@ -2143,7 +2082,7 @@ button.save-status-error:focus-visible {
   border: 1px solid var(--sheet-border);
   background-color: var(--sheet-bg);
   flex-shrink: 0;
-  margin: 0 !important;
+  margin: 0;
 }
 
 .block-collapsed-alt {
@@ -2173,7 +2112,7 @@ button.save-status-error:focus-visible {
   border: 1px solid transparent;
   cursor: pointer;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
-  background-color: #fafbf9;
+  background-color: var(--sheet-bg);
 }
 
 .image-thumbnail-box:hover {
@@ -2226,7 +2165,7 @@ button.save-status-error:focus-visible {
   object-fit: contain;
   object-position: top center;
   border-radius: 2px;
-  margin: 0 !important;
+  margin: 0;
 }
 
 /* 超长竖图：不再整张缩小进限高，而是按版心宽度铺开，由盒子的限高与 overflow 裁掉底部，只露顶部 */
@@ -2288,7 +2227,6 @@ button.save-status-error:focus-visible {
   padding: 12px 16px;
   background-color: var(--vermilion-subtle);
   border: 1px solid rgba(200, 53, 43, 0.3);
-  border-left: 3px solid var(--vermilion);
   border-radius: 2px;
   margin: 8px 0;
   max-width: 480px;
@@ -2308,7 +2246,7 @@ button.save-status-error:focus-visible {
   height: 16px;
   border-radius: 50%;
   background-color: var(--vermilion);
-  color: #fff;
+  color: var(--ink-inverse);
   font-size: 11px;
   font-weight: 700;
   line-height: 1;
@@ -2357,16 +2295,16 @@ button.save-status-error:focus-visible {
   font-weight: 600;
   padding: 3px 12px;
   border-radius: 2px;
-  background-color: #fff;
+  background-color: var(--surface-raised);
   border: 1px solid var(--vermilion);
   color: var(--vermilion);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 .image-retry-btn:hover:not(:disabled) {
   background-color: var(--vermilion);
-  color: #fff;
+  color: var(--ink-inverse);
 }
 
 .image-retry-btn:focus-visible {
@@ -2380,16 +2318,37 @@ button.save-status-error:focus-visible {
 }
 
 /* 原图全屏查看浮层（Issue #30 简报 §3） */
+/* 原生 <dialog> showModal()：覆盖 UA 的居中卡片样式，铺满视口 */
 .image-viewer-overlay {
   position: fixed;
   inset: 0;
-  z-index: 2000;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: var(--ink-inverse);
   background-color: rgba(26, 26, 24, 0.88);
-  backdrop-filter: blur(3px);
+}
+
+.image-viewer-overlay[open] {
   display: flex;
   flex-direction: column;
   align-items: center;
   animation: fadeInViewer 0.2s ease-out;
+}
+
+.image-viewer-overlay::backdrop {
+  background-color: transparent;
+  backdrop-filter: blur(3px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .image-viewer-overlay[open] {
+    animation: none;
+  }
 }
 
 @keyframes fadeInViewer {
@@ -2404,7 +2363,7 @@ button.save-status-error:focus-visible {
   justify-content: space-between;
   align-items: center;
   background-color: rgba(0, 0, 0, 0.4);
-  color: #fff;
+  color: var(--ink-inverse);
   flex-shrink: 0;
   box-sizing: border-box;
 }
@@ -2412,7 +2371,7 @@ button.save-status-error:focus-visible {
 .image-viewer-title {
   font-size: 14px;
   font-weight: 500;
-  color: #e5e7eb;
+  color: rgba(255, 255, 255, 0.85);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2428,7 +2387,7 @@ button.save-status-error:focus-visible {
   border-radius: 2px;
   background-color: rgba(255, 255, 255, 0.15);
   border: 1px solid rgba(255, 255, 255, 0.3);
-  color: #fff;
+  color: var(--ink-inverse);
   cursor: pointer;
   transition: background-color 0.15s ease;
 }
@@ -2438,7 +2397,7 @@ button.save-status-error:focus-visible {
 }
 
 .image-viewer-close-btn:focus-visible {
-  outline: 2px solid #fff;
+  outline: 2px solid var(--ink-inverse);
   outline-offset: 2px;
 }
 
@@ -2471,12 +2430,12 @@ button.save-status-error:focus-visible {
 .action-preview {
   background-color: var(--prussian-blue);
   border: 1px solid var(--prussian-blue);
-  color: #fff;
+  color: var(--ink-inverse);
 }
 
 .action-preview:hover {
-  background-color: #244b87;
-  border-color: #244b87;
+  background-color: var(--prussian-blue-strong);
+  border-color: var(--prussian-blue-strong);
 }
 
 .preview-dialog {
@@ -2517,7 +2476,7 @@ button.save-status-error:focus-visible {
 .preview-dialog-header {
   padding: 16px 24px 12px 24px;
   border-bottom: 1px solid var(--sheet-border);
-  background-color: #ffffff;
+  background-color: var(--surface-raised);
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -2563,7 +2522,7 @@ button.save-status-error:focus-visible {
   color: var(--ink-secondary);
   padding: 2px 8px;
   border-radius: 2px;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 .preview-dialog-close-btn:hover {
@@ -2596,7 +2555,7 @@ button.save-status-error:focus-visible {
   font-weight: 500;
   border-radius: 2px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
   font-family: inherit;
 }
 
@@ -2607,7 +2566,7 @@ button.save-status-error:focus-visible {
 
 .preview-tab-btn.is-active {
   background-color: var(--ink-primary);
-  color: #fff;
+  color: var(--ink-inverse);
   border-color: var(--ink-primary);
 }
 
@@ -2730,7 +2689,7 @@ button.save-status-error:focus-visible {
   flex: 1 1 auto;
   overflow-y: auto;
   padding: 28px 36px;
-  background-color: #ffffff;
+  background-color: var(--surface-raised);
 }
 
 .preview-article-header {
@@ -2855,13 +2814,13 @@ button.save-status-error:focus-visible {
 .action-jump-first-empty {
   background-color: var(--prussian-blue);
   border: 1px solid var(--prussian-blue);
-  color: #fff;
+  color: var(--ink-inverse);
 }
 
 .action-recover-excluded:hover,
 .action-jump-first-empty:hover {
-  background-color: #244b87;
-  border-color: #244b87;
+  background-color: var(--prussian-blue-strong);
+  border-color: var(--prussian-blue-strong);
 }
 
 .preview-dialog-footer {
@@ -2875,14 +2834,14 @@ button.save-status-error:focus-visible {
 }
 
 .action-return-cleaning {
-  background-color: #fff;
+  background-color: var(--surface-raised);
   border: 1px solid var(--sheet-border);
   color: var(--ink-primary);
 }
 
 .action-return-cleaning:hover {
   border-color: var(--ink-secondary);
-  background-color: #f7f9f7;
+  background-color: var(--surface-muted);
 }
 
 .preview-export-slot {
@@ -2912,18 +2871,18 @@ button.save-status-error:focus-visible {
 
 /* 顶栏与预览中的导出操作按钮 (Issue #32) */
 .action-export {
-  background-color: var(--vermilion, #c8352b);
-  color: #ffffff;
-  border-color: var(--vermilion, #c8352b);
+  background-color: var(--vermilion);
+  color: var(--ink-inverse);
+  border-color: var(--vermilion);
 }
 
 .action-export:hover {
-  background-color: #ab2c23;
-  border-color: #ab2c23;
+  background-color: var(--vermilion-strong);
+  border-color: var(--vermilion-strong);
 }
 
 .action-export:focus-visible {
-  outline: 2px solid var(--vermilion, #c8352b);
+  outline: 2px solid var(--vermilion);
   outline-offset: 2px;
 }
 
@@ -2963,7 +2922,7 @@ button.save-status-error:focus-visible {
 .export-dialog-header {
   padding: 16px 20px 12px 20px;
   border-bottom: 1px solid var(--sheet-border);
-  background-color: #ffffff;
+  background-color: var(--surface-raised);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2999,8 +2958,8 @@ button.save-status-error:focus-visible {
 }
 
 .export-stamp.success-stamp {
-  border-color: #2e7d32;
-  color: #2e7d32;
+  border-color: var(--ok-ink);
+  color: var(--ok-ink);
 }
 
 .export-stamp.empty-stamp {
@@ -3018,7 +2977,7 @@ button.save-status-error:focus-visible {
   cursor: pointer;
   padding: 2px 8px;
   border-radius: 2px;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 .export-dialog-close-btn:hover {
@@ -3033,7 +2992,7 @@ button.save-status-error:focus-visible {
 
 .export-dialog-body {
   padding: 20px 24px;
-  background-color: #ffffff;
+  background-color: var(--surface-raised);
   font-size: 14px;
   line-height: 1.6;
   color: var(--ink-secondary);
@@ -3056,15 +3015,44 @@ button.save-status-error:focus-visible {
 
 .action-confirm-export {
   background-color: var(--prussian-blue);
-  color: #ffffff;
+  color: var(--ink-inverse);
   border-color: var(--prussian-blue);
 }
 
 .action-confirm-export:hover {
-  background-color: #244b87;
-  border-color: #244b87;
+  background-color: var(--prussian-blue-strong);
+  border-color: var(--prussian-blue-strong);
 }
 
-
-
-
+@media (max-width: 720px) {
+  .header-nav-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .nav-toolbar-main {
+    width: 100%;
+  }
+  .nav-toolbar-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  /* 窄屏批注栏收起与版心边距适配（Issue #30 设计简报 §6）；放在文件末尾，靠源码顺序而不是 !important 覆盖基础规则 */
+  .margin-track {
+    display: none;
+  }
+  .main-bed {
+    padding: 24px 16px 40px;
+  }
+  /* 批注标记在窄屏下退回块内 meta 行下方 */
+  .block-margin-note-markers {
+    position: static;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
+    margin-bottom: 2px;
+  }
+}

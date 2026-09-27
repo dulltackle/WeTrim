@@ -1,5 +1,7 @@
 import React, { useLayoutEffect, useRef } from 'react';
 import { EXPORT_COPY } from '../copy/export';
+import { CloseIcon } from './CloseIcon';
+import { PREVIEW_COPY } from '../copy/preview';
 
 export interface ExportFeedback {
   isOpen: boolean;
@@ -53,7 +55,11 @@ export const ExportFeedbackDialog: React.FC<ExportFeedbackDialogProps> = ({
   const { type, title, desc } = feedback;
 
   const stampText =
-    type === 'success' ? '印毕' : type === 'error' ? '未完' : '空白';
+    type === 'success'
+      ? EXPORT_COPY.stampSuccess
+      : type === 'error'
+      ? EXPORT_COPY.stampError
+      : EXPORT_COPY.stampEmpty;
   const stampClass =
     type === 'success'
       ? 'success-stamp'
@@ -83,11 +89,11 @@ export const ExportFeedbackDialog: React.FC<ExportFeedbackDialogProps> = ({
         <button
           type="button"
           className="export-dialog-close-btn"
-          aria-label="关闭提示"
+          aria-label={EXPORT_COPY.dialogCloseAria}
           onClick={onClose}
           data-testid="export-dialog-close-x"
         >
-          ×
+          <CloseIcon />
         </button>
       </div>
 
@@ -108,7 +114,7 @@ export const ExportFeedbackDialog: React.FC<ExportFeedbackDialogProps> = ({
               onOpenPreview();
             }}
           >
-            检查结果
+            {PREVIEW_COPY.openButton}
           </button>
         )}
         <button

@@ -52,4 +52,9 @@ export const PREVIEW_COPY = {
 
   // 底部操作区
   btnReturnToCleaning: '返回清洗',
+
+  // 印章与源码区
+  stamp: '清样',
+  emptyStamp: '空白',
+  sourceAriaLabel: 'Markdown 完整源码',
 };

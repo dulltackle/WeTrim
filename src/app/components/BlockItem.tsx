@@ -13,6 +13,7 @@ import { truncateGraphemes } from '../../shared/grapheme';
 import { renderMarkdown } from '../preview/render';
 import { renderHtmlWithImages } from '../preview/html-to-react';
 import { IMAGE_COPY, NOTES_COPY } from '../copy/image-presentation';
+import { BLOCK_COPY } from '../copy/block';
 
 export interface BlockItemProps {
   block: Block;
@@ -23,19 +24,6 @@ export interface BlockItemProps {
   registerFlush?: (id: string, flush: (() => void) | null) => void;
 }
 
-export const BLOCK_TYPE_LABELS: Record<string, string> = {
-  paragraph: '段落',
-  heading: '标题',
-  image: '图片',
-  code: '代码',
-  list: '列表',
-  quote: '引用',
-  table: '表格',
-  divider: '分割线',
-  formula: '公式',
-  richMedia: '富媒体',
-  unknown: '未知内容',
-};
 
 /**
  * 依据 Issue #24, #25, #27 & 设计简报：
@@ -215,7 +203,7 @@ export const BlockItem = memo(
       onToggle(block.id);
     };
 
-    const typeLabel = BLOCK_TYPE_LABELS[block.type] || block.type;
+    const typeLabel: string = BLOCK_COPY.typeLabels[block.type] ?? block.type;
     const levelText =
       block.type === 'heading' && block.headingLevel ? ` H${block.headingLevel}` : '';
 
@@ -240,7 +228,7 @@ export const BlockItem = memo(
     const isComposite = block.type === 'list' || block.type === 'quote' || block.type === 'table';
 
     const previewText = truncateGraphemes(effectiveMarkdown, 20);
-    const summaryPreview = isLocallyEmpty ? '（内容为空）' : previewText;
+    const summaryPreview = isLocallyEmpty ? BLOCK_COPY.emptyContent : previewText;
 
     const isCollapsed = !block.included && !isExpanded && !isTempExpanded;
 
@@ -298,8 +286,8 @@ export const BlockItem = memo(
         className="composite-block-tip-trigger"
         data-testid="composite-block-tip"
         tabIndex={0}
-        role="note"
-        aria-label="整体取舍，编辑 Markdown 可删改内部内容与图片"
+        role="img"
+        aria-label={BLOCK_COPY.compositeTip}
       >
         <svg
           className="tip-icon"
@@ -317,8 +305,9 @@ export const BlockItem = memo(
           <line x1="8" y1="7.5" x2="8" y2="11.5" />
           <circle cx="8" cy="4.75" r="0.5" fill="currentColor" />
         </svg>
-        <span className="tip-tooltip" role="tooltip">
-          整体取舍，编辑 Markdown 可删改内部内容与图片
+        {/* 可见浮层只给视觉用户；读屏已经从 aria-label 读到同一句，避免重复朗读 */}
+        <span className="tip-tooltip" aria-hidden="true">
+          {BLOCK_COPY.compositeTip}
         </span>
       </span>
     ) : null;
@@ -327,25 +316,25 @@ export const BlockItem = memo(
     const inlineRestoreConfirm = (
       <div className="restore-confirm-inline" data-testid="restore-confirm-inline">
         <span className="restore-confirm-tip">
-          还原将恢复初始内容并丢弃当前修改，不改变保留/剔除状态
+          {BLOCK_COPY.restoreConfirmTip}
         </span>
         <button
           type="button"
           className="block-action-btn block-action-confirm-restore"
           data-testid="block-action-confirm-restore"
-          aria-label={`确认还原第 ${block.order} 块`}
+          aria-label={BLOCK_COPY.confirmRestoreAria(block.order)}
           onClick={handleConfirmRestore}
         >
-          确认还原
+          {BLOCK_COPY.confirmRestore}
         </button>
         <button
           type="button"
           className="block-action-btn block-action-cancel-restore"
           data-testid="block-action-cancel-restore"
-          aria-label={`取消还原第 ${block.order} 块`}
+          aria-label={BLOCK_COPY.cancelRestoreAria(block.order)}
           onClick={handleCancelRestore}
         >
-          取消
+          {BLOCK_COPY.cancelRestore}
         </button>
       </div>
     );
@@ -398,19 +387,19 @@ export const BlockItem = memo(
             {compositeTip}
             {isLocallyEdited && (
               <span className="block-edited-badge" data-testid="block-edited-badge">
-                已修改
+                {BLOCK_COPY.editedBadge}
               </span>
             )}
             {isLocallyEmpty && (
               <span className="block-empty-badge" data-testid="block-empty-badge">
-                内容为空
+                {BLOCK_COPY.emptyBadge}
               </span>
             )}
             <span
               className="block-status-tag status-excluded"
               data-testid="block-status-tag"
             >
-              剔除
+              {BLOCK_COPY.statusExcluded}
             </span>
 
             {/* 折叠摘要带小图（Issue #30 设计简报 §3）：剔除折叠图片块放行高小图与 alt */}
@@ -445,10 +434,10 @@ export const BlockItem = memo(
                 type="button"
                 className="block-toggle-btn block-action-restore"
                 data-testid="block-action-restore"
-                aria-label={`恢复保留第 ${block.order} 块`}
+                aria-label={BLOCK_COPY.restoreIncludedAria(block.order)}
                 onClick={handleToggle}
               >
-                恢复保留
+                {BLOCK_COPY.restoreIncluded}
               </button>
 
               {isLocallyEdited && (
@@ -459,10 +448,10 @@ export const BlockItem = memo(
                     type="button"
                     className="block-action-btn block-action-restore-content"
                     data-testid="block-action-restore-content"
-                    aria-label={`还原第 ${block.order} 块内容`}
+                    aria-label={BLOCK_COPY.restoreContentAria(block.order)}
                     onClick={handleStartRestore}
                   >
-                    还原内容
+                    {BLOCK_COPY.restoreContent}
                   </button>
                 )
               )}
@@ -471,19 +460,19 @@ export const BlockItem = memo(
                 type="button"
                 className="block-action-btn block-action-expand"
                 data-testid="block-action-expand"
-                aria-label={`展开第 ${block.order} 块`}
+                aria-label={BLOCK_COPY.expandAria(block.order)}
                 onClick={() => setIsExpanded(true)}
               >
-                展开
+                {BLOCK_COPY.expand}
               </button>
               <button
                 type="button"
                 className="block-action-btn block-action-edit"
                 data-testid="block-action-edit"
-                aria-label={`编辑第 ${block.order} 块 Markdown`}
+                aria-label={BLOCK_COPY.editAria(block.order)}
                 onClick={handleStartEdit}
               >
-                编辑 Markdown
+                {BLOCK_COPY.edit}
               </button>
             </div>
           </div>
@@ -503,7 +492,7 @@ export const BlockItem = memo(
             style={{ fontSize: editorFontSize }}
             value={localValue}
             onChange={handleTextareaChange}
-            aria-label={`编辑第 ${block.order} 块 Markdown`}
+            aria-label={BLOCK_COPY.editAria(block.order)}
             autoFocus
           />
           <div className="block-editor-toolbar" data-testid="block-editor-toolbar">
@@ -512,10 +501,10 @@ export const BlockItem = memo(
                 type="button"
                 className="block-action-btn block-action-restore-content"
                 data-testid="block-action-restore-content"
-                aria-label={`还原第 ${block.order} 块内容`}
+                aria-label={BLOCK_COPY.restoreContentAria(block.order)}
                 onClick={handleStartRestore}
               >
-                还原内容
+                {BLOCK_COPY.restoreContent}
               </button>
             )}
             {isConfirmingRestore && inlineRestoreConfirm}
@@ -523,10 +512,10 @@ export const BlockItem = memo(
               type="button"
               className="block-action-btn block-action-finish-edit"
               data-testid="block-action-finish-edit"
-              aria-label={`完成编辑第 ${block.order} 块`}
+              aria-label={BLOCK_COPY.finishEditAria(block.order)}
               onClick={handleFinishEdit}
             >
-              完成编辑
+              {BLOCK_COPY.finishEdit}
             </button>
           </div>
         </div>
@@ -534,7 +523,7 @@ export const BlockItem = memo(
     } else if (isLocallyEmpty) {
       contentNode = (
         <div className="block-empty-placeholder" data-testid="block-empty-placeholder">
-          （内容为空）
+          {BLOCK_COPY.emptyContent}
         </div>
       );
     } else {
@@ -579,19 +568,19 @@ export const BlockItem = memo(
           {compositeTip}
           {isLocallyEdited && (
             <span className="block-edited-badge" data-testid="block-edited-badge">
-              已修改
+              {BLOCK_COPY.editedBadge}
             </span>
           )}
           {isLocallyEmpty && (
             <span className="block-empty-badge" data-testid="block-empty-badge">
-              内容为空
+              {BLOCK_COPY.emptyBadge}
             </span>
           )}
           <span
             className={`block-status-tag ${block.included ? 'status-included' : 'status-excluded'}`}
             data-testid="block-status-tag"
           >
-            {block.included ? '保留' : '剔除'}
+            {block.included ? BLOCK_COPY.statusIncluded : BLOCK_COPY.statusExcluded}
           </span>
 
           <div className="block-item-actions">
@@ -600,10 +589,10 @@ export const BlockItem = memo(
                 type="button"
                 className="block-toggle-btn block-action-exclude"
                 data-testid="block-action-exclude"
-                aria-label={`剔除第 ${block.order} 块`}
+                aria-label={BLOCK_COPY.excludeAria(block.order)}
                 onClick={handleToggle}
               >
-                剔除
+                {BLOCK_COPY.exclude}
               </button>
             ) : (
               <>
@@ -611,20 +600,20 @@ export const BlockItem = memo(
                   type="button"
                   className="block-toggle-btn block-action-restore"
                   data-testid="block-action-restore"
-                  aria-label={`恢复保留第 ${block.order} 块`}
+                  aria-label={BLOCK_COPY.restoreIncludedAria(block.order)}
                   onClick={handleToggle}
                 >
-                  恢复保留
+                  {BLOCK_COPY.restoreIncluded}
                 </button>
                 {!isEditing && (
                   <button
                     type="button"
                     className="block-action-btn block-action-collapse"
                     data-testid="block-action-collapse"
-                    aria-label={`收起第 ${block.order} 块`}
+                    aria-label={BLOCK_COPY.collapseAria(block.order)}
                     onClick={() => setIsExpanded(false)}
                   >
-                    收起
+                    {BLOCK_COPY.collapse}
                   </button>
                 )}
               </>
@@ -639,10 +628,10 @@ export const BlockItem = memo(
                   type="button"
                   className="block-action-btn block-action-restore-content"
                   data-testid="block-action-restore-content"
-                  aria-label={`还原第 ${block.order} 块内容`}
+                  aria-label={BLOCK_COPY.restoreContentAria(block.order)}
                   onClick={handleStartRestore}
                 >
-                  还原内容
+                  {BLOCK_COPY.restoreContent}
                 </button>
               )
             )}
@@ -653,10 +642,10 @@ export const BlockItem = memo(
                 type="button"
                 className="block-action-btn block-action-edit"
                 data-testid="block-action-edit"
-                aria-label={`编辑第 ${block.order} 块 Markdown`}
+                aria-label={BLOCK_COPY.editAria(block.order)}
                 onClick={handleStartEdit}
               >
-                编辑 Markdown
+                {BLOCK_COPY.edit}
               </button>
             )}
           </div>

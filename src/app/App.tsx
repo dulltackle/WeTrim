@@ -10,7 +10,12 @@ import {
   createTurndown,
 } from './parse/convert';
 import { splitBlocks } from './parse/split-blocks';
-import { BlockList, type BlockListHandle, type BlockFilterMode } from './components/BlockList';
+import {
+  BlockList,
+  BLOCK_LIST_PANEL_ID,
+  type BlockListHandle,
+  type BlockFilterMode,
+} from './components/BlockList';
 import { CandidateConfirmDialog } from './components/CandidateConfirmDialog';
 import { PreviewDialog } from './components/PreviewDialog';
 import { ExportFeedbackDialog, type ExportFeedback } from './components/ExportFeedbackDialog';
@@ -19,6 +24,7 @@ import { READ_ONLY_COPY } from './copy/read-only';
 import { NAVIGATION_COPY } from './copy/navigation';
 import { PREVIEW_COPY } from './copy/preview';
 import { EXPORT_COPY } from './copy/export';
+import { WORKBENCH_COPY } from './copy/workbench';
 import { EMPTY_SEARCH_STATE, type SearchState } from './search/text-search';
 import { pickWriterContext } from '../shared/app-instance';
 import { renderMarkdown } from './preview/render';
@@ -50,6 +56,10 @@ import {
   clearSessionDirect,
 } from './state/persistence';
 import './app.css';
+import { CloseIcon } from './components/CloseIcon';
+
+const SAVE_STATUS_COPY = WORKBENCH_COPY.saveStatus;
+const FILTER_TAB_ORDER: BlockFilterMode[] = ['all', 'included', 'excluded'];
 
 /**
  * 依据 ARCHITECTURE.md §4.1 ~ §4.5、§7、§8.5，ADR-0005 与 Issue #24、Issue #28：
@@ -272,6 +282,25 @@ export const App: React.FC = () => {
     setOrderJumpTip(null);
   };
 
+  // 筛选页签的方向键 / Home / End：移动焦点并立即切换（筛选切换实测远低于 100 ms 预算）
+  const handleFilterTabKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
+    const idx = FILTER_TAB_ORDER.indexOf(currentFilter);
+    let next: BlockFilterMode | null = null;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+      next = FILTER_TAB_ORDER[(idx + 1) % FILTER_TAB_ORDER.length];
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+      next = FILTER_TAB_ORDER[(idx - 1 + FILTER_TAB_ORDER.length) % FILTER_TAB_ORDER.length];
+    } else if (e.key === 'Home') {
+      next = FILTER_TAB_ORDER[0];
+    } else if (e.key === 'End') {
+      next = FILTER_TAB_ORDER[FILTER_TAB_ORDER.length - 1];
+    }
+    if (!next) return;
+    e.preventDefault();
+    handleFilterTabClick(next);
+    filterTabRefs.current[next]?.focus();
+  };
+
   // Issue #31: 检查结果汇总预览操作处理
   const handleOpenPreview = () => {
     if (typeof window !== 'undefined') {
@@ -330,7 +359,7 @@ export const App: React.FC = () => {
     }
   ): Promise<ExportArticleResult> => {
     if (exportInFlightRef.current) {
-      return { ok: false, busy: true, message: '已有导出正在进行' };
+      return { ok: false, busy: true, message: WORKBENCH_COPY.exportBusy };
     }
     exportInFlightRef.current = true;
     let res: ExportArticleResult;
@@ -410,8 +439,7 @@ export const App: React.FC = () => {
   };
 
   // 1. marked + DOMPurify 真实渲染三步指引文案
-  const stepsMarkdown = `1. **用浏览器打开一篇公众号文章**\\n2. **等它显示完**\\n3. **点工具栏上的 WeTrim 图标** 开始清洗`;
-  const renderedStepsHtml = renderMarkdown(stepsMarkdown);
+  const renderedStepsHtml = renderMarkdown(WORKBENCH_COPY.emptyStepsMarkdown);
 
   // 消费 pendingCapture 逻辑：读到后必须立即删除该 key，防止重复消费
   const processCaptureResult = async (res: CaptureResult) => {
@@ -485,7 +513,7 @@ export const App: React.FC = () => {
     } else if (res.kind === 'noArticle') {
       dispatch({
         type: 'SET_MARGIN_CLIP_NOTE',
-        payload: '刚才那个页面上没有公众号文章，你的进度没有被动过',
+        payload: WORKBENCH_COPY.noArticleClipNote,
       });
     }
   };
@@ -560,7 +588,7 @@ export const App: React.FC = () => {
 
         if (rawSession && (!rawSession.sessionId || !rawSession.snapshot)) {
           corrupted = true;
-          corruptedDetails = '存储中的清洗会话记录格式不完整或损坏';
+          corruptedDetails = WORKBENCH_COPY.corruptedIncompleteDetails;
         }
 
         const initialSession: Session | null = corrupted ? null : (rawSession ?? null);
@@ -896,48 +924,44 @@ export const App: React.FC = () => {
 
   const { viewMode, session, candidateSnapshot, corruptedDetails, emptySubState, selfTestPassed, saveStatus, isReadOnly } = state;
 
-  const saveStatusTextMap: Record<Exclude<typeof saveStatus, 'error'>, string> = {
-    saving: '正在保存',
-    unsaved: '最新更改未保存',
-    saved: '已保存',
-  };
-  const saveStatusText = saveStatus === 'error' ? '' : saveStatusTextMap[saveStatus];
+  const saveStatusText = saveStatus === 'error' ? '' : SAVE_STATUS_COPY[saveStatus];
 
   // 顶部工作台状态计算
   const ticketTag =
     viewMode === 'cleaning'
-      ? '校样'
+      ? WORKBENCH_COPY.ticketTags.cleaning
       : viewMode === 'candidateConfirm'
       ? CANDIDATE_COPY.ticketCandidateTag
       : viewMode === 'corruptedRecord'
-      ? '损坏'
+      ? WORKBENCH_COPY.ticketTags.corrupted
       : emptySubState.notice
-      ? '退单'
+      ? WORKBENCH_COPY.ticketTags.notice
       : emptySubState.splitError
-      ? '异常'
-      : '待稿';
+      ? WORKBENCH_COPY.ticketTags.splitError
+      : WORKBENCH_COPY.ticketTags.empty;
 
-  const ticketNumber =
-    session?.snapshot.source.title
-      ? `WE-TRIM // ${session.snapshot.source.title.slice(0, 16)}...`
-      : candidateSnapshot?.source.title
-      ? `WE-TRIM // ${candidateSnapshot.source.title.slice(0, 16)}...`
-      : 'WE-TRIM // 001';
+  // 票号只显示真实信息：品牌名加当前文章标题（按完整字素截断，不切断 emoji），没有文章时只显示品牌名
+  const ticketTitle = session?.snapshot.source.title || candidateSnapshot?.source.title || '';
+  const ticketNumber = ticketTitle
+    ? `${WORKBENCH_COPY.ticketBrand} · ${truncateGraphemes(ticketTitle, 16, '…')}`
+    : WORKBENCH_COPY.ticketBrand;
 
-  const statusDotColor =
+  const statusDotTone =
     isReadOnly
-      ? 'var(--ink-secondary)'
+      ? 'muted'
       : state.isReadingArticle
-      ? 'var(--amber)'
+      ? 'pending'
       : viewMode === 'cleaning'
-      ? '#07c160'
+      ? 'ok'
       : viewMode === 'candidateConfirm'
-      ? 'var(--amber)'
+      ? 'pending'
       : viewMode === 'corruptedRecord' || emptySubState.splitError
-      ? 'var(--vermilion)'
+      ? 'error'
       : emptySubState.notice
-      ? 'var(--amber)'
-      : 'var(--prussian-blue)';
+      ? 'pending'
+      : 'idle';
+
+  const includedBlockCount = session ? session.snapshot.blocks.filter((b) => b.included).length : 0;
 
   const statusText =
     isReadOnly
@@ -945,16 +969,16 @@ export const App: React.FC = () => {
       : state.isReadingArticle
       ? CANDIDATE_COPY.readingArticleStatus
       : viewMode === 'cleaning'
-      ? '正在清洗'
+      ? WORKBENCH_COPY.systemStatus.cleaning
       : viewMode === 'candidateConfirm'
       ? CANDIDATE_COPY.waitingConfirmStatus
       : viewMode === 'corruptedRecord'
-      ? '记录损坏'
+      ? WORKBENCH_COPY.systemStatus.corrupted
       : emptySubState.splitError
-      ? '整篇解析异常'
+      ? WORKBENCH_COPY.systemStatus.splitError
       : emptySubState.notice
-      ? '等待处置'
-      : '工作台就绪';
+      ? WORKBENCH_COPY.systemStatus.notice
+      : WORKBENCH_COPY.systemStatus.ready;
 
   const contextValue = useMemo(() => ({ state, dispatch }), [state, dispatch]);
 
@@ -979,42 +1003,37 @@ export const App: React.FC = () => {
             <div className="header-status-group" data-testid="header-status-group">
               {/* 保存状态指示位（只读副本不写 storage，也不显示保存状态，见 ARCHITECTURE.md §4.6） */}
               {session && !isReadOnly && (
-                saveStatus === 'error' ? (
-                  <button
-                    type="button"
-                    className="save-status save-status-error"
-                    data-testid="save-status"
-                    data-save-status="error"
-                    onClick={handleRetrySave}
-                    title="点击重新保存"
-                    aria-label="保存失败，点击重试"
-                    role="status"
-                    aria-live="polite"
-                  >
-                    <span className="save-status-dot save-status-dot-error" aria-hidden="true"></span>
-                    <span className="save-status-text">保存失败 · 点击重试</span>
-                  </button>
-                ) : (
-                  <div
-                    className={`save-status save-status-${saveStatus}`}
-                    data-testid="save-status"
-                    data-save-status={saveStatus}
-                    role="status"
-                    aria-live="polite"
-                  >
-                    <span
-                      className={`save-status-dot save-status-dot-${saveStatus}`}
-                      aria-hidden="true"
-                    ></span>
-                    <span className="save-status-text">{saveStatusText}</span>
-                  </div>
-                )
+                // 播报区与可操作按钮分开：role="status" 会覆盖 <button> 的原生角色
+                <div className="save-status-region" role="status" aria-live="polite">
+                  {saveStatus === 'error' ? (
+                    <button
+                      type="button"
+                      className="save-status save-status-error"
+                      data-testid="save-status"
+                      data-save-status="error"
+                      onClick={handleRetrySave}
+                      title={SAVE_STATUS_COPY.retryTitle}
+                    >
+                      <span className="save-status-dot save-status-dot-error" aria-hidden="true"></span>
+                      <span className="save-status-text">{SAVE_STATUS_COPY.error}</span>
+                    </button>
+                  ) : (
+                    <div
+                      className={`save-status save-status-${saveStatus}`}
+                      data-testid="save-status"
+                      data-save-status={saveStatus}
+                    >
+                      <span
+                        className={`save-status-dot save-status-dot-${saveStatus}`}
+                        aria-hidden="true"
+                      ></span>
+                      <span className="save-status-text">{saveStatusText}</span>
+                    </div>
+                  )}
+                </div>
               )}
               <div className="system-status" data-testid="system-status">
-                <span
-                  className="status-dot"
-                  style={{ backgroundColor: statusDotColor }}
-                ></span>
+                <span className={`status-dot status-dot-${statusDotTone}`} aria-hidden="true"></span>
                 <span>{statusText}</span>
               </div>
             </div>
@@ -1025,7 +1044,7 @@ export const App: React.FC = () => {
             <nav
               className="header-nav-toolbar"
               data-testid="header-nav-toolbar"
-              aria-label="文稿清洗导航与查找工具"
+              aria-label={WORKBENCH_COPY.navAriaLabel}
             >
               <div className="nav-toolbar-main">
                 {/* 搜索框 */}
@@ -1050,7 +1069,7 @@ export const App: React.FC = () => {
                       title={NAVIGATION_COPY.clearSearch}
                       onClick={handleClearSearch}
                     >
-                      ×
+                      <CloseIcon />
                     </button>
                   )}
                 </div>
@@ -1180,55 +1199,40 @@ export const App: React.FC = () => {
                 <div
                   className="summary-chips filter-tabs"
                   role="tablist"
-                  aria-label="内容块筛选"
+                  aria-label={WORKBENCH_COPY.filterTabsAriaLabel}
                   data-testid="filter-tabs"
                 >
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={currentFilter === 'all'}
-                    className={`summary-chip filter-tab ${currentFilter === 'all' ? 'is-active' : ''}`}
-                    data-testid="filter-tab-all"
-                    ref={(el) => {
-                      filterTabRefs.current.all = el;
-                    }}
-                    data-filter="all"
-                    onClick={() => handleFilterTabClick('all')}
-                  >
-                    {NAVIGATION_COPY.filterAll(session.snapshot.blocks.length)}
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={currentFilter === 'included'}
-                    className={`summary-chip filter-tab ${currentFilter === 'included' ? 'is-active' : ''}`}
-                    data-testid="filter-tab-included"
-                    ref={(el) => {
-                      filterTabRefs.current.included = el;
-                    }}
-                    data-filter="included"
-                    onClick={() => handleFilterTabClick('included')}
-                  >
-                    {NAVIGATION_COPY.filterIncluded(
-                      session.snapshot.blocks.filter((b) => b.included).length
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={currentFilter === 'excluded'}
-                    className={`summary-chip filter-tab ${currentFilter === 'excluded' ? 'is-active' : ''}`}
-                    data-testid="filter-tab-excluded"
-                    ref={(el) => {
-                      filterTabRefs.current.excluded = el;
-                    }}
-                    data-filter="excluded"
-                    onClick={() => handleFilterTabClick('excluded')}
-                  >
-                    {NAVIGATION_COPY.filterExcluded(
-                      session.snapshot.blocks.filter((b) => !b.included).length
-                    )}
-                  </button>
+                  {FILTER_TAB_ORDER.map((mode) => {
+                    const isActive = currentFilter === mode;
+                    const label =
+                      mode === 'all'
+                        ? NAVIGATION_COPY.filterAll(session.snapshot.blocks.length)
+                        : mode === 'included'
+                        ? NAVIGATION_COPY.filterIncluded(includedBlockCount)
+                        : NAVIGATION_COPY.filterExcluded(session.snapshot.blocks.length - includedBlockCount);
+                    return (
+                      <button
+                        key={mode}
+                        type="button"
+                        role="tab"
+                        id={`filter-tab-${mode}`}
+                        aria-selected={isActive}
+                        aria-controls={BLOCK_LIST_PANEL_ID}
+                        // 漫游 tabindex：Tab 只停在当前页签，页签之间用方向键切换
+                        tabIndex={isActive ? 0 : -1}
+                        className={`summary-chip filter-tab ${isActive ? 'is-active' : ''}`}
+                        data-testid={`filter-tab-${mode}`}
+                        ref={(el) => {
+                          filterTabRefs.current[mode] = el;
+                        }}
+                        data-filter={mode}
+                        onClick={() => handleFilterTabClick(mode)}
+                        onKeyDown={handleFilterTabKeyDown}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -1281,10 +1285,10 @@ export const App: React.FC = () => {
               <button
                 className="clip-close-btn"
                 onClick={() => dispatch({ type: 'SET_MARGIN_CLIP_NOTE', payload: null })}
-                aria-label="关闭提示"
+                aria-label={WORKBENCH_COPY.closeClipNoteAria}
                 type="button"
               >
-                ×
+                <CloseIcon />
               </button>
             </div>
           </aside>
@@ -1298,28 +1302,21 @@ export const App: React.FC = () => {
           <div className="reg-cross reg-bottom-left" aria-hidden="true"></div>
           <div className="reg-cross reg-bottom-right" aria-hidden="true"></div>
 
-          {/* 顶部色标条 */}
-          <div className="registration-bar">
+          {/* 顶部色标条：纯印刷装饰，不承载信息 */}
+          <div className="registration-bar" aria-hidden="true">
             <div className="cmyk-swatches">
-              <span className="cmyk-swatch" style={{ backgroundColor: '#00A3E0' }} title="Cyan"></span>
-              <span className="cmyk-swatch" style={{ backgroundColor: '#E4007C' }} title="Magenta"></span>
-              <span className="cmyk-swatch" style={{ backgroundColor: '#FFD100' }} title="Yellow"></span>
-              <span className="cmyk-swatch" style={{ backgroundColor: '#1A1A18' }} title="Black"></span>
-              <span className="cmyk-swatch" style={{ backgroundColor: '#C8352B' }} title="Vermilion"></span>
-              <span className="cmyk-swatch" style={{ backgroundColor: '#2F5FA8' }} title="Prussian Blue"></span>
+              <span className="cmyk-swatch cmyk-swatch-cyan"></span>
+              <span className="cmyk-swatch cmyk-swatch-magenta"></span>
+              <span className="cmyk-swatch cmyk-swatch-yellow"></span>
+              <span className="cmyk-swatch cmyk-swatch-black"></span>
+              <span className="cmyk-swatch cmyk-swatch-vermilion"></span>
+              <span className="cmyk-swatch cmyk-swatch-prussian"></span>
             </div>
-            <div className="proof-marks-info">PROOF SHEET · SPEC V1.0 · OPERATE</div>
           </div>
 
           <div className="sheet-body">
-            {/* 左侧页边批注栏 */}
-            <aside className="margin-track" aria-label="批注栏">
-              <div className="track-header">批注 · 痕迹</div>
-              <div className="track-stub"></div>
-              <div className="line-numbers">
-                <span>01</span>
-              </div>
-            </aside>
+            {/* 左侧页边批注栏：只是批注标记的对齐轨道，真实批注由各内容块自己输出并关联到读屏 */}
+            <div className="margin-track" aria-hidden="true"></div>
 
             {/* 右侧版心 */}
             <section className="main-bed">
@@ -1351,27 +1348,27 @@ export const App: React.FC = () => {
                     (w) => w.code === 'capture-unstable' || w.code === 'unstable-capture'
                   ) && (
                     <div className="unstable-note" data-testid="unstable-note">
-                      <span className="note-badge">批注</span>
-                      <span>文章可能还没显示完整，可以回到原文等它加载完再重新抓一次</span>
+                      <span className="note-badge">{WORKBENCH_COPY.unstableBadge}</span>
+                      <span>{WORKBENCH_COPY.unstableNote}</span>
                     </div>
                   )}
 
                   {/* 文章来源与标题：必须位于正文内容块之前 */}
                   <div className="slip-header" data-testid="slip-header">
-                    <span className="slip-kicker">文稿录入单</span>
+                    <span className="slip-kicker">{WORKBENCH_COPY.slipKicker}</span>
                     <h1 className="slip-title" ref={titleRef} tabIndex={-1}>
-                      {session.snapshot.source.title || '无标题文章'}
+                      {session.snapshot.source.title || WORKBENCH_COPY.untitledArticle}
                     </h1>
                     <div className="slip-meta">
                       {session.snapshot.source.account && (
                         <span className="meta-item meta-account">
-                          <strong>公众号：</strong>
+                          <strong>{WORKBENCH_COPY.accountLabel}</strong>
                           {session.snapshot.source.account}
                         </span>
                       )}
                       {session.snapshot.source.publishedAt && (
                         <span className="meta-item meta-date">
-                          <strong>发布时间：</strong>
+                          <strong>{WORKBENCH_COPY.publishedAtLabel}</strong>
                           {session.snapshot.source.publishedAt}
                         </span>
                       )}
@@ -1386,6 +1383,9 @@ export const App: React.FC = () => {
                     onFilterChange={setCurrentFilter}
                     onSearchStateChange={setSearchState}
                     onFocusFallback={handleFilterFocusFallback}
+                    tabPanelLabelledBy={
+                      viewMode === 'cleaning' && !isReadOnly ? `filter-tab-${currentFilter}` : undefined
+                    }
                   />
                 </div>
               )}
@@ -1434,17 +1434,17 @@ export const App: React.FC = () => {
               {viewMode === 'corruptedRecord' && (
                 <div className="corrupted-record-card" data-testid="corrupted-record-card">
                   <div className="notice-stamp error-stamp" aria-hidden="true">
-                    <span>损坏</span>
+                    <span>{WORKBENCH_COPY.corruptedStamp}</span>
                   </div>
                   <div className="notice-header">
-                    <span className="notice-sub">存储记录异常</span>
-                    <h2 className="notice-title">暂时无法恢复上次清洗进度</h2>
+                    <span className="notice-sub">{WORKBENCH_COPY.corruptedSub}</span>
+                    <h2 className="notice-title">{WORKBENCH_COPY.corruptedTitle}</h2>
                   </div>
                   <blockquote className="notice-verbatim-quote">
-                    {corruptedDetails || '检测到无法识别或损坏的清洗会话记录。'}
+                    {corruptedDetails || WORKBENCH_COPY.corruptedFallbackDetails}
                   </blockquote>
                   <p className="state-placeholder-tip">
-                    原记录已妥善保留未被静默清空。损坏记录备份与恢复流程即将支持（#35）。
+                    {WORKBENCH_COPY.corruptedTip}
                   </p>
                   <div className="notice-actions">
                     <button
@@ -1455,7 +1455,7 @@ export const App: React.FC = () => {
                         dispatch({ type: 'RESET_TO_EMPTY' });
                       }}
                     >
-                      重新开始
+                      {WORKBENCH_COPY.restart}
                     </button>
                   </div>
                 </div>
@@ -1468,14 +1468,14 @@ export const App: React.FC = () => {
                   {emptySubState.splitError && (
                     <div className="article-failure-card" data-testid="article-failure-card">
                       <div className="notice-stamp error-stamp" aria-hidden="true">
-                        <span>异常</span>
+                        <span>{WORKBENCH_COPY.splitErrorStamp}</span>
                       </div>
                       <div className="notice-header">
-                        <span className="notice-sub">整篇级失败</span>
-                        <h2 className="notice-title">无法切分文章正文块</h2>
+                        <span className="notice-sub">{WORKBENCH_COPY.splitErrorSub}</span>
+                        <h2 className="notice-title">{WORKBENCH_COPY.splitErrorTitle}</h2>
                       </div>
                       <blockquote className="notice-verbatim-quote">
-                        无法从当前页面解析出正文内容（{emptySubState.splitError.message}）。请回到原文看看页面是否完整加载，然后重试。
+                        {WORKBENCH_COPY.splitErrorDetails(emptySubState.splitError.message)}
                       </blockquote>
                       <div className="notice-actions">
                         <button
@@ -1488,14 +1488,14 @@ export const App: React.FC = () => {
                             )
                           }
                         >
-                          回到原文看看
+                          {WORKBENCH_COPY.returnToOriginal}
                         </button>
                         <button
                           type="button"
                           className="action-btn action-retry"
                           onClick={() => handleRetry(emptySubState.splitError?.tabId)}
                         >
-                          重试
+                          {WORKBENCH_COPY.retry}
                         </button>
                       </div>
                     </div>
@@ -1505,21 +1505,21 @@ export const App: React.FC = () => {
                   {!emptySubState.splitError && emptySubState.notice && (
                     <div className="return-notice-card" data-testid="return-notice-card">
                       <div className="notice-stamp" aria-hidden="true">
-                        <span>退单</span>
+                        <span>{WORKBENCH_COPY.noticeStamp}</span>
                       </div>
                       <div className="notice-header">
-                        <span className="notice-sub">审校退单记录</span>
+                        <span className="notice-sub">{WORKBENCH_COPY.noticeSub}</span>
                         <h2 className="notice-title">
                           {emptySubState.notice.kind === 'captcha'
-                            ? '微信需要安全验证'
-                            : '微信页面返回提示'}
+                            ? WORKBENCH_COPY.captchaTitle
+                            : WORKBENCH_COPY.wechatNoticeTitle}
                         </h2>
                       </div>
 
                       <blockquote className="notice-verbatim-quote">
                         {emptySubState.notice.kind === 'captcha'
-                          ? '微信需要安全验证。请回到原文标签页完成滑块验证后，再点图标重试。WeTrim 不代替你完成验证。'
-                          : `“${emptySubState.notice.noticeText}”`}
+                          ? WORKBENCH_COPY.captchaDetails
+                          : WORKBENCH_COPY.quoteNotice(emptySubState.notice.noticeText)}
                       </blockquote>
 
                       <div className="notice-actions">
@@ -1535,14 +1535,14 @@ export const App: React.FC = () => {
                             )
                           }
                         >
-                          回到原文看看
+                          {WORKBENCH_COPY.returnToOriginal}
                         </button>
                         <button
                           type="button"
                           className="action-btn action-retry"
                           onClick={() => handleRetry(emptySubState.notice?.tabId)}
                         >
-                          重试
+                          {WORKBENCH_COPY.retry}
                         </button>
                       </div>
                     </div>
@@ -1553,7 +1553,7 @@ export const App: React.FC = () => {
                     <div className="empty-state-view" data-testid="empty-state-view">
                       <h1 className="empty-headline">
                         <span className="empty-headline-accent"></span>
-                        从一篇公众号文章开始
+                        {WORKBENCH_COPY.emptyHeadline}
                       </h1>
 
                       <div className="steps-container">
@@ -1569,15 +1569,12 @@ export const App: React.FC = () => {
             </section>
           </div>
 
-          {/* 底部印厂信息与自检证明 */}
-          <footer className="proof-footer">
-            <span>WETRIM MV3 ENGINE</span>
-            {selfTestPassed && (
-              <span className="proof-stamp" data-testid="self-test-status">
-                ✓ CSP / EVAL VERIFIED (TURNDOWN + GFM + MARKED + DOMPURIFY + REACT 19)
-              </span>
-            )}
-          </footer>
+          {/* 构建自检结果只供验证脚本读取，不展示给用户 */}
+          {selfTestPassed && (
+            <span hidden data-testid="self-test-status">
+              CSP / EVAL VERIFIED (TURNDOWN + GFM + MARKED + DOMPURIFY + REACT 19)
+            </span>
+          )}
         </main>
       </div>
     </AppContext.Provider>

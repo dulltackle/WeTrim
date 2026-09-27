@@ -1,0 +1,52 @@
+import type { BlockType } from '../../shared/types';
+
+/**
+ * 内容块条目与块流列表的界面文案集中收敛，保留未来多语言接口。
+ */
+export const BLOCK_COPY = {
+  typeLabels: {
+    paragraph: '段落',
+    heading: '标题',
+    image: '图片',
+    code: '代码',
+    list: '列表',
+    quote: '引用',
+    table: '表格',
+    divider: '分割线',
+    formula: '公式',
+    richMedia: '富媒体',
+    unknown: '未知内容',
+  } satisfies Record<BlockType, string>,
+  emptyContent: '（内容为空）',
+  compositeTip: '整体取舍，编辑 Markdown 可删改内部内容与图片',
+  restoreConfirmTip: '还原将恢复初始内容并丢弃当前修改，不改变保留/剔除状态',
+  confirmRestore: '确认还原',
+  confirmRestoreAria: (order: number) => `确认还原第 ${order} 块`,
+  cancelRestore: '取消',
+  cancelRestoreAria: (order: number) => `取消还原第 ${order} 块`,
+  editedBadge: '已修改',
+  emptyBadge: '内容为空',
+  statusIncluded: '保留',
+  statusExcluded: '剔除',
+  exclude: '剔除',
+  excludeAria: (order: number) => `剔除第 ${order} 块`,
+  restoreIncluded: '恢复保留',
+  restoreIncludedAria: (order: number) => `恢复保留第 ${order} 块`,
+  restoreContent: '还原内容',
+  restoreContentAria: (order: number) => `还原第 ${order} 块内容`,
+  expand: '展开',
+  expandAria: (order: number) => `展开第 ${order} 块`,
+  collapse: '收起',
+  collapseAria: (order: number) => `收起第 ${order} 块`,
+  edit: '编辑 Markdown',
+  editAria: (order: number) => `编辑第 ${order} 块 Markdown`,
+  finishEdit: '完成编辑',
+  finishEditAria: (order: number) => `完成编辑第 ${order} 块`,
+  listHeading: '内容块流',
+  listTotal: (count: number) => `共 ${count} 块`,
+  emptyFilter: {
+    excluded: '没有被剔除的块',
+    included: '没有保留的块',
+    all: '暂无内容块',
+  },
+};

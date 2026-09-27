@@ -7,6 +7,7 @@ import { renderHtmlWithImages } from '../preview/html-to-react';
 import { truncateGraphemes } from '../../shared/grapheme';
 import { PREVIEW_COPY } from '../copy/preview';
 import { EXPORT_COPY } from '../copy/export';
+import { CloseIcon } from './CloseIcon';
 
 export interface DegradationItem {
   blockOrder: number;
@@ -228,7 +229,7 @@ export const PreviewDialog: React.FC<PreviewDialogProps> = ({
         <div className="preview-title-row">
           <div className="preview-title-group">
             <h2 className="preview-dialog-title">{PREVIEW_COPY.dialogTitle}</h2>
-            <span className="preview-stamp" aria-hidden="true">清样</span>
+            <span className="preview-stamp" aria-hidden="true">{PREVIEW_COPY.stamp}</span>
           </div>
           <button
             type="button"
@@ -237,7 +238,7 @@ export const PreviewDialog: React.FC<PreviewDialogProps> = ({
             onClick={onClose}
             data-testid="preview-btn-close"
           >
-            ×
+            <CloseIcon />
           </button>
         </div>
 
@@ -340,7 +341,7 @@ export const PreviewDialog: React.FC<PreviewDialogProps> = ({
           /* 空正文状态 */
           <div className="preview-empty-state" data-testid="preview-empty-state">
             <div className="empty-state-card">
-              <div className="empty-state-stamp" aria-hidden="true">空白</div>
+              <div className="empty-state-stamp" aria-hidden="true">{PREVIEW_COPY.emptyStamp}</div>
               <h3 className="empty-state-title">{PREVIEW_COPY.emptyTitle}</h3>
               <p className="empty-state-desc">
                 {allExcluded
@@ -430,7 +431,7 @@ export const PreviewDialog: React.FC<PreviewDialogProps> = ({
                   tabIndex={0}
                   className="preview-source-pre"
                   data-testid="preview-source-pre"
-                  aria-label="Markdown 完整源码"
+                  aria-label={PREVIEW_COPY.sourceAriaLabel}
                 >
                   {resultFile.text}
                 </pre>

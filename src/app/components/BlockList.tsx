@@ -20,14 +20,11 @@ import {
   type BlockHit,
   type SearchState,
 } from '../search/text-search';
+import { BLOCK_COPY } from '../copy/block';
 
 export type BlockFilterMode = 'all' | 'included' | 'excluded';
 
-export const EMPTY_FILTER_MESSAGES: Record<BlockFilterMode, string> = {
-  excluded: '没有被剔除的块',
-  included: '没有保留的块',
-  all: '暂无内容块',
-};
+export const EMPTY_FILTER_MESSAGES: Record<BlockFilterMode, string> = BLOCK_COPY.emptyFilter;
 
 export interface OrderLocateResult {
   status: 'success' | 'out_of_range' | 'hidden_by_filter';
@@ -89,7 +86,20 @@ export interface BlockListProps {
   onSearchStateChange?: (state: SearchState) => void;
   /** 块从当前筛选视图中全部消失、没有可聚焦的块时，交由外部把焦点放回当前筛选页签 */
   onFocusFallback?: (filter: BlockFilterMode) => void;
+  /** 外部渲染了筛选页签时传入当前页签的 id：块流作为它控制的 tabpanel */
+  tabPanelLabelledBy?: string;
 }
+
+/** 系统开启「减少动态效果」时直接跳到目标，长文里平滑滚动可能一口气滚过上万像素 */
+function preferredScrollBehavior(): ScrollBehavior {
+  return typeof window !== 'undefined' &&
+    window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    ? 'auto'
+    : 'smooth';
+}
+
+/** 块流作为筛选页签 tabpanel 时的元素 id，供页签的 aria-controls 引用 */
+export const BLOCK_LIST_PANEL_ID = 'block-list-panel';
 
 const BlockListInner = forwardRef<BlockListHandle, BlockListProps>(
   (
@@ -99,6 +109,7 @@ const BlockListInner = forwardRef<BlockListHandle, BlockListProps>(
       onFilterChange,
       onSearchStateChange,
       onFocusFallback,
+      tabPanelLabelledBy,
     },
     ref
   ) => {
@@ -179,14 +190,14 @@ const BlockListInner = forwardRef<BlockListHandle, BlockListProps>(
     const scrollToBlock = useCallback((id: string) => {
       const el = itemRefs.current.get(id);
       if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        el.scrollIntoView({ behavior: preferredScrollBehavior(), block: 'nearest' });
       }
     }, []);
 
     const focusBlock = useCallback((id: string) => {
       const el = itemRefs.current.get(id);
       if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        el.scrollIntoView({ behavior: preferredScrollBehavior(), block: 'nearest' });
         el.focus();
       }
     }, []);
@@ -825,13 +836,20 @@ const BlockListInner = forwardRef<BlockListHandle, BlockListProps>(
     );
 
     return (
-      <div className="block-list" data-testid="block-list" onFocus={handleFocusWithin}>
+      <div
+        className="block-list"
+        data-testid="block-list"
+        onFocus={handleFocusWithin}
+        {...(tabPanelLabelledBy
+          ? { id: BLOCK_LIST_PANEL_ID, role: 'tabpanel', 'aria-labelledby': tabPanelLabelledBy }
+          : {})}
+      >
         {/* 块流汇总条：展示总块数（筛选页签在固定顶栏，Issue #29 §3） */}
         <div className="block-list-summary-bar" data-testid="block-list-summary-bar">
           <div className="summary-title">
-            <span className="summary-heading">内容块流</span>
+            <span className="summary-heading">{BLOCK_COPY.listHeading}</span>
             <span className="summary-total" data-testid="summary-total-blocks">
-              共 {totalCount} 块
+              {BLOCK_COPY.listTotal(totalCount)}
             </span>
           </div>
 
