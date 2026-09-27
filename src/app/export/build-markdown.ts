@@ -76,10 +76,17 @@ export function buildMarkdown(blocks: Block[]): string {
 /**
  * YAML 标量字符串格式化与转义（ARCHITECTURE.md §10.3 与 Issue #31）：
  * 按引号、冒号、换行正确转义。
- * 当字符串包含引号、冒号、换行、#、制表符或首尾空白等特殊字符时，采用双引号并标准转义。
+ * 当字符串包含引号、冒号、换行、#、制表符或首尾空白等特殊字符，或裸写会被解析为数字/布尔/null 时，采用双引号并标准转义。
  */
+// 裸写会被 YAML 解析成数字、布尔值、日期或 null 的标量（YAML 1.1 与 1.2 的并集），必须加引号保持字符串
+const YAML_NON_STRING_SCALAR =
+  /^(?:[-+]?(?:\d[\d_]*(?:\.[\d_]*)?|\.\d+)(?:e[-+]?\d+)?|\d{4}-\d\d?-\d\d?(?:[t ].*)?|0x[\da-f_]+|0o[0-7_]+|[-+]?\.(?:inf)|\.nan|true|false|yes|no|y|n|on|off|null|~)$/i;
+
 export function formatYamlString(value: string): string {
-  const needsQuotes = /[:"'#\n\r\t]|^[\s\-?:,[\]{}#&*!|>'"%@`]|[\s]$/.test(value);
+  const needsQuotes =
+    value === '' ||
+    /[:"'#\n\r\t]|^[\s\-?:,[\]{}#&*!|>'"%@`]|[\s]$/.test(value) ||
+    YAML_NON_STRING_SCALAR.test(value);
   if (needsQuotes) {
     return JSON.stringify(value);
   }

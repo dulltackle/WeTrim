@@ -165,6 +165,20 @@ async function run() {
         throw new Error(`FrontMatter partial title missing: "${fmPartial}"`);
       }
 
+      // 裸写会被 YAML 解析成数字/布尔/日期/null 的值必须加引号
+      for (const [title, expected] of [
+        ['2024', 'title: "2024"'],
+        ['true', 'title: "true"'],
+        ['null', 'title: "null"'],
+        ['2026-09-01', 'title: "2026-09-01"'],
+        ['2024年总结', 'title: 2024年总结'],
+      ]) {
+        const fm = buildFrontMatter({ title, account: null, publishedAt: null, url: '' });
+        if (!fm.includes(expected)) {
+          throw new Error(`FrontMatter non-string scalar quoting failed for "${title}": "${fm}"`);
+        }
+      }
+
       // 全部字段为空时返回空字符串
       const emptySource = { title: '', account: null, publishedAt: null, url: '' };
       const fmEmpty = buildFrontMatter(emptySource);
@@ -440,16 +454,69 @@ async function run() {
     // 6.4 Preview dialog must close, filter must switch to 'all', and block 3 must be focused
     await page.waitForFunction(() => !document.querySelector('[data-testid="preview-dialog"]')?.hasAttribute('open'));
 
+    await page.waitForFunction(() => window.__wetrim.blockListRef.current.getFilter() === 'all', { timeout: 3000 });
     const filterAfterJump = await page.evaluate(() => window.__wetrim.blockListRef.current.getFilter());
     assert.strictEqual(filterAfterJump, 'all', 'Filter must automatically switch to all when jumping to hidden block');
 
     const expectedTargetBlockId = await page.evaluate(
       () => window.__wetrim.getState().session.snapshot.blocks.find((b) => b.type === 'table')?.id
     );
-    const focusedBlockId = await page.evaluate(() => window.__wetrim.blockListRef.current.getFocusedBlockId());
-    assert.strictEqual(focusedBlockId, expectedTargetBlockId, 'Target degradation block must be focused');
+    await page.waitForFunction(
+      (id) => window.__wetrim.blockListRef.current.getFocusedBlockId() === id,
+      { timeout: 3000 },
+      expectedTargetBlockId
+    );
+
+    // 6.5 目标块在当前筛选下可见时（filter 已是 all），关闭后同样要聚焦到原块，而不是落回「检查结果」按钮
+    await page.click('[data-testid="action-preview"]');
+    await page.waitForSelector('[data-testid="preview-dialog"][open]', { timeout: 3000 });
+    await page.click('[data-testid="degradation-summary-toggle"]');
+    await page.waitForSelector('[data-testid="degradation-items-list"]', { timeout: 2000 });
+    await page.click('[data-testid="degradation-item-jump-btn"]');
+    await page.waitForFunction(() => !document.querySelector('[data-testid="preview-dialog"]')?.hasAttribute('open'));
+    await page.waitForFunction(
+      (id) => window.__wetrim.blockListRef.current.getFocusedBlockId() === id,
+      { timeout: 3000 },
+      expectedTargetBlockId
+    );
+    await new Promise((r) => setTimeout(r, 300));
+    const focusedAfterVisibleJump = await page.evaluate(() => window.__wetrim.blockListRef.current.getFocusedBlockId());
+    assert.strictEqual(focusedAfterVisibleJump, expectedTargetBlockId, 'Visible target block must stay focused after dialog closes');
 
     console.log('✓ Test 6 Passed: Degradation summary bar counts, expands, and navigates back to block switching filter to all');
+
+    // --------------------------------------------------------------------------
+    // Test 6b: 防抖中的编辑进入预览，且对话框打开期间不刷新
+    // --------------------------------------------------------------------------
+    console.log('\n--- Test 6b: Pending Edits Flushed on Open & Frozen While Open ---');
+
+    const editTargetId = await page.evaluate(
+      () => window.__wetrim.getState().session.snapshot.blocks.find((b) => b.initialMarkdown.includes('第一段引言'))?.id
+    );
+    await page.click(`[data-block-id="${editTargetId}"] [data-testid="block-action-edit"]`);
+    await page.waitForSelector(`[data-block-id="${editTargetId}"] [data-testid="block-editor-textarea"]`);
+    await page.type(`[data-block-id="${editTargetId}"] [data-testid="block-editor-textarea"]`, '防抖未落盘的补充');
+    // 500ms 防抖到期前立即打开
+    await page.click('[data-testid="action-preview"]');
+    await page.waitForSelector('[data-testid="preview-dialog"][open]', { timeout: 3000 });
+    await page.click('[data-testid="preview-tab-source"]');
+    await page.waitForSelector('[data-testid="preview-source-pre"]', { timeout: 2000 });
+    const preWithPending = await page.$eval('[data-testid="preview-source-pre"]', (el) => el.textContent);
+    assert(preWithPending.includes('防抖未落盘的补充'), 'Preview must include edits still pending in the debounce window');
+
+    // 打开期间快照被改写，预览内容保持不变
+    await page.evaluate((id) => {
+      window.__wetrim.dispatch({ type: 'UPDATE_BLOCK', payload: { blockId: id, editedMarkdown: '打开期间的迟到改写' } });
+    }, editTargetId);
+    await new Promise((r) => setTimeout(r, 200));
+    const preAfterLateWrite = await page.$eval('[data-testid="preview-source-pre"]', (el) => el.textContent);
+    assert.strictEqual(preAfterLateWrite, preWithPending, 'Preview must not refresh while the dialog is open');
+
+    await page.click('[data-testid="preview-btn-return"]');
+    await page.waitForFunction(() => !document.querySelector('[data-testid="preview-dialog"]')?.hasAttribute('open'));
+    await page.click(`[data-block-id="${editTargetId}"] [data-testid="block-action-finish-edit"]`);
+
+    console.log('✓ Test 6b Passed: Pending edits flushed before generation and preview frozen while open');
 
     // --------------------------------------------------------------------------
     // Test 7: Empty State Handlers
@@ -489,6 +556,7 @@ async function run() {
     await page.click('[data-testid="preview-btn-recover-excluded"]');
     await page.waitForFunction(() => !document.querySelector('[data-testid="preview-dialog"]')?.hasAttribute('open'));
 
+    await page.waitForFunction(() => window.__wetrim.blockListRef.current.getFilter() === 'excluded', { timeout: 3000 });
     const filterAfterRecover = await page.evaluate(() => window.__wetrim.blockListRef.current.getFilter());
     assert.strictEqual(filterAfterRecover, 'excluded', 'Filter must switch to excluded after clicking recover');
 
@@ -525,8 +593,9 @@ async function run() {
     await page.click('[data-testid="preview-btn-jump-first-empty"]');
     await page.waitForFunction(() => !document.querySelector('[data-testid="preview-dialog"]')?.hasAttribute('open'));
 
-    const focusedAfterJumpEmpty = await page.evaluate(() => window.__wetrim.blockListRef.current.getFocusedBlockId());
-    assert(focusedAfterJumpEmpty !== null, 'First empty block must be focused');
+    await page.waitForFunction(() => window.__wetrim.blockListRef.current.getFocusedBlockId() !== null, {
+      timeout: 3000,
+    });
 
     console.log('✓ Test 7 Passed: Empty states correctly show guidance and recovery buttons');
 
@@ -555,7 +624,8 @@ async function run() {
           : `<p>第 ${i} 块合成长文段落内容：系统架构与持久化规范说明。</p>`,
         initialMarkdown: isImg
           ? `![图 ${i}](https://example.com/synth-${i}.png)`
-          : `第 ${i} 块合成长文段落内容：系统架构与持久化规范说明。`,
+          : `第 ${i} 块合成长文段落内容：系统架构与持久化规范说明。`.repeat(i % 3 === 0 ? 12 : 1) +
+            (i % 7 === 0 ? `**强调 ${i}** 与 [链接](https://example.com/${i}) 以及 \`code-${i}\`。` : ''),
         editedMarkdown: null,
         included: i % 10 !== 0, // 90% 保留 (~540 块)
         notes: isTable

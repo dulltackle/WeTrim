@@ -1996,11 +1996,14 @@ button.save-status-error:focus-visible {
   min-width: 0;
 }
 
-.block-rendered-content > *:first-child {
+/* 非图片节点会被包进 .block-rendered-chunk 分片，首尾边距规则需穿透到分片内部 */
+.block-rendered-content > *:first-child,
+.block-rendered-content > .block-rendered-chunk:first-child > *:first-child {
   margin-top: 0;
 }
 
-.block-rendered-content > *:last-child {
+.block-rendered-content > *:last-child,
+.block-rendered-content > .block-rendered-chunk:last-child > *:last-child {
   margin-bottom: 0;
 }
 

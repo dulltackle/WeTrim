@@ -88,14 +88,15 @@ export const App: React.FC = () => {
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const previewBtnRef = useRef<HTMLButtonElement>(null);
   const isPreviewOpenRef = useRef(isPreviewOpen);
-  const focusPreviewBtnAfterCloseRef = useRef(false);
+  // 预览关闭后要执行的焦点/定位动作：模态 <dialog> 打开期间背后清洗页是 inert 的，
+  // 聚焦必须等对话框真正关闭（提交后）再做，否则 focus() 无效且会被对话框的焦点归还覆盖
+  const afterPreviewCloseRef = useRef<(() => void) | null>(null);
   useEffect(() => {
     isPreviewOpenRef.current = isPreviewOpen;
-    if (focusPreviewBtnAfterCloseRef.current && !isPreviewOpen) {
-      focusPreviewBtnAfterCloseRef.current = false;
-      const timer = setTimeout(() => {
-        previewBtnRef.current?.focus();
-      }, 0);
+    if (!isPreviewOpen && afterPreviewCloseRef.current) {
+      const action = afterPreviewCloseRef.current;
+      afterPreviewCloseRef.current = null;
+      const timer = setTimeout(action, 0);
       return () => clearTimeout(timer);
     }
   }, [isPreviewOpen]);
@@ -260,56 +261,47 @@ export const App: React.FC = () => {
     if (typeof window !== 'undefined') {
       savedScrollYRef.current = window.scrollY;
     }
+    // 先让编辑器里防抖中的修改落入快照（与 setIsPreviewOpen 同批提交），预览才是当前内存内容
+    blockListRef.current?.flushPendingEdits();
     setIsPreviewOpen(true);
   };
 
-  const handleClosePreview = () => {
-    focusPreviewBtnAfterCloseRef.current = true;
+  const closePreviewThen = (action: () => void) => {
+    afterPreviewCloseRef.current = action;
     setIsPreviewOpen(false);
-    if (typeof window !== 'undefined') {
-      window.scrollTo({ top: savedScrollYRef.current, behavior: 'instant' });
-    }
-    previewBtnRef.current?.focus();
-    setTimeout(() => {
-      previewBtnRef.current?.focus();
-    }, 0);
   };
 
+  const handleClosePreview = () => {
+    closePreviewThen(() => {
+      if (typeof window !== 'undefined') {
+        window.scrollTo({ top: savedScrollYRef.current, behavior: 'instant' });
+      }
+      previewBtnRef.current?.focus({ preventScroll: true });
+    });
+  };
+
+  // 降级条目与「跳到第一个空块」共用：关闭后定位并聚焦原块，当前筛选下看不到时先切到「全部」
   const handleJumpToBlockFromPreview = (order: number, id: string) => {
-    setIsPreviewOpen(false);
     const targetBlock = state.session?.snapshot.blocks.find((b) => b.id === id);
     const isVisible =
       currentFilter === 'all' ||
       (currentFilter === 'included' && targetBlock?.included) ||
       (currentFilter === 'excluded' && !targetBlock?.included);
 
-    if (!isVisible) {
-      // 当前筛选下看不到该块时，先切到「全部」
-      blockListRef.current?.setFilter('all', { thenLocateOrder: order });
-    } else {
-      blockListRef.current?.focusBlock(id);
-    }
+    closePreviewThen(() => {
+      if (!isVisible) {
+        blockListRef.current?.setFilter('all', { thenLocateOrder: order });
+      } else {
+        blockListRef.current?.focusBlock(id);
+      }
+    });
   };
 
   const handleRecoverExcludedFromPreview = () => {
-    setIsPreviewOpen(false);
     // 全部块都被剔除：切到「剔除」筛选
-    blockListRef.current?.setFilter('excluded');
-  };
-
-  const handleJumpToEmptyBlockFromPreview = (order: number, id: string) => {
-    setIsPreviewOpen(false);
-    const targetBlock = state.session?.snapshot.blocks.find((b) => b.id === id);
-    const isVisible =
-      currentFilter === 'all' ||
-      (currentFilter === 'included' && targetBlock?.included) ||
-      (currentFilter === 'excluded' && !targetBlock?.included);
-
-    if (!isVisible) {
-      blockListRef.current?.setFilter('all', { thenLocateOrder: order });
-    } else {
-      blockListRef.current?.focusBlock(id);
-    }
+    closePreviewThen(() => {
+      blockListRef.current?.setFilter('excluded');
+    });
   };
 
   // 1. marked + DOMPurify 真实渲染三步指引文案
@@ -1299,7 +1291,7 @@ export const App: React.FC = () => {
                   onClose={handleClosePreview}
                   onJumpToBlock={handleJumpToBlockFromPreview}
                   onRecoverExcluded={handleRecoverExcludedFromPreview}
-                  onJumpToEmptyBlock={handleJumpToEmptyBlockFromPreview}
+                  onJumpToEmptyBlock={handleJumpToBlockFromPreview}
                 />
               )}
 

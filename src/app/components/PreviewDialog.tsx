@@ -46,9 +46,18 @@ export const PreviewDialog: React.FC<PreviewDialogProps> = ({
   const [hasVisitedSource, setHasVisitedSource] = useState(false);
   const [isDegradationExpanded, setIsDegradationExpanded] = useState(false);
 
+  // 打开瞬间冻结快照：对话框打开期间即使迟到的保存改写了 snapshot，也不重新生成
+  const [frozenSnapshot, setFrozenSnapshot] = useState<ArticleSnapshot | null>(null);
+  if (isOpen && frozenSnapshot === null) {
+    setFrozenSnapshot(snapshot);
+  } else if (!isOpen && frozenSnapshot !== null) {
+    setFrozenSnapshot(null);
+  }
+
   // 打开时从当前内存内容生成一次（对话框打开期间不刷新）
   const cachedData = useMemo(() => {
-    if (!isOpen) return null;
+    if (!frozenSnapshot) return null;
+    const snapshot = frozenSnapshot;
 
     const resultFile = buildResultFile(snapshot);
 
@@ -116,7 +125,14 @@ export const PreviewDialog: React.FC<PreviewDialogProps> = ({
     const renderedHtml = hasBody ? renderMarkdown(resultFile.body) : '';
     const renderedBodyNode = hasBody ? renderHtmlWithImages(renderedHtml) : null;
 
+    const { source } = snapshot;
     return {
+      header: {
+        title: source.title?.trim() || '',
+        account: source.account?.trim() || '',
+        date: parseFrontMatterDate(source.publishedAt),
+        url: source.url?.trim() || '',
+      },
       resultFile,
       hasBody,
       renderedBodyNode,
@@ -127,7 +143,7 @@ export const PreviewDialog: React.FC<PreviewDialogProps> = ({
       degradationItems,
       degradationSummary: summaryParts.join(' · '),
     };
-  }, [isOpen, snapshot]);
+  }, [frozenSnapshot]);
 
   // 控制原生 <dialog> 打开与焦点（在浏览器排版绘制前同步激活 showModal 与聚焦）
   useLayoutEffect(() => {
@@ -182,6 +198,7 @@ export const PreviewDialog: React.FC<PreviewDialogProps> = ({
   }
 
   const {
+    header,
     resultFile,
     hasBody,
     renderedBodyNode,
@@ -192,9 +209,6 @@ export const PreviewDialog: React.FC<PreviewDialogProps> = ({
     degradationItems,
     degradationSummary,
   } = cachedData;
-
-  // 稿头日期
-  const parsedDate = parseFrontMatterDate(snapshot.source.publishedAt);
 
   return (
     <dialog
@@ -245,6 +259,7 @@ export const PreviewDialog: React.FC<PreviewDialogProps> = ({
             id="preview-tab-reading"
             aria-controls="preview-panel-reading"
             aria-selected={activeTab === 'reading'}
+            tabIndex={activeTab === 'reading' ? 0 : -1}
             className={`preview-tab-btn ${activeTab === 'reading' ? 'is-active' : ''}`}
             data-testid="preview-tab-reading"
             onClick={() => handleSelectTab('reading')}
@@ -259,6 +274,7 @@ export const PreviewDialog: React.FC<PreviewDialogProps> = ({
             id="preview-tab-source"
             aria-controls="preview-panel-source"
             aria-selected={activeTab === 'source'}
+            tabIndex={activeTab === 'source' ? 0 : -1}
             className={`preview-tab-btn ${activeTab === 'source' ? 'is-active' : ''}`}
             data-testid="preview-tab-source"
             onClick={() => handleSelectTab('source')}
@@ -364,27 +380,27 @@ export const PreviewDialog: React.FC<PreviewDialogProps> = ({
             >
               {/* 稿头：排版自 front-matter 四个字段 */}
               <div className="preview-article-header" data-testid="preview-article-header">
-                {snapshot.source.title && (
-                  <h1 className="preview-article-title">{snapshot.source.title}</h1>
+                {header.title && (
+                  <h1 className="preview-article-title">{header.title}</h1>
                 )}
                 <div className="preview-article-meta">
-                  {snapshot.source.account && (
+                  {header.account && (
                     <span className="preview-meta-item preview-meta-account">
                       <strong>{PREVIEW_COPY.accountPrefix}</strong>
-                      {snapshot.source.account}
+                      {header.account}
                     </span>
                   )}
-                  {parsedDate && (
+                  {header.date && (
                     <span className="preview-meta-item preview-meta-date">
                       <strong>{PREVIEW_COPY.datePrefix}</strong>
-                      {parsedDate}
+                      {header.date}
                     </span>
                   )}
-                  {snapshot.source.url && (
+                  {header.url && (
                     <span className="preview-meta-item preview-meta-source">
                       <strong>{PREVIEW_COPY.sourcePrefix}</strong>
-                      <a href={snapshot.source.url} target="_blank" rel="noopener noreferrer">
-                        {snapshot.source.url}
+                      <a href={header.url} target="_blank" rel="noopener noreferrer">
+                        {header.url}
                       </a>
                     </span>
                   )}

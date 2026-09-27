@@ -78,6 +78,8 @@ export interface BlockListHandle {
   focusCurrentHitBlock: () => void;
   getSearchState: () => SearchState;
   getCounts: () => { total: number; included: number; excluded: number };
+  /** 立即提交所有块编辑器中尚在防抖等待的修改，使 snapshot 反映当前内存内容 */
+  flushPendingEdits: () => void;
 }
 
 export interface BlockListProps {
@@ -653,6 +655,16 @@ const BlockListInner = forwardRef<BlockListHandle, BlockListProps>(
       [dispatch, updateHighlightsAndNotches, activateHit]
     );
 
+    // 各块编辑器登记的提交函数（id → flush），供 flushPendingEdits 统一调用
+    const flushRegistryRef = useRef(new Map<string, () => void>());
+    const registerFlush = useCallback((id: string, flush: (() => void) | null) => {
+      if (flush) {
+        flushRegistryRef.current.set(id, flush);
+      } else {
+        flushRegistryRef.current.delete(id);
+      }
+    }, []);
+
     // 块更新（重新缓存纯文本，外部 blocks 引用更新会触发下方 useEffect 重新搜索）
     const handleUpdateBlock = useCallback(
       (blockId: string, editedMarkdown: string | null) => {
@@ -732,6 +744,11 @@ const BlockListInner = forwardRef<BlockListHandle, BlockListProps>(
         scrollToBlock,
         focusBlock,
         queryVisible,
+        flushPendingEdits: () => {
+          for (const flush of flushRegistryRef.current.values()) {
+            flush();
+          }
+        },
         setFilter: (f: BlockFilterMode, options?: { thenLocateOrder?: number }) =>
           handleFilterChange(f, options?.thenLocateOrder),
         getFilter: () => filter,
@@ -836,6 +853,7 @@ const BlockListInner = forwardRef<BlockListHandle, BlockListProps>(
                 block={b}
                 onToggle={handleToggleBlock}
                 onUpdate={handleUpdateBlock}
+                registerFlush={registerFlush}
                 isTempExpanded={tempExpandedBlockId === b.id}
                 ref={getRefCallback(b.id)}
               />

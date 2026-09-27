@@ -19,6 +19,8 @@ export interface BlockItemProps {
   onToggle: (id: string) => void;
   onUpdate?: (id: string, editedMarkdown: string | null) => void;
   isTempExpanded?: boolean;
+  /** 登记本块的「立即提交未保存编辑」函数，供外部（如打开检查结果前）统一刷新；传 null 表示注销 */
+  registerFlush?: (id: string, flush: (() => void) | null) => void;
 }
 
 export const BLOCK_TYPE_LABELS: Record<string, string> = {
@@ -47,7 +49,7 @@ export const BLOCK_TYPE_LABELS: Record<string, string> = {
  * - 临时展开（isTempExpanded）：搜索命中折叠剔除块时临时展开，离开后自动收起
  */
 export const BlockItem = memo(
-  forwardRef<HTMLDivElement, BlockItemProps>(({ block, onToggle, onUpdate, isTempExpanded }, ref) => {
+  forwardRef<HTMLDivElement, BlockItemProps>(({ block, onToggle, onUpdate, isTempExpanded, registerFlush }, ref) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     const [isConfirmingRestore, setIsConfirmingRestore] = useState(false);
@@ -111,6 +113,13 @@ export const BlockItem = memo(
         setIsExpanded(false);
       }
     }, [block.included]);
+
+    // 向列表登记提交函数：检查结果等需要读取当前内存内容的操作，先让防抖中的编辑落入快照
+    useEffect(() => {
+      if (!registerFlush) return;
+      registerFlush(block.id, flushSave);
+      return () => registerFlush(block.id, null);
+    }, [block.id, flushSave, registerFlush]);
 
     // 卸载前刷新未保存更改
     useEffect(() => {
