@@ -2,8 +2,8 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 import type { ArticleSnapshot, Block } from '../../shared/types';
 import { currentMarkdown } from '../../shared/types';
 import { buildResultFile, parseFrontMatterDate, type ResultFile } from '../export/build-markdown';
-import { renderMarkdown } from '../preview/render';
-import { renderHtmlWithImages } from '../preview/html-to-react';
+import { renderMarkdownToFragment } from '../preview/render';
+import { renderFragmentWithImages } from '../preview/html-to-react';
 import { truncateGraphemes } from '../../shared/grapheme';
 import { PREVIEW_COPY } from '../copy/preview';
 import { EXPORT_COPY } from '../copy/export';
@@ -126,8 +126,10 @@ export const PreviewDialog: React.FC<PreviewDialogProps> = ({
       }
     }
     const hasBody = resultFile.body.trim() !== '';
-    const renderedHtml = hasBody ? renderMarkdown(resultFile.body) : '';
-    const renderedBodyNode = hasBody ? renderHtmlWithImages(renderedHtml) : null;
+    // 整篇正文直接走净化后的 DOM 片段，省掉一次序列化与重新解析（600 块长文下是预览生成的主要开销之一）
+    const renderedBodyNode = hasBody
+      ? renderFragmentWithImages(renderMarkdownToFragment(resultFile.body))
+      : null;
 
     const { source } = snapshot;
     return {

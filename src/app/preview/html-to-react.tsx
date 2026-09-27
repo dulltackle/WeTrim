@@ -154,8 +154,44 @@ export function renderHtmlWithImages(html: string): React.ReactNode {
 
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, 'text/html');
+  return renderChildNodesWithImages(doc.body);
+}
+
+/**
+ * 整篇预览用：直接消费 renderMarkdownToFragment 的净化结果，不再重复解析 HTML。
+ */
+export function renderFragmentWithImages(fragment: DocumentFragment): React.ReactNode {
+  if (!fragment.firstChild) return null;
+  if (!fragment.querySelector('img')) {
+    const container = (fragment.ownerDocument ?? document).createElement('div');
+    container.appendChild(fragment);
+    return (
+      <div
+        className="block-rendered-content"
+        data-testid="block-rendered-content"
+        dangerouslySetInnerHTML={{ __html: container.innerHTML }}
+      />
+    );
+  }
+  return renderChildNodesWithImages(fragment);
+}
+
+/**
+ * 把 root 的直接子节点按「含图 / 不含图」分段：连续的不含图节点合并成一个 innerHTML 分片，
+ * 含图节点转成带 ImagePresentation 的 React 树。
+ */
+function renderChildNodesWithImages(root: HTMLElement | DocumentFragment): React.ReactNode {
+  const doc = root.ownerDocument ?? document;
+  // 一次查出全部图片再上溯到 root 的直接子节点，避免对几百个子节点各做一次 querySelector
+  const imgHosts = new Set<Node>();
+  root.querySelectorAll('img').forEach((img) => {
+    let host: Node = img;
+    while (host.parentNode && host.parentNode !== root) host = host.parentNode;
+    imgHosts.add(host);
+  });
+
   const nodes: React.ReactNode[] = [];
-  const total = doc.body.childNodes.length;
+  const total = root.childNodes.length;
   let chunkStart: Node | null = null;
   let chunkEnd: Node | null = null;
 
@@ -182,11 +218,8 @@ export function renderHtmlWithImages(html: string): React.ReactNode {
   };
 
   for (let i = 0; i < total; i++) {
-    const child = doc.body.childNodes[i];
-    const hasImg =
-      child.nodeType === Node.ELEMENT_NODE &&
-      ((child as HTMLElement).tagName.toLowerCase() === 'img' ||
-        (child as HTMLElement).querySelector('img') !== null);
+    const child = root.childNodes[i];
+    const hasImg = imgHosts.has(child);
 
     if (hasImg) {
       flushRangeChunk(i);

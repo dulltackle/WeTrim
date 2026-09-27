@@ -274,7 +274,7 @@ body {
 .search-wrapped-toast {
   color: var(--prussian-blue);
   background-color: var(--prussian-blue-subtle);
-  border: 1px solid rgba(47, 95, 168, 0.2);
+  border: 1px solid color-mix(in srgb, var(--prussian-blue) 20%, transparent);
   padding: 2px 8px;
   border-radius: 2px;
   font-weight: 500;
@@ -284,7 +284,7 @@ body {
 .search-hidden-notice {
   color: var(--ink-secondary);
   background-color: var(--amber-subtle);
-  border: 1px solid rgba(250, 157, 59, 0.3);
+  border: 1px solid color-mix(in srgb, var(--amber) 30%, transparent);
   padding: 2px 8px;
   border-radius: 2px;
 }
@@ -294,9 +294,10 @@ body {
   border: 1px solid var(--sheet-border);
   border-radius: 2px;
   color: var(--ink-primary);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
-  padding: 1px 6px;
+  min-height: 24px;
+  padding: 2px 8px;
   cursor: pointer;
 }
 
@@ -378,11 +379,12 @@ body {
 
 .order-jump-switch-btn {
   background-color: var(--vermilion-subtle);
-  border: 1px solid rgba(200, 53, 43, 0.25);
+  border: 1px solid color-mix(in srgb, var(--vermilion) 25%, transparent);
   color: var(--vermilion);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
-  padding: 2px 6px;
+  min-height: 24px;
+  padding: 2px 8px;
   border-radius: 2px;
   cursor: pointer;
 }
@@ -395,6 +397,12 @@ body {
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(-2px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* 减少动态效果时的替代：只淡入不位移，仍能看出「提示出现了」 */
+@keyframes fadeInStill {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .ticket-slug {
@@ -476,7 +484,7 @@ body {
 button.save-status-error {
   cursor: pointer;
   background-color: var(--vermilion-subtle);
-  border: 1px solid rgba(200, 53, 43, 0.25);
+  border: 1px solid color-mix(in srgb, var(--vermilion) 25%, transparent);
   color: var(--vermilion);
   padding: 2px 8px;
   font-family: inherit;
@@ -675,7 +683,7 @@ button.save-status-error:focus-visible {
   gap: 6px;
   vertical-align: middle;
   background-color: var(--vermilion-subtle);
-  border: 1px solid rgba(200, 53, 43, 0.25);
+  border: 1px solid color-mix(in srgb, var(--vermilion) 25%, transparent);
   color: var(--vermilion);
   padding: 1px 8px;
   border-radius: 3px;
@@ -705,8 +713,8 @@ button.save-status-error:focus-visible {
   z-index: 100;
   max-width: 380px;
   background-color: var(--vermilion-subtle);
-  border: 1px solid rgba(200, 53, 43, 0.35);
-  box-shadow: 0 4px 16px rgba(200, 53, 43, 0.12), 0 1px 3px rgba(0, 0, 0, 0.05);
+  border: 1px solid color-mix(in srgb, var(--vermilion) 35%, transparent);
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--vermilion) 12%, transparent), 0 1px 3px rgba(0, 0, 0, 0.05);
   border-radius: 2px;
   animation: slideInNote 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -753,7 +761,7 @@ button.save-status-error:focus-visible {
 
 .clip-close-btn:hover {
   color: var(--vermilion);
-  background-color: rgba(200, 53, 43, 0.1);
+  background-color: color-mix(in srgb, var(--vermilion) 10%, transparent);
 }
 
 /* 2. 稿件审读签条 (Manuscript Slip) */
@@ -817,7 +825,7 @@ button.save-status-error:focus-visible {
   align-items: center;
   gap: 10px;
   background-color: var(--prussian-blue-subtle);
-  border: 1px solid rgba(47, 95, 168, 0.3);
+  border: 1px solid color-mix(in srgb, var(--prussian-blue) 30%, transparent);
   padding: 8px 14px;
   border-radius: 2px;
   font-size: 13px;
@@ -1067,9 +1075,10 @@ button.save-status-error:focus-visible {
 .summary-chip {
   display: inline-flex;
   align-items: center;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
-  padding: 2px 8px;
+  min-height: 26px;
+  padding: 3px 10px;
   border-radius: 2px;
   border: 1px solid var(--sheet-border);
   background-color: var(--surface-muted);
@@ -1155,7 +1164,7 @@ button.save-status-error:focus-visible {
   width: 9px;
   height: 22px;
   top: 10px;
-  box-shadow: -1px 0 4px rgba(200, 53, 43, 0.35);
+  box-shadow: -1px 0 4px color-mix(in srgb, var(--vermilion) 35%, transparent);
 }
 
 /* CSS Custom Highlight API 高亮样式 (Issue #29 §3, §7) */
@@ -1260,19 +1269,19 @@ button.save-status-error:focus-visible {
 
 .margin-note-marker.marker-code-table-degraded {
   background-color: var(--amber-subtle);
-  border: 1px solid rgba(250, 157, 59, 0.45);
+  border: 1px solid color-mix(in srgb, var(--amber) 45%, transparent);
   color: var(--amber-ink);
 }
 
 .margin-note-marker.marker-code-richmedia-placeholder {
   background-color: var(--prussian-blue-subtle);
-  border: 1px solid rgba(47, 95, 168, 0.35);
+  border: 1px solid color-mix(in srgb, var(--prussian-blue) 35%, transparent);
   color: var(--prussian-blue);
 }
 
 .margin-note-marker.marker-code-convert-failed {
   background-color: var(--vermilion-subtle);
-  border: 1px solid rgba(200, 53, 43, 0.35);
+  border: 1px solid color-mix(in srgb, var(--vermilion) 35%, transparent);
   color: var(--vermilion);
 }
 
@@ -1299,7 +1308,7 @@ button.save-status-error:focus-visible {
 
 .block-note.note-code-table-degraded {
   background-color: var(--amber-subtle);
-  border: 1px solid rgba(250, 157, 59, 0.35);
+  border: 1px solid color-mix(in srgb, var(--amber) 35%, transparent);
   color: var(--ink-primary);
 }
 .block-note.note-code-table-degraded .note-badge {
@@ -1309,7 +1318,7 @@ button.save-status-error:focus-visible {
 
 .block-note.note-code-richmedia-placeholder {
   background-color: var(--prussian-blue-subtle);
-  border: 1px solid rgba(47, 95, 168, 0.25);
+  border: 1px solid color-mix(in srgb, var(--prussian-blue) 25%, transparent);
   color: var(--ink-primary);
 }
 .block-note.note-code-richmedia-placeholder .note-badge {
@@ -1319,7 +1328,7 @@ button.save-status-error:focus-visible {
 
 .block-note.note-code-convert-failed {
   background-color: var(--vermilion-subtle);
-  border: 1px solid rgba(200, 53, 43, 0.25);
+  border: 1px solid color-mix(in srgb, var(--vermilion) 25%, transparent);
   color: var(--ink-primary);
 }
 .block-note.note-code-convert-failed .note-badge {
@@ -1383,7 +1392,7 @@ button.save-status-error:focus-visible {
 }
 
 .candidate-confirm-dialog::backdrop {
-  background-color: rgba(26, 26, 24, 0.5);
+  background-color: color-mix(in srgb, var(--ink-primary) 50%, transparent);
   backdrop-filter: blur(1.5px);
 }
 
@@ -1454,7 +1463,7 @@ button.save-status-error:focus-visible {
   align-items: center;
   gap: 8px;
   background-color: var(--prussian-blue-subtle);
-  border: 1px solid rgba(47, 95, 168, 0.25);
+  border: 1px solid color-mix(in srgb, var(--prussian-blue) 25%, transparent);
   padding: 6px 10px;
   border-radius: 2px;
   font-size: 12px;
@@ -1474,7 +1483,7 @@ button.save-status-error:focus-visible {
   font-size: 13px;
   color: var(--vermilion);
   background-color: var(--vermilion-subtle);
-  border: 1px solid rgba(200, 53, 43, 0.3);
+  border: 1px solid color-mix(in srgb, var(--vermilion) 30%, transparent);
   padding: 8px 12px;
   border-radius: 2px;
   font-weight: 500;
@@ -1764,7 +1773,7 @@ button.save-status-error:focus-visible {
 
 .block-item.block-is-editing {
   border-color: var(--prussian-blue);
-  box-shadow: 0 1px 3px rgba(47, 95, 168, 0.08);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--prussian-blue) 8%, transparent);
 }
 
 .block-editor {
@@ -1816,7 +1825,10 @@ button.save-status-error:focus-visible {
   justify-content: center;
   color: var(--ink-tertiary);
   cursor: help;
-  padding: 2px;
+  /* 点击区 24px；负外边距抵消多出的高度，不撑高 meta 行 */
+  min-width: 24px;
+  min-height: 24px;
+  margin: -4px -2px;
   border-radius: 2px;
 }
 
@@ -2187,9 +2199,9 @@ button.save-status-error:focus-visible {
   height: 76px;
   background: linear-gradient(
     to bottom,
-    rgba(250, 251, 249, 0),
-    rgba(250, 251, 249, 0.88) 60%,
-    rgba(250, 251, 249, 1)
+    color-mix(in srgb, var(--sheet-bg) 0%, transparent),
+    color-mix(in srgb, var(--sheet-bg) 88%, transparent) 60%,
+    var(--sheet-bg)
   );
   display: flex;
   align-items: flex-end;
@@ -2226,7 +2238,7 @@ button.save-status-error:focus-visible {
   gap: 8px;
   padding: 12px 16px;
   background-color: var(--vermilion-subtle);
-  border: 1px solid rgba(200, 53, 43, 0.3);
+  border: 1px solid color-mix(in srgb, var(--vermilion) 30%, transparent);
   border-radius: 2px;
   margin: 8px 0;
   max-width: 480px;
@@ -2330,7 +2342,7 @@ button.save-status-error:focus-visible {
   padding: 0;
   border: 0;
   color: var(--ink-inverse);
-  background-color: rgba(26, 26, 24, 0.88);
+  background-color: color-mix(in srgb, var(--ink-primary) 88%, transparent);
 }
 
 .image-viewer-overlay[open] {
@@ -2470,7 +2482,7 @@ button.save-status-error:focus-visible {
 }
 
 .preview-dialog::backdrop {
-  background-color: rgba(26, 26, 24, 0.5);
+  background-color: color-mix(in srgb, var(--ink-primary) 50%, transparent);
 }
 
 .preview-dialog-header {
@@ -2622,7 +2634,7 @@ button.save-status-error:focus-visible {
   list-style: none;
   margin: 4px 0 0 0;
   padding: 6px 0 0 0;
-  border-top: 1px dashed rgba(250, 157, 59, 0.4);
+  border-top: 1px dashed color-mix(in srgb, var(--amber) 40%, transparent);
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -2653,8 +2665,8 @@ button.save-status-error:focus-visible {
 }
 
 .degradation-item-jump-btn:hover {
-  background-color: rgba(250, 157, 59, 0.15);
-  border-color: rgba(250, 157, 59, 0.3);
+  background-color: color-mix(in srgb, var(--amber) 15%, transparent);
+  border-color: color-mix(in srgb, var(--amber) 30%, transparent);
 }
 
 .degradation-item-jump-btn:focus-visible {
@@ -2730,7 +2742,7 @@ button.save-status-error:focus-visible {
 
 /* 预览长文排版优化：按分片与呈现层跳过视口外排版计算，大幅提升模态打开性能 */
 .preview-article-content .block-rendered-chunk,
-.preview-article-content .image-presentation {
+.preview-article-content .image-presentation-block {
   content-visibility: auto;
   contain-intrinsic-size: auto 300px;
 }
@@ -2897,7 +2909,7 @@ button.save-status-error:focus-visible {
   background-color: var(--sheet-bg);
   color: var(--ink-primary);
   width: min(540px, calc(100vw - 32px));
-  box-shadow: 0 16px 36px rgba(26, 26, 24, 0.22);
+  box-shadow: 0 16px 36px color-mix(in srgb, var(--ink-primary) 22%, transparent);
   margin: auto;
   padding: 0;
   overflow: hidden;
@@ -2916,7 +2928,7 @@ button.save-status-error:focus-visible {
 }
 
 .export-dialog::backdrop {
-  background-color: rgba(26, 26, 24, 0.5);
+  background-color: color-mix(in srgb, var(--ink-primary) 50%, transparent);
 }
 
 .export-dialog-header {
@@ -3054,5 +3066,15 @@ button.save-status-error:focus-visible {
     gap: 6px;
     margin-top: 4px;
     margin-bottom: 2px;
+  }
+}
+
+/* 放在文件末尾：必须排在各元素的 animation 简写之后，否则会被简写重置 */
+@media (prefers-reduced-motion: reduce) {
+  .search-wrapped-toast,
+  .order-jump-popover,
+  .margin-clip-note,
+  .manuscript-slip {
+    animation-name: fadeInStill;
   }
 }
