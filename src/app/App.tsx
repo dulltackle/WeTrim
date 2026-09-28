@@ -43,6 +43,7 @@ import {
   detectImageFormat,
   fetchImageResource,
   fetchAllExportImages,
+  type FetchProgress,
 } from './export/fetch-images';
 import { rewriteMarkdownImagePaths } from './export/rewrite-markdown';
 import {
@@ -123,6 +124,8 @@ export const App: React.FC = () => {
   const [exportFeedback, setExportFeedback] = useState<ExportFeedback | null>(null);
   // 同一时刻只允许一次导出，避免重复触发时两次写入争抢同一目录名
   const exportInFlightRef = useRef(false);
+  // 导出期间的图片下载进度（Issue #33：按实际接收字节反馈，不按张数估算）
+  const [exportProgress, setExportProgress] = useState<FetchProgress | null>(null);
   // 顶栏导出请求计数：flush 防抖编辑后要等新快照提交，再在 effect 里用最新内容导出
   const [toolbarExportRequest, setToolbarExportRequest] = useState(0);
   // 预览关闭后要执行的焦点/定位动作：模态 <dialog> 打开期间背后清洗页是 inert 的，
@@ -376,11 +379,15 @@ export const App: React.FC = () => {
         resultFile: targetResultFile,
         showDirectoryPicker: options?.showDirectoryPicker,
         parentHandle: options?.parentHandle,
-        onProgress: options?.onProgress,
+        onProgress: (progress) => {
+          setExportProgress(progress);
+          options?.onProgress?.(progress);
+        },
         fetchFn: options?.fetchFn,
       });
     } finally {
       exportInFlightRef.current = false;
+      setExportProgress(null);
     }
 
     if (res.ok) {
@@ -388,7 +395,10 @@ export const App: React.FC = () => {
         isOpen: true,
         type: 'success',
         title: EXPORT_COPY.exportSuccessTitle,
-        desc: EXPORT_COPY.exportSuccessDesc(res.articleDirName, res.markdownFileName),
+        desc: EXPORT_COPY.exportSuccessDesc(res.articleDirName, res.markdownFileName, {
+          localized: res.localizedImagesCount ?? 0,
+          failed: res.failedImagesCount ?? 0,
+        }),
       });
       // 验收标准：导出成功不能把未保存状态改成已保存
       // 保持现有的 sessionSaveQueue 和 state.saveState 完全不变
@@ -427,6 +437,14 @@ export const App: React.FC = () => {
     });
     return res;
   };
+
+  const exportProgressText = exportProgress
+    ? EXPORT_COPY.exportProgress(
+        exportProgress.completedCount,
+        exportProgress.totalCount,
+        exportProgress.downloadedBytes
+      )
+    : null;
 
   const handleToolbarExport = () => {
     if (!state.session || exportInFlightRef.current) return;
@@ -1264,6 +1282,11 @@ export const App: React.FC = () => {
                 >
                   {PREVIEW_COPY.openButton}
                 </button>
+                {exportProgressText && !isPreviewOpen && (
+                  <span className="export-progress" role="status" data-testid="toolbar-export-progress">
+                    {exportProgressText}
+                  </span>
+                )}
                 <button
                   type="button"
                   className="action-btn action-export"
@@ -1271,6 +1294,7 @@ export const App: React.FC = () => {
                   ref={exportBtnRef}
                   onClick={handleToolbarExport}
                   aria-label={EXPORT_COPY.toolbarExportAriaLabel}
+                  aria-busy={exportProgress ? true : undefined}
                 >
                   {EXPORT_COPY.toolbarExportButton}
                 </button>
@@ -1431,6 +1455,7 @@ export const App: React.FC = () => {
                   onRecoverExcluded={handleRecoverExcludedFromPreview}
                   onJumpToEmptyBlock={handleJumpToBlockFromPreview}
                   onExport={handlePreviewExport}
+                  exportProgressText={exportProgressText}
                 />
               )}
 

@@ -231,13 +231,11 @@ export interface ResultFile {
 export function buildResultFile(snapshot: ArticleSnapshot): ResultFile {
   const frontMatter = buildFrontMatter(snapshot.source);
   const body = buildMarkdown(snapshot.blocks);
-  let text = '';
-  if (body) {
-    if (frontMatter) {
-      text = `${frontMatter}\n\n${body}\n`;
-    } else {
-      text = `${body}\n`;
-    }
-  }
-  return { frontMatter, body, text };
+  return { frontMatter, body, text: composeResultText(frontMatter, body) };
+}
+
+/** 结果文件全文：front matter 与正文之间空一行，末尾一个换行；正文为空时不产出只含来源信息的文件 */
+export function composeResultText(frontMatter: string, body: string): string {
+  if (!body) return '';
+  return frontMatter ? `${frontMatter}\n\n${body}\n` : `${body}\n`;
 }

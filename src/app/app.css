@@ -2862,6 +2862,19 @@ button.save-status-error:focus-visible {
   min-height: 32px;
 }
 
+/* 导出期间的图片下载进度（Issue #33） */
+.export-progress {
+  font-size: 13px;
+  color: var(--ink-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  margin-right: 12px;
+}
+
+.nav-toolbar-actions .export-progress {
+  margin-right: 4px;
+}
+
 @media (max-width: 640px) {
   .preview-dialog {
     width: calc(100vw - 32px);

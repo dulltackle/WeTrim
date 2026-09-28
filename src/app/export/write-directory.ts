@@ -1,14 +1,13 @@
 import type { ArticleSnapshot } from '../../shared/types';
-import { buildResultFile, type ResultFile } from './build-markdown';
+import { buildResultFile, composeResultText, type ResultFile } from './build-markdown';
 import { sanitizeArticleTitle } from './sanitize-filename';
-import { collectExportImageReferences } from './collect-images';
+import { analyzeMarkdownImages } from './markdown-image-refs';
 import {
   fetchAllExportImages,
   type FetchProgress,
   type FetchedImageSuccess,
   type FetchedImageFailure,
 } from './fetch-images';
-import { rewriteMarkdownImagePaths } from './rewrite-markdown';
 import { EXPORT_COPY } from '../copy/export';
 
 export interface WriteDirectorySuccess {
@@ -149,43 +148,30 @@ export async function writeArticleDirectory(
   }
 
   // 3. 从保留块当前内容中的有效图片引用计算集合（ARCHITECTURE.md §10.1 与 Issue #33）
-  const imageRefs = collectExportImageReferences(baseResultFile.body, snapshot.source?.url);
+  //    收集与改写共用这一次分析，保证下载的图片和改写到的引用是同一批
+  const imageAnalysis = analyzeMarkdownImages(baseResultFile.body, snapshot.source?.url);
+  const imageRefs = imageAnalysis.references;
 
-  // 4. 下载图片字节并判定格式（全页自己 fetch，service worker 不经手）
+  // 4. 下载图片字节并判定格式（全页自己 fetch，service worker 不经手）；单张失败只记为失败，不中断导出
   let localizedUrlMap = new Map<string, string>();
   let succeededImages: FetchedImageSuccess[] = [];
   let failedImages: FetchedImageFailure[] = [];
 
   if (imageRefs.length > 0) {
-    try {
-      const fetchResult = await fetchAllExportImages(imageRefs, {
-        onProgress: options?.onProgress,
-        fetchFn: options?.fetchFn,
-      });
-      succeededImages = fetchResult.succeeded;
-      failedImages = fetchResult.failed;
-      localizedUrlMap = fetchResult.urlToRelativePathMap;
-    } catch {
-      // 容错：个别网络异常不中断导出流程
-    }
+    const fetchResult = await fetchAllExportImages(imageRefs, {
+      onProgress: options?.onProgress,
+      fetchFn: options?.fetchFn,
+    });
+    succeededImages = fetchResult.succeeded;
+    failedImages = fetchResult.failed;
+    localizedUrlMap = fetchResult.urlToRelativePathMap;
   }
 
   // 5. 改写 Markdown 副本（成功本地化的改为 images/…，未成功的保留原 URL，其余文本逐字一致，不回写清洗会话）
-  let finalMarkdownText: string;
-  if (localizedUrlMap.size > 0) {
-    const rewrittenBody = rewriteMarkdownImagePaths(
-      baseResultFile.body,
-      localizedUrlMap,
-      snapshot.source?.url
-    );
-    if (baseResultFile.frontMatter) {
-      finalMarkdownText = `${baseResultFile.frontMatter}\n\n${rewrittenBody}\n`;
-    } else {
-      finalMarkdownText = `${rewrittenBody}\n`;
-    }
-  } else {
-    finalMarkdownText = baseResultFile.text;
-  }
+  const finalMarkdownText =
+    localizedUrlMap.size > 0
+      ? composeResultText(baseResultFile.frontMatter, imageAnalysis.rewrite(localizedUrlMap))
+      : baseResultFile.text;
 
   // 6. 文件名清理：保留中文与 emoji，不反写 ArticleSource.title
   const baseName = sanitizeArticleTitle(snapshot.source?.title);
@@ -269,7 +255,7 @@ export async function writeArticleDirectory(
       return {
         ok: false,
         error: err as Error,
-        message: `写入图片文件未完成: ${errorMessage(err)}`,
+        message: EXPORT_COPY.imageWriteFailed(errorMessage(err)),
         attemptedDirName: articleDirName,
         stage: 'write_file',
       };

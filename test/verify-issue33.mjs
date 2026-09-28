@@ -960,6 +960,83 @@ async function run() {
     );
     console.log('✓ Test 9 Passed: AC 12 transferred from #31 verified (preview source vs. export .md byte-for-byte consistent)');
 
+    // --------------------------------------------------------------------------
+    // Test 10: 审查回归——收集与改写同源、嵌套代码保护、共享定义、BMP 误判、下载超时
+    // --------------------------------------------------------------------------
+    console.log('\n--- Test 10: Review regressions (shared defs, nested code, escapes, BMP, stall timeout) ---');
+    await page.evaluate(async () => {
+      const { collectExportImageReferences, rewriteMarkdownImagePaths, detectImageFormat, fetchImageResource } =
+        window.__wetrim;
+      const base = 'https://mp.weixin.qq.com/s/review';
+      const localize = (md) => {
+        const refs = collectExportImageReferences(md, base);
+        const map = new Map(refs.map((r) => [r.resolvedUrl, `images/${r.fileBaseName}.png`]));
+        return { refs, out: rewriteMarkdownImagePaths(md, map, base) };
+      };
+
+      // 10.1 定义被图片与文字链接共用：链接不动，图片改写为行内形式并保留标题
+      {
+        const md = '![图][1]\n\n[原图链接][1]\n\n[1]: https://a.com/1.png "标题"\n';
+        const { out } = localize(md);
+        assert.strictEqual(
+          out,
+          '![图](images/image-001.png "标题")\n\n[原图链接][1]\n\n[1]: https://a.com/1.png "标题"\n'
+        );
+      }
+
+      // 10.2 只被文字链接使用的定义，即便地址与某张图相同也不改写
+      {
+        const md = '![图](https://a.com/1.png)\n\n[原图][x]\n\n[x]: https://a.com/1.png\n';
+        const { out } = localize(md);
+        assert.strictEqual(out, '![图](images/image-001.png)\n\n[原图][x]\n\n[x]: https://a.com/1.png\n');
+      }
+
+      // 10.3 嵌套在引用块 ~~~ 围栏、列表缩进代码块里的假图片不改写
+      {
+        const md =
+          '![p](https://a.com/1.png)\n\n> ~~~\n> ![fake](https://a.com/1.png)\n> ~~~\n\n- item\n\n        ![fake](https://a.com/1.png)\n';
+        const { out } = localize(md);
+        assert.strictEqual(out, md.replace('![p](https://a.com/1.png)', '![p](images/image-001.png)'));
+      }
+
+      // 10.4 地址含反斜杠转义：下载与改写看到的是同一处引用
+      {
+        const { refs, out } = localize('![p](https://a.com/a\\_b.png)\n');
+        assert.strictEqual(refs[0].resolvedUrl, 'https://a.com/a_b.png');
+        assert.strictEqual(out, '![p](images/image-001.png)\n');
+      }
+
+      // 10.5 引用块内的定义行同样改写
+      {
+        const { out } = localize('> ![p][1]\n>\n> [1]: https://a.com/1.png\n');
+        assert.strictEqual(out, '> ![p][1]\n>\n> [1]: images/image-001.png\n');
+      }
+
+      // 10.6 预览里是普通文本的「定义」（并入列表项段落）不当成图片
+      {
+        const { refs, out } = localize('- ![a][1]\n  [1]: https://a.com/1.png\n');
+        assert.strictEqual(refs.length, 0);
+        assert.strictEqual(out, '- ![a][1]\n  [1]: https://a.com/1.png\n');
+      }
+
+      // 10.7 以 "BM" 开头的普通文本不是 BMP；合法 BMP 头仍能识别
+      assert.strictEqual(detectImageFormat(new TextEncoder().encode('BMW is a car, long enough text')), null);
+      const bmp = new Uint8Array(54);
+      bmp.set([0x42, 0x4d]);
+      bmp[14] = 40;
+      assert.strictEqual(detectImageFormat(bmp)?.format, 'bmp');
+
+      // 10.8 挂起的请求在空闲超时后按下载失败处理
+      const hangingFetch = () => new Promise(() => {});
+      const res = await fetchImageResource('https://a.com/hang.png', {
+        fetchFn: hangingFetch,
+        stallTimeoutMs: 50,
+      });
+      assert.strictEqual(res.ok, false);
+      assert.strictEqual(res.error.message, '图片下载超时');
+    });
+    console.log('✓ Test 10 Passed: review regressions verified');
+
     console.log('\n=============================================');
     console.log('✓ All Issue #33 verification tests passed!');
     console.log('=============================================');

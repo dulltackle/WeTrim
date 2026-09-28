@@ -1,4 +1,5 @@
-import type { ExportImageReference } from './collect-images';
+import type { ExportImageReference } from './markdown-image-refs';
+import { EXPORT_COPY } from '../copy/export';
 
 export type SupportedImageFormat =
   | 'png'
@@ -14,6 +15,8 @@ export interface ImageFormatInfo {
   format: SupportedImageFormat;
   extension: string;
 }
+
+const BMP_DIB_HEADER_SIZES = new Set([12, 40, 52, 56, 64, 108, 124]);
 
 /**
  * 依据 Issue #33 与 PRODUCT.md 「导出」：
@@ -75,9 +78,13 @@ export function detectImageFormat(bytes: Uint8Array): ImageFormatInfo | null {
     return { format: 'webp', extension: '.webp' };
   }
 
-  // 5. BMP: BM (0x42, 0x4D)
-  if (len >= 2 && bytes[0] === 0x42 && bytes[1] === 0x4d) {
-    return { format: 'bmp', extension: '.bmp' };
+  // 5. BMP: "BM" 之后 4 字节保留位为 0，DIB 头长度只能是几种已知值（只看 "BM" 两字节会把普通文本误判为图片）
+  if (len >= 18 && bytes[0] === 0x42 && bytes[1] === 0x4d) {
+    const reservedZero = bytes[6] === 0 && bytes[7] === 0 && bytes[8] === 0 && bytes[9] === 0;
+    const dibHeaderSize = bytes[14] | (bytes[15] << 8) | (bytes[16] << 16) | (bytes[17] << 24);
+    if (reservedZero && BMP_DIB_HEADER_SIZES.has(dibHeaderSize)) {
+      return { format: 'bmp', extension: '.bmp' };
+    }
   }
 
   // 6. AVIF: 4..7 为 'ftyp', 8..11 为 'avif' 或 'avis'
@@ -156,6 +163,79 @@ export interface FetchProgress {
   totalCount: number;
 }
 
+/** 单张图片连续这么久收不到任何数据即视为下载失败，避免一个挂起的请求卡住整次导出 */
+export const IMAGE_STALL_TIMEOUT_MS = 20_000;
+
+class ImageDownloadTimeoutError extends Error {
+  constructor() {
+    super(EXPORT_COPY.imageDownloadTimeout);
+    this.name = 'ImageDownloadTimeoutError';
+  }
+}
+
+function toError(err: unknown): Error {
+  return err instanceof Error ? err : new Error(String(err));
+}
+
+/** 空闲计时器：每次收到数据时重置，超时后中止请求并让等待中的读取立即失败 */
+function createStallGuard(timeoutMs: number) {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const reset = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => controller.abort(new ImageDownloadTimeoutError()), timeoutMs);
+  };
+  const guard = <T>(promise: Promise<T>): Promise<T> =>
+    new Promise<T>((resolve, reject) => {
+      if (controller.signal.aborted) {
+        reject(new ImageDownloadTimeoutError());
+        return;
+      }
+      const onAbort = () => reject(new ImageDownloadTimeoutError());
+      controller.signal.addEventListener('abort', onAbort, { once: true });
+      promise.then(resolve, reject).finally(() => controller.signal.removeEventListener('abort', onAbort));
+    });
+  reset();
+  return { signal: controller.signal, reset, guard, dispose: () => clearTimeout(timer) };
+}
+
+async function readBody(
+  response: Response,
+  stall: ReturnType<typeof createStallGuard>,
+  onBytes?: (byteCount: number) => void
+): Promise<Uint8Array> {
+  const reader = response.body?.getReader();
+  if (!reader) {
+    const bytes = new Uint8Array(await stall.guard(response.arrayBuffer()));
+    onBytes?.(bytes.byteLength);
+    return bytes;
+  }
+
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await stall.guard(reader.read());
+      if (done) break;
+      stall.reset();
+      chunks.push(value);
+      total += value.byteLength;
+      onBytes?.(value.byteLength);
+    }
+  } catch (err) {
+    reader.cancel().catch(() => {});
+    throw err;
+  }
+
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
+}
+
 /**
  * 依据 ARCHITECTURE.md §1 与 §10.1：
  * 单张图片资源直接由扩展全页 fetch，带 referrerPolicy: 'no-referrer'。
@@ -166,6 +246,9 @@ export async function fetchImageResource(
   options?: {
     fileBaseName?: string;
     fetchFn?: typeof fetch;
+    /** 每收到一段字节回调一次，供进度按实际下载字节累计 */
+    onBytes?: (byteCount: number) => void;
+    stallTimeoutMs?: number;
   }
 ): Promise<FetchedImageResult> {
   const fetchFn = options?.fetchFn ?? (typeof fetch !== 'undefined' ? fetch : undefined);
@@ -177,12 +260,17 @@ export async function fetchImageResource(
     };
   }
 
+  const stall = createStallGuard(options?.stallTimeoutMs ?? IMAGE_STALL_TIMEOUT_MS);
   try {
-    const response = await fetchFn(url, {
-      referrerPolicy: 'no-referrer',
-    });
+    const response = await stall.guard(
+      fetchFn(url, {
+        referrerPolicy: 'no-referrer',
+        signal: stall.signal,
+      })
+    );
 
     if (!response.ok) {
+      response.body?.cancel().catch(() => {});
       return {
         ok: false,
         url,
@@ -193,6 +281,7 @@ export async function fetchImageResource(
 
     const contentType = response.headers?.get?.('content-type') || '';
     if (contentType.toLowerCase().includes('text/html')) {
+      response.body?.cancel().catch(() => {});
       return {
         ok: false,
         url,
@@ -201,8 +290,7 @@ export async function fetchImageResource(
       };
     }
 
-    const buffer = await response.arrayBuffer();
-    const bytes = new Uint8Array(buffer);
+    const bytes = await readBody(response, stall, options?.onBytes);
 
     const formatInfo = detectImageFormat(bytes);
     if (!formatInfo) {
@@ -229,14 +317,17 @@ export async function fetchImageResource(
     return {
       ok: false,
       url,
-      error: err as Error,
+      error: toError(err),
     };
+  } finally {
+    stall.dispose();
   }
 }
 
 export interface FetchAllExportImagesOptions {
   onProgress?: (progress: FetchProgress) => void;
   fetchFn?: typeof fetch;
+  stallTimeoutMs?: number;
 }
 
 export interface FetchAllExportImagesResult {
@@ -247,7 +338,7 @@ export interface FetchAllExportImagesResult {
 
 /**
  * 依据 Issue #33 验收标准：
- * 批量下载并本地化图片，进度反馈按下载字节计算（不按张数百分比估算）。
+ * 批量下载并本地化图片，进度反馈按边下边累计的实际字节计算（不按张数百分比估算）。
  * 编号确定、有序，不要求下载失败后连续。
  */
 export async function fetchAllExportImages(
@@ -266,6 +357,14 @@ export async function fetchAllExportImages(
   }
 
   const results: Array<FetchedImageSuccess | FetchedImageFailure> = new Array(totalCount);
+  // 进度回调只是界面反馈，它抛错不能中断下载
+  const reportProgress = () => {
+    try {
+      options?.onProgress?.({ downloadedBytes, completedCount, totalCount });
+    } catch (err) {
+      console.error('[WeTrim] 导出进度回调出错:', err);
+    }
+  };
   const concurrency = Math.min(6, totalCount);
   let nextIndex = 0;
 
@@ -276,19 +375,16 @@ export async function fetchAllExportImages(
       const res = await fetchImageResource(ref.resolvedUrl, {
         fileBaseName: ref.fileBaseName,
         fetchFn: options?.fetchFn,
+        stallTimeoutMs: options?.stallTimeoutMs,
+        onBytes: (byteCount) => {
+          downloadedBytes += byteCount;
+          reportProgress();
+        },
       });
 
       results[idx] = res;
       completedCount++;
-      if (res.ok) {
-        downloadedBytes += res.bytes.byteLength;
-      }
-
-      options?.onProgress?.({
-        downloadedBytes,
-        completedCount,
-        totalCount,
-      });
+      reportProgress();
     }
   }
 
@@ -302,9 +398,6 @@ export async function fetchAllExportImages(
       succeeded.push(res);
       const relativePath = `images/${res.fileName}`;
       urlToRelativePathMap.set(ref.resolvedUrl, relativePath);
-      if (ref.rawUrl && ref.rawUrl !== ref.resolvedUrl) {
-        urlToRelativePathMap.set(ref.rawUrl, relativePath);
-      }
     } else {
       failed.push(res);
     }
@@ -316,6 +409,3 @@ export async function fetchAllExportImages(
     urlToRelativePathMap,
   };
 }
-
-/** 向下兼容保留原导出函数名 */
-export const fetchImages = fetchAllExportImages;

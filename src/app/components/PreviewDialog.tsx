@@ -25,6 +25,8 @@ export interface PreviewDialogProps {
   onRecoverExcluded: () => void;
   onJumpToEmptyBlock: (order: number, id: string) => void;
   onExport?: (snapshot: ArticleSnapshot, resultFile: ResultFile) => void;
+  /** 导出进行中时的图片下载进度文案；预览是模态对话框，进度需在对话框内显示 */
+  exportProgressText?: string | null;
 }
 
 /**
@@ -41,6 +43,7 @@ export const PreviewDialog: React.FC<PreviewDialogProps> = ({
   onRecoverExcluded,
   onJumpToEmptyBlock,
   onExport,
+  exportProgressText,
 }) => {
   const dialogRef = useRef<HTMLDialogElement | null>(null);
   const readingTabRef = useRef<HTMLButtonElement | null>(null);
@@ -456,6 +459,11 @@ export const PreviewDialog: React.FC<PreviewDialogProps> = ({
 
         {/* 导出主操作预留位置（#31 不渲染假按钮，#32 接上） */}
         <div className="preview-export-slot" data-testid="preview-export-slot">
+          {exportProgressText && (
+            <span className="export-progress" role="status" data-testid="preview-export-progress">
+              {exportProgressText}
+            </span>
+          )}
           {hasBody && onExport && frozenSnapshot && (
             <button
               type="button"
@@ -463,6 +471,7 @@ export const PreviewDialog: React.FC<PreviewDialogProps> = ({
               data-testid="preview-btn-export"
               onClick={() => onExport(frozenSnapshot, resultFile)}
               aria-label={EXPORT_COPY.previewExportAriaLabel}
+              aria-busy={exportProgressText ? true : undefined}
             >
               {EXPORT_COPY.previewExportButton}
             </button>
