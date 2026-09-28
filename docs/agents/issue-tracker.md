@@ -11,10 +11,6 @@
 
 在 clone 内运行时 `gh` 会自动从 `git remote -v` 推断仓库。
 
-`gh` 命令必须单独成行执行：不加 `cd … &&` 前缀，不接管道、`;` 或 `&&`，过滤输出用 `--json` / `--jq`。
-
-原因是 `gh` 的 token 存在系统 keyring，只有命中沙箱 `excludedCommands` 的 `gh *` 规则时才在沙箱外运行；复合命令匹配不上，会落回沙箱，读不到 token，返回 `HTTP 401`。
-
 ## 把 Pull Request 当作 triage 入口
 
 **PRs as a request surface: no.** _（如果本仓库把外部 PR 也当成需求来源，就改成 `yes`；`/triage` 会读取这个开关。）_
