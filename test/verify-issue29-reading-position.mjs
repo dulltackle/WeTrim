@@ -71,10 +71,10 @@ async function run() {
     const firstSurvivingInView = (included) =>
       page.evaluate((included) => {
         // 与 BlockList.queryVisible 同一口径：固定顶栏以下（scroll-margin-top）才算视口内
-        const vTop = parseFloat(getComputedStyle(document.querySelector('[data-testid="block-item"]')).scrollMarginTop);
+        const vTop = parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop);
         const el = [...document.querySelectorAll('[data-testid="block-item"]')].find((el) => {
           const r = el.getBoundingClientRect();
-          return r.bottom > vTop && r.top < innerHeight && (included === null || el.dataset.blockIncluded === String(included));
+          return !el.closest('[hidden]') && r.bottom > vTop && r.top < innerHeight && (included === null || el.dataset.blockIncluded === String(included));
         });
         return { id: el.dataset.blockId, top: el.getBoundingClientRect().top };
       }, included);

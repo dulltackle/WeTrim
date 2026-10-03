@@ -1117,27 +1117,35 @@ button.save-status-error:focus-visible {
 
 
 .block-items-stream {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  position: relative;
+  display: block;
   min-width: 0;
   width: 100%;
 }
 
+.block-filter-group + .block-filter-group,
+.block-filter-group > .block-item + .block-item {
+  margin-top: 8px;
+}
+
 .block-item {
+  contain: inline-size layout style;
   position: relative;
-  scroll-margin-top: var(--sticky-header-offset, 110px);
+  scroll-margin-top: 0;
   background-color: var(--surface-raised);
   border: 1px solid var(--sheet-border);
   border-radius: 2px;
   padding: 10px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  display: block;
   transition: border-color 0.15s ease;
   min-width: 0;
   width: 100%;
 }
+
+.block-item > .block-rendered-content,
+.block-item > .block-editor,
+.block-item > .block-notes,
+.block-item > .block-empty-placeholder { margin-top: 6px; }
 
 /* 预览打开时背景清洗长列表整体跳过渲染（彻底避免 600 块参与 showModal 布局） */
 .manuscript-slip.is-preview-active {
@@ -3183,3 +3191,23 @@ button.save-status-error:focus-visible {
 @media (max-width: 600px) {
   .instance-notice .action-btn { display: block; width: 100%; white-space: normal; }
 }
+
+/* 筛选保留正文的横向尺寸与布局缓存，只把隐藏内容的占高归零。
+ * 隐藏内容由 content-visibility 隔离输入与读屏，同时明确设置 aria-hidden。
+ * 未隐藏组始终完整呈现，不按视口延迟渲染。 */
+.block-filter-group[hidden],
+.block-filter-group > .block-item[hidden] {
+  height: 0;
+  min-height: 0;
+  margin-block: 0;
+  padding-block: 0;
+  border-block-width: 0;
+  overflow: clip;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.block-filter-group { display: block; contain: layout style; }
+
+.block-filter-group[hidden],
+.block-item[hidden] { content-visibility: hidden; }

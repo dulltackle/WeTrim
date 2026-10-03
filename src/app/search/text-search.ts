@@ -74,13 +74,13 @@ export function extractPlainTextFromMarkdown(markdown: string): string {
 export class BlockPlainTextCache {
   private cache = new Map<string, { markdown: string; plainText: string }>();
 
-  get(block: Block): string {
+  get(block: Block, readRenderedText?: () => string | undefined): string {
     const md = currentMarkdown(block);
     const existing = this.cache.get(block.id);
     if (existing && existing.markdown === md) {
       return existing.plainText;
     }
-    const plainText = extractPlainTextFromMarkdown(md);
+    const plainText = readRenderedText?.() ?? extractPlainTextFromMarkdown(md);
     this.cache.set(block.id, { markdown: md, plainText });
     return plainText;
   }

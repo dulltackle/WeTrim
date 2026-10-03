@@ -680,7 +680,7 @@ async function run() {
       () => {
         const item = document.querySelector('[data-testid="block-item"]');
         const header = document.querySelector('[data-testid="workbench-header"]');
-        return getComputedStyle(item).scrollMarginTop === `${header.offsetHeight + 12}px`;
+        return getComputedStyle(document.documentElement).scrollPaddingTop === `${header.offsetHeight + 12}px`;
       },
       { timeout: 2000 }
     );
@@ -698,42 +698,18 @@ async function run() {
     // Test 11: Read-only Mode Hides Toolbar
     // --------------------------------------------------------------------------
     console.log('\n--- Test 11: Read-only Mode Hides Toolbar ---');
-    await page.evaluate(() => {
-      const { dispatch } = window.__wetrim;
-      dispatch({
-        type: 'INIT_STORAGE_STATE',
-        payload: {
-          session: {
-            schemaVersion: 1,
-            sessionId: 'sess-issue29-ro',
-            revision: 1,
-            savedAt: new Date().toISOString(),
-            snapshot: {
-              articleId: 'art-ro',
-              capturedAt: new Date().toISOString(),
-              source: { url: 'https://mp.weixin.qq.com/s/ro', title: '只读文章' },
-              blocks: [],
-              captureWarnings: [],
-            },
-          },
-          candidateSnapshot: null,
-          corrupted: false,
-          isReadOnly: true,
-        },
-      });
-    });
-
-    await page.waitForFunction(() => {
-      return document.querySelector('[data-testid="read-only-note"]') !== null;
-    });
-
-    const roToolbar = await page.evaluate(() => {
-      const toolbar = document.querySelector('[data-testid="header-nav-toolbar"]');
-      const roNote = document.querySelector('[data-testid="read-only-note"]');
-      return { hasToolbar: !!toolbar, hasRoNote: !!roNote };
-    });
+    // Issue #36 以浏览器中的真实页面仲裁只读资格，不能再只改 reducer 状态伪造。
+    const readonlyPage = await browser.newPage();
+    await readonlyPage.goto(page.url());
+    await readonlyPage.waitForSelector('[data-testid="read-only-note"]');
+    const roToolbar = await readonlyPage.evaluate(() => ({
+      hasToolbar: !!document.querySelector('[data-testid="header-nav-toolbar"]'),
+      hasRoNote: !!document.querySelector('[data-testid="read-only-note"]'),
+    }));
     assert.strictEqual(roToolbar.hasToolbar, false, 'Toolbar is completely hidden in read-only mode');
     assert.strictEqual(roToolbar.hasRoNote, true, 'Read-only note is displayed');
+    await readonlyPage.close();
+    await page.bringToFront();
     console.log('✓ Test 11 Passed: Read-only mode hides toolbar per spec');
 
     // --------------------------------------------------------------------------

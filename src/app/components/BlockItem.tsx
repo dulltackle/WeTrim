@@ -22,7 +22,7 @@ export interface BlockItemProps {
   onUpdate?: (id: string, editedMarkdown: string | null) => void;
   isTempExpanded?: boolean;
   /** 登记本块的「立即提交未保存编辑」函数，供外部（如打开检查结果前）统一刷新；传 null 表示注销 */
-  registerFlush?: (id: string, flush: (() => void) | null) => void;
+  registerFlush?: (id: string, flush: ((finishEditing?: boolean) => void) | null) => void;
 }
 
 
@@ -106,9 +106,15 @@ export const BlockItem = memo(
     // 向列表登记提交函数：检查结果等需要读取当前内存内容的操作，先让防抖中的编辑落入快照
     useEffect(() => {
       if (!registerFlush) return;
-      registerFlush(block.id, flushSave);
+      registerFlush(block.id, (finishEditing) => {
+        flushSave();
+        if (finishEditing && isEditing) {
+          setIsEditing(false);
+          setIsConfirmingRestore(false);
+        }
+      });
       return () => registerFlush(block.id, null);
-    }, [block.id, flushSave, registerFlush]);
+    }, [block.id, flushSave, registerFlush, isEditing]);
 
     // 卸载前刷新未保存更改
     useEffect(() => {
@@ -242,7 +248,7 @@ export const BlockItem = memo(
     // 列表、引用、表格为整体块，展示操作提示
     const isComposite = block.type === 'list' || block.type === 'quote' || block.type === 'table';
 
-    const previewText = truncateGraphemes(effectiveMarkdown, 20);
+    const previewText = useMemo(() => truncateGraphemes(effectiveMarkdown, 20), [effectiveMarkdown]);
     const summaryPreview = isLocallyEmpty ? BLOCK_COPY.emptyContent : previewText;
 
     const isCollapsed = !block.included && !isExpanded && !isTempExpanded;

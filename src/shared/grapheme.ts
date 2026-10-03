@@ -3,19 +3,24 @@
  * 遵循现代 Unicode 规范（Intl.Segmenter），按完整字素截断文本，不切断 emoji、变音符号及复合字符序列。
  */
 
+const graphemeSegmenter = typeof Intl !== 'undefined' && Intl.Segmenter
+  ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
+
 export function truncateGraphemes(text: string, maxGraphemes = 20, ellipsis = '...'): string {
   const clean = text.replace(/\s+/g, ' ').trim();
   if (!clean) {
     return '';
   }
 
-  if (typeof Intl !== 'undefined' && Intl.Segmenter) {
-    const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
-    const segments = Array.from(segmenter.segment(clean));
-    if (segments.length <= maxGraphemes) {
-      return clean;
+  if (graphemeSegmenter && maxGraphemes >= 0) {
+    // 摘要只需要前 N 个字素及一个溢出标志，不扫描整段长文。
+    let result = '';
+    let count = 0;
+    for (const { segment } of graphemeSegmenter.segment(clean)) {
+      if (count++ >= maxGraphemes) return result + ellipsis;
+      result += segment;
     }
-    return segments.slice(0, maxGraphemes).map((s) => s.segment).join('') + ellipsis;
+    return result;
   }
 
   // 环境无 Intl.Segmenter 时的兜底：使用 Array.from 避免拆散双字节代理对

@@ -24,7 +24,8 @@
     "typecheck": "tsc --noEmit",
     "verify:issue34": "node test/verify-issue34.mjs",
     "verify:issue35": "node test/verify-issue35.mjs",
-    "verify:issue36": "node test/verify-issue36.mjs"
+    "verify:issue36": "node test/verify-issue36.mjs",
+    "verify:issue37": "node test/verify-issue37.mjs"
   },
   "dependencies": {
     "dompurify": "^3.4.15",

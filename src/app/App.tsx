@@ -176,26 +176,27 @@ export const App: React.FC = () => {
     }
   }, [isPreviewOpen]);
 
-  // 固定顶栏实际高度（工具行折行、窄屏纵向排列、提示出现时会变高）下发为 CSS 变量，
-  // 供块条目 scroll-margin-top 使用，保证定位目标不被顶栏遮挡
+  // 固定顶栏实际高度（工具行折行、窄屏纵向排列、提示出现时会变高）通过滚动容器的 scroll-padding-top 下发，
+  // 供 scrollIntoView 使用；不让可继承变量变化触发整篇样式重算。
   const isStickyHeader = state.viewMode === 'cleaning';
   useEffect(() => {
     const header = headerRef.current;
     const rootStyle = document.documentElement.style;
     if (!isStickyHeader || !header || typeof ResizeObserver === 'undefined') {
-      rootStyle.removeProperty('--sticky-header-offset');
+      rootStyle.removeProperty('scroll-padding-top');
       return;
     }
     const STICKY_HEADER_GAP = 12; // 与 .workbench-header.is-sticky 的 margin-bottom 一致
     const syncOffset = () => {
-      rootStyle.setProperty('--sticky-header-offset', `${header.offsetHeight + STICKY_HEADER_GAP}px`);
+      const offset = `${header.offsetHeight + STICKY_HEADER_GAP}px`;
+      if (rootStyle.scrollPaddingTop !== offset) rootStyle.scrollPaddingTop = offset;
     };
     syncOffset();
     const observer = new ResizeObserver(syncOffset);
     observer.observe(header);
     return () => {
       observer.disconnect();
-      rootStyle.removeProperty('--sticky-header-offset');
+      rootStyle.removeProperty('scroll-padding-top');
     };
   }, [isStickyHeader]);
 
@@ -509,7 +510,7 @@ export const App: React.FC = () => {
   };
 
   // 1. marked + DOMPurify 真实渲染三步指引文案
-  const renderedStepsHtml = renderMarkdown(WORKBENCH_COPY.emptyStepsMarkdown);
+  const renderedStepsHtml = useMemo(() => renderMarkdown(WORKBENCH_COPY.emptyStepsMarkdown), []);
 
   // 消费 pendingCapture 逻辑：读到后必须立即删除该 key，防止重复消费
   const processCaptureResult = async (res: CaptureResult) => {
@@ -1511,6 +1512,12 @@ export const App: React.FC = () => {
                   data-testid="manuscript-slip"
                   inert={isReadOnly}
                 >
+                  {session.snapshot.captureWarnings?.filter(w => w.code === 'long-article').map(w => (
+                    <div className="unstable-note" role="status" data-testid="long-article-note" key={w.code}>
+                      <span className="note-badge">长文提示</span>
+                      <span>{w.message}</span>
+                    </div>
+                  ))}
                   {/* 稳定探测超时标注夹签 */}
                   {session.snapshot.captureWarnings?.some(
                     (w) => w.code === 'capture-unstable' || w.code === 'unstable-capture'

@@ -8,6 +8,7 @@ import type {
 } from '../../shared/types';
 import { collectImages } from '../export/collect-images';
 import { splitBlocks } from './split-blocks';
+import { LONG_ARTICLE_BLOCK_THRESHOLD, LONG_ARTICLE_MESSAGE } from './performance-policy';
 import { registerWechatRules, type WechatRulesOptions } from './rules/wechat';
 import { resetTableDegradedState, consumeTableDegradedState } from './rules/table';
 import { prepareFormulaPlaceholders } from './rules/formula';
@@ -398,6 +399,10 @@ export function buildArticleSnapshot(
 
   // 4. 组装 captureWarnings（如文章未完全加载）
   const captureWarnings: ConversionNote[] = [];
+  // 解析完成、交给界面渲染之前判定；图片资源数不参与。
+  if (blocks.length >= LONG_ARTICLE_BLOCK_THRESHOLD) {
+    captureWarnings.push({ code: 'long-article', message: LONG_ARTICLE_MESSAGE });
+  }
   if (capture.unstable) {
     captureWarnings.push({
       code: 'capture-unstable',

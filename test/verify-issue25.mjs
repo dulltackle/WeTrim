@@ -362,7 +362,7 @@ async function run() {
     // 5.1 Switch to "保留" tab
     await page.click('[data-testid="filter-tab-included"]');
     const incViewBlocks = await page.evaluate(() => {
-      const items = Array.from(document.querySelectorAll('[data-testid="block-item"]'));
+      const items = Array.from(document.querySelectorAll('[data-testid="block-item"]')).filter(el => !el.closest('[hidden]'));
       return {
         count: items.length,
         ids: items.map((el) => el.getAttribute('data-block-id')),
@@ -374,7 +374,7 @@ async function run() {
     // 5.2 Switch to "剔除" tab
     await page.click('[data-testid="filter-tab-excluded"]');
     const excViewBlocks = await page.evaluate(() => {
-      const items = Array.from(document.querySelectorAll('[data-testid="block-item"]'));
+      const items = Array.from(document.querySelectorAll('[data-testid="block-item"]')).filter(el => !el.closest('[hidden]'));
       return {
         count: items.length,
         ids: items.map((el) => el.getAttribute('data-block-id')),
@@ -389,7 +389,7 @@ async function run() {
     // Now 0 blocks are excluded!
     const emptyExcNotice = await page.evaluate(() => {
       const notice = document.querySelector('[data-testid="block-list-empty-filter"]')?.textContent?.trim();
-      const itemsCount = document.querySelectorAll('[data-testid="block-item"]').length;
+      const itemsCount = [...document.querySelectorAll('[data-testid="block-item"]')].filter(el => !el.closest('[hidden]')).length;
       return { notice, itemsCount };
     });
     assert.strictEqual(emptyExcNotice.itemsCount, 0, 'No block items in view');

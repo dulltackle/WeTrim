@@ -12,6 +12,7 @@ import type { Block } from '../../shared/types';
 import { BlockItem } from './BlockItem';
 import { useAppContext } from '../state/session-context';
 import {
+  SEARCH_IGNORE_ATTR,
   BlockPlainTextCache,
   findMatchesInText,
   createRangeForOffsets,
@@ -117,6 +118,7 @@ const BlockListInner = forwardRef<BlockListHandle, BlockListProps>(
   ) => {
     const { dispatch } = useAppContext();
     const [imageSelection, setImageSelection] = useState<ImageEditTarget | null>(null);
+    const flushRegistryRef = useRef(new Map<string, (finishEditing?: boolean) => void>());
     const itemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
     const isControlledFilter = controlledFilter !== undefined;
@@ -182,12 +184,42 @@ const BlockListInner = forwardRef<BlockListHandle, BlockListProps>(
       return blocks;
     }, [blocks, filter]);
 
+    // 固定分组只减少筛选时的布局失效范围，所有块仍一次性挂载。
+    const blockGroups = useMemo(() => {
+      const groups: Block[][] = [];
+      for (let i = 0; i < blocks.length; i += 32) groups.push(blocks.slice(i, i + 32));
+      return groups;
+    }, [blocks]);
+    const hiddenGroups = useMemo(() => new Set(blockGroups.filter(group => group.every(block =>
+      filter === 'included' ? !block.included : filter === 'excluded' ? block.included : false
+    )).flatMap(group => group.map(block => block.id))), [blockGroups, filter]);
+
     const blocksRef = useRef(blocks);
     blocksRef.current = blocks;
     const filterRef = useRef(filter);
     filterRef.current = filter;
     const visibleBlocksRef = useRef(visibleBlocks);
     visibleBlocksRef.current = visibleBlocks;
+
+    // 筛选仅批量切换可见性，不重建全文组件；DOM 操作仍收敛在块列表接缝。
+    // 放在阅读锚点恢复前执行，确保锚点读取的是筛选后的布局。
+    useLayoutEffect(() => {
+      const visibleIds = new Set(visibleBlocks.map(block => block.id));
+      for (const [id, el] of itemRefs.current) {
+        if (!visibleIds.has(id)) flushRegistryRef.current.get(id)?.(true);
+        const hidden = !visibleIds.has(id) && !hiddenGroups.has(id);
+        if (el.hidden !== hidden) {
+          el.hidden = hidden;
+          if (hidden) {
+            el.setAttribute('aria-hidden', 'true');
+            el.removeAttribute('tabindex');
+          } else {
+            el.removeAttribute('aria-hidden');
+            el.tabIndex = -1;
+          }
+        }
+      }
+    }, [visibleBlocks, hiddenGroups]);
 
     // ADR-0005 接缝：块的滚动、聚焦与视口可见性判断只在这三处访问 DOM，搜索与序号定位都经由它们完成
     const scrollToBlock = useCallback((id: string) => {
@@ -209,14 +241,15 @@ const BlockListInner = forwardRef<BlockListHandle, BlockListProps>(
     const queryVisible = useCallback((): string[] => {
       const visibleIds: string[] = [];
       const vBottom = typeof window !== 'undefined' ? window.innerHeight : 800;
-      // 低于固定顶栏的区域才算可见：顶栏实际高度经 scroll-margin-top 下发到块条目（见 app.css）
+      // 低于固定顶栏的区域才算可见：顶栏实际高度经根滚动容器 scroll-padding-top 下发（见 app.css）
       let vTop: number | null = null;
 
       for (const b of visibleBlocksRef.current) {
         const el = itemRefs.current.get(b.id);
         if (!el) continue;
         if (vTop === null) {
-          vTop = parseFloat(getComputedStyle(el).scrollMarginTop) || 0;
+          vTop = (parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0)
+            + (parseFloat(getComputedStyle(el).scrollMarginTop) || 0);
         }
         const rect = el.getBoundingClientRect();
         if (rect.bottom > vTop && rect.top < vBottom) {
@@ -330,7 +363,7 @@ const BlockListInner = forwardRef<BlockListHandle, BlockListProps>(
     // 激活指定命中处（滚动定位、临时展开与编辑框选区定位）
     const activateHit = useCallback(
       (hit: BlockHit, query: string) => {
-        const block = blocks.find((b) => b.id === hit.blockId);
+        const block = blocksRef.current.find((b) => b.id === hit.blockId);
         if (!block) return;
 
         const applyTargetAction = (el: HTMLElement) => {
@@ -382,7 +415,7 @@ const BlockListInner = forwardRef<BlockListHandle, BlockListProps>(
           if (el) applyTargetAction(el);
         }
       },
-      [blocks, scrollToBlock]
+      [scrollToBlock]
     );
 
     // 计算搜索状态并更新
@@ -416,7 +449,18 @@ const BlockListInner = forwardRef<BlockListHandle, BlockListProps>(
         } else {
           allHits = [];
           for (const block of blocks) {
-            const plainText = plainTextCacheRef.current.get(block);
+            const plainText = plainTextCacheRef.current.get(block, () => {
+              const content = itemRefs.current.get(block.id)?.querySelector('.block-rendered-content');
+              if (!content) return undefined;
+              // 复用已净化并呈现的正文，避免首次搜索重新解析整篇 Markdown。
+              const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT, {
+                acceptNode: node => node.parentElement?.closest(`[${SEARCH_IGNORE_ATTR}]`)
+                  ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
+              });
+              let text = '';
+              while (walker.nextNode()) text += walker.currentNode.nodeValue;
+              return text;
+            });
             const matches = findMatchesInText(plainText, trimmed);
             matches.forEach((m, matchIdx) => {
               allHits.push({
@@ -670,8 +714,8 @@ const BlockListInner = forwardRef<BlockListHandle, BlockListProps>(
     );
 
     // 各块编辑器登记的提交函数（id → flush），供 flushPendingEdits 统一调用
-    const flushRegistryRef = useRef(new Map<string, () => void>());
-    const registerFlush = useCallback((id: string, flush: (() => void) | null) => {
+
+    const registerFlush = useCallback((id: string, flush: ((finishEditing?: boolean) => void) | null) => {
       if (flush) {
         flushRegistryRef.current.set(id, flush);
       } else {
@@ -874,20 +918,28 @@ const BlockListInner = forwardRef<BlockListHandle, BlockListProps>(
         )}
 
         {/* 正文块连续流：单栏连续展开，不做虚拟列表，不做分段延迟 */}
-        {visibleBlocks.length > 0 && (
+        {blocks.length > 0 && (
           <div className="block-items-stream" data-testid="block-items-stream">
-            {visibleBlocks.map((b) => (
-              <BlockItem
-                key={b.id}
-                block={b}
-                onToggle={handleToggleBlock}
-                onUpdate={handleUpdateBlock}
-                registerFlush={registerFlush}
-                imageSelection={imageSelection?.blockId === b.id ? imageSelection : undefined}
-                isTempExpanded={tempExpandedBlockId === b.id}
-                ref={getRefCallback(b.id)}
-              />
-            ))}
+            {blockGroups.map(group => {
+              const groupHidden = hiddenGroups.has(group[0].id);
+              return (
+                <div className="block-filter-group" key={group[0].id} hidden={groupHidden}
+                  aria-hidden={groupHidden || undefined}>
+                  {group.map((b) => (
+                    <BlockItem
+                      key={b.id}
+                      block={b}
+                      onToggle={handleToggleBlock}
+                      onUpdate={handleUpdateBlock}
+                      registerFlush={registerFlush}
+                      imageSelection={imageSelection?.blockId === b.id ? imageSelection : undefined}
+                      isTempExpanded={tempExpandedBlockId === b.id}
+                      ref={getRefCallback(b.id)}
+                    />
+                  ))}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
