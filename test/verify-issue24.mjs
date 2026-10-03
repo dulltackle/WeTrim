@@ -173,12 +173,12 @@ async function run() {
     assert.strictEqual(candidateState.stamp, '待确认', 'Candidate stamp must say "待确认"');
     assert(candidateState.quote?.includes('新抓取的第二篇文章'), 'Candidate card must mention candidate article title');
 
-    // 2.5 Corrupted record state (损坏记录态 - #24 最小壳)
+    // 2.5 恢复受阻状态（#35 已替换最小壳）
     await page.evaluate(() => {
       const { dispatch } = window.__wetrim;
       dispatch({
-        type: 'SET_CORRUPTED_RECORD',
-        payload: '存储数据校验失败：缺失 snapshotId',
+        type: 'SET_RECOVERY',
+        payload: { kind: 'unrecognized', raw: { snapshot: {} } },
       });
     });
 
@@ -187,7 +187,7 @@ async function run() {
       const viewMode = container?.getAttribute('data-view-mode');
       const card = document.querySelector('[data-testid="corrupted-record-card"]');
       const title = card?.querySelector('.notice-title')?.textContent?.trim();
-      const quote = card?.querySelector('.notice-verbatim-quote')?.textContent?.trim();
+      const quote = card?.querySelector('.recovery-description')?.textContent?.trim();
       const tip = card?.querySelector('.state-placeholder-tip')?.textContent?.trim();
       return {
         viewMode,
@@ -199,8 +199,8 @@ async function run() {
     });
     assert.strictEqual(corruptedState.viewMode, 'corruptedRecord', 'View mode must be "corruptedRecord"');
     assert.strictEqual(corruptedState.hasCard, true, 'Corrupted record shell card must be rendered');
-    assert(corruptedState.quote?.includes('缺失 snapshotId'), 'Corrupted card must display details');
-    assert(corruptedState.tip?.includes('原记录已妥善保留'), 'Corrupted card must state the original record is kept');
+    assert(corruptedState.title?.includes('暂时无法恢复上次进度'), '恢复受阻时说明当前状态');
+    assert(corruptedState.quote?.includes('原记录未被修改'), '恢复页说明原记录未被修改');
     assert(!corruptedState.tip?.includes('#35'), 'Corrupted card must not expose internal issue numbers to users');
 
     console.log('✓ Test 2 Passed: 4-state state machine renders correctly');

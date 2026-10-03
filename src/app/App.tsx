@@ -66,10 +66,12 @@ import {
   sessionSaveQueue,
   SessionSaveQueue,
   loadSession,
+  restoreSession,
   saveSessionDirect,
   clearSessionDirect,
 } from './state/persistence';
 import './app.css';
+import { RecoveryPanel } from './components/RecoveryPanel';
 import { CloseIcon } from './components/CloseIcon';
 
 const SAVE_STATUS_COPY = WORKBENCH_COPY.saveStatus;
@@ -97,6 +99,12 @@ export const App: React.FC = () => {
   const focusTitleAfterReplaceRef = useRef<boolean>(false);
   // 只读实例判定在启动初始化时同步写入，供 pendingCapture 消费等非渲染路径即时读取
   const isReadOnlyRef = useRef<boolean>(false);
+  const recoveryBlockedRef = useRef(true);
+  const captureCutoffRef = useRef<number | null>(null);
+  const recoveryInFlightRef = useRef(false);
+  const focusEmptyRef = useRef<HTMLHeadingElement>(null);
+  const focusEmptyAfterClearRef = useRef(false);
+  const switchWriterRef = useRef<HTMLButtonElement>(null);
   const initDoneRef = useRef<Promise<void> | null>(null);
   const stateRef = useRef(state);
   useEffect(() => {
@@ -497,6 +505,11 @@ export const App: React.FC = () => {
 
   // 消费 pendingCapture 逻辑：读到后必须立即删除该 key，防止重复消费
   const processCaptureResult = async (res: CaptureResult) => {
+    if (isReadOnlyRef.current) return;
+    if (recoveryBlockedRef.current) {
+      dispatch({ type: 'SET_MARGIN_CLIP_NOTE', payload: { text: '请先处理上次进度', autoDismiss: false } });
+      return;
+    }
     if (res.kind === 'article') {
       dispatch({ type: 'SET_READING_ARTICLE', payload: true });
       try {
@@ -579,23 +592,85 @@ export const App: React.FC = () => {
       // 只读实例不写 storage，也不消费 pendingCapture：抓取结果只属于写入方页面（ARCHITECTURE.md §4.6）
       if (isReadOnlyRef.current) return;
       if (typeof chrome === 'undefined' || !chrome.storage?.local) return;
+      const blockedWhenReceived = recoveryBlockedRef.current;
       const data = await chrome.storage.local.get(STORAGE_KEYS.PENDING_CAPTURE);
-      const pending = data[STORAGE_KEYS.PENDING_CAPTURE] as { result: CaptureResult } | undefined;
+      const pending = data[STORAGE_KEYS.PENDING_CAPTURE] as { result: CaptureResult; capturedAt?: string } | undefined;
       if (pending && pending.result) {
         // 立即删除该 key
         await chrome.storage.local.remove(STORAGE_KEYS.PENDING_CAPTURE);
-        await processCaptureResult(pending.result);
+        // 清除期间产生、但延后才通知/读到的抓取也不得进入空会话分支。
+        const capturedAt = Date.parse(pending.capturedAt ?? '');
+        const predatesClear = captureCutoffRef.current !== null &&
+          (!Number.isFinite(capturedAt) || capturedAt <= captureCutoffRef.current);
+        if (blockedWhenReceived || predatesClear) {
+          dispatch({ type: 'SET_MARGIN_CLIP_NOTE', payload: {
+            text: predatesClear ? '上次进度已清除，请回到文章页重新发起' : '请先处理上次进度', autoDismiss: false,
+          } });
+        } else {
+          await processCaptureResult(pending.result);
+        }
       }
     } catch (err) {
       console.warn('[WeTrim] Error reading pendingCapture:', err);
     }
   };
 
+  const recoverProgress = async () => {
+    if (recoveryInFlightRef.current) return;
+    recoveryInFlightRef.current = true;
+    recoveryBlockedRef.current = true;
+    dispatch({ type: 'SET_RECOVERY', payload: { kind: 'loading' } });
+    try {
+      const result = await restoreSession();
+      if (result.kind === 'readError' || result.kind === 'unrecognized') {
+        dispatch({ type: 'SET_RECOVERY', payload: result });
+        return;
+      }
+      // 候选不会在重开或重试时自动提升；只读副本不做任何存储写入。
+      if (!isReadOnlyRef.current && typeof chrome !== 'undefined' && chrome.storage?.local) {
+        try { await chrome.storage.local.remove(STORAGE_KEYS.CANDIDATE_SNAPSHOT); } catch {}
+      }
+      const session = result.kind === 'ready' ? result.session : null;
+      if (session && !isReadOnlyRef.current) sessionSaveQueue.initLoaded(session);
+      if (session) focusTitleAfterReplaceRef.current = true;
+      else focusEmptyAfterClearRef.current = true;
+      dispatch({ type: 'INIT_STORAGE_STATE', payload: {
+        session, corrupted: false, isReadOnly: isReadOnlyRef.current,
+      } });
+      // 在异步抓取处理返回前同步更新引用，避免 React 尚未提交时误走空会话分支。
+      stateRef.current = sessionReducer(stateRef.current, { type: 'INIT_STORAGE_STATE', payload: {
+        session, corrupted: false, isReadOnly: isReadOnlyRef.current,
+      } });
+      recoveryBlockedRef.current = false;
+    } finally {
+      recoveryInFlightRef.current = false;
+    }
+  };
+
+  const clearRecovery = async () => {
+    if (isReadOnlyRef.current || !recoveryBlockedRef.current) return;
+    // 等在途写入结束后，一次删除会话与待处理抓取；失败不先删掉原会话。
+    await sessionSaveQueue.clear(true);
+    captureCutoffRef.current = Date.now();
+    focusEmptyAfterClearRef.current = true;
+    dispatch({ type: 'RESET_TO_EMPTY' });
+    stateRef.current = sessionReducer(stateRef.current, { type: 'RESET_TO_EMPTY' });
+    recoveryBlockedRef.current = false;
+  };
+
+  useEffect(() => {
+    if (focusEmptyAfterClearRef.current && state.viewMode === 'empty') {
+      focusEmptyAfterClearRef.current = false;
+      focusEmptyRef.current?.focus();
+    }
+  }, [state.viewMode]);
+
   // 启动初始化：从 storage 读取当前会话或候选快照，驱动初始四态判定
   useEffect(() => {
     const initStorage = async () => {
       try {
         if (typeof chrome === 'undefined' || !chrome.storage?.local) {
+          await recoverProgress();
           return;
         }
 
@@ -619,52 +694,13 @@ export const App: React.FC = () => {
         }
         isReadOnlyRef.current = isReadOnlyInstance;
 
-        const data = await chrome.storage.local.get([
-          STORAGE_KEYS.CURRENT_SESSION,
-          STORAGE_KEYS.CANDIDATE_SNAPSHOT,
-        ]);
-
-        const rawSession = data[STORAGE_KEYS.CURRENT_SESSION] as Session | undefined;
-        const rawCandidate = data[STORAGE_KEYS.CANDIDATE_SNAPSHOT] as CandidateRecord | undefined;
-
-        // 关页即丢弃候选：启动时发现残留候选应当丢弃。
-        // 但只读的第二实例不得删掉写入方页面的候选（见 §4.6 与 Issue #28）。
-        if (!isReadOnlyInstance && rawCandidate) {
-          try {
-            await chrome.storage.local.remove(STORAGE_KEYS.CANDIDATE_SNAPSHOT);
-          } catch (err) {
-            console.warn('[WeTrim] Error removing stale candidateSnapshot on init:', err);
-          }
-        }
-
-        let corrupted = false;
-        let corruptedDetails = '';
-
-        if (rawSession && (!rawSession.sessionId || !rawSession.snapshot)) {
-          corrupted = true;
-          corruptedDetails = WORKBENCH_COPY.corruptedIncompleteDetails;
-        }
-
-        const initialSession: Session | null = corrupted ? null : (rawSession ?? null);
-
-        if (rawSession && !corrupted) {
-          if (!isReadOnlyInstance) {
-            sessionSaveQueue.initLoaded(rawSession);
-          }
-        }
-
-        // 候选永远不会自动提升为当前会话，启动时恢复旧会话
-        dispatch({
-          type: 'INIT_STORAGE_STATE',
-          payload: {
-            session: initialSession,
-            corrupted,
-            corruptedDetails,
-            isReadOnly: isReadOnlyInstance,
-          },
-        });
+        dispatch({ type: 'INIT_STORAGE_STATE', payload: {
+          session: null, corrupted: true, isReadOnly: isReadOnlyInstance,
+        } });
+        await recoverProgress();
       } catch (err) {
         console.warn('[WeTrim] Error initializing storage state:', err);
+        dispatch({ type: 'SET_RECOVERY', payload: { kind: 'readError' } });
       }
     };
 
@@ -933,7 +969,8 @@ export const App: React.FC = () => {
         if (typeof window !== 'undefined') {
           window.scrollTo({ top: 0, behavior: 'instant' });
         }
-        titleRef.current?.focus();
+        if (isReadOnlyRef.current) switchWriterRef.current?.focus();
+        else titleRef.current?.focus();
       }, 50);
       return () => clearTimeout(timer);
     }
@@ -982,7 +1019,7 @@ export const App: React.FC = () => {
     }
   };
 
-  const { viewMode, session, candidateSnapshot, corruptedDetails, emptySubState, selfTestPassed, saveStatus, isReadOnly } = state;
+  const { viewMode, session, candidateSnapshot, emptySubState, selfTestPassed, saveStatus, isReadOnly } = state;
 
   const saveStatusText = saveStatus === 'error' ? '' : SAVE_STATUS_COPY[saveStatus];
 
@@ -993,7 +1030,7 @@ export const App: React.FC = () => {
       : viewMode === 'candidateConfirm'
       ? CANDIDATE_COPY.ticketCandidateTag
       : viewMode === 'corruptedRecord'
-      ? WORKBENCH_COPY.ticketTags.corrupted
+      ? '恢复'
       : emptySubState.notice
       ? WORKBENCH_COPY.ticketTags.notice
       : emptySubState.splitError
@@ -1033,7 +1070,7 @@ export const App: React.FC = () => {
       : viewMode === 'candidateConfirm'
       ? CANDIDATE_COPY.waitingConfirmStatus
       : viewMode === 'corruptedRecord'
-      ? WORKBENCH_COPY.systemStatus.corrupted
+      ? (state.recovery?.kind === 'loading' ? '正在读取进度' : '等待处理上次进度')
       : emptySubState.splitError
       ? WORKBENCH_COPY.systemStatus.splitError
       : emptySubState.notice
@@ -1394,6 +1431,7 @@ export const App: React.FC = () => {
                   <button
                     type="button"
                     className="action-btn action-switch-writer"
+                    ref={switchWriterRef}
                     onClick={handleSwitchToWriter}
                     data-testid="read-only-switch-writer"
                   >
@@ -1509,35 +1547,9 @@ export const App: React.FC = () => {
                 onOpenPreview={handleOpenPreview}
               />
 
-              {/* 态 3: 损坏记录态 (viewMode === 'corruptedRecord') - 最小壳 */}
               {viewMode === 'corruptedRecord' && (
-                <div className="corrupted-record-card" data-testid="corrupted-record-card">
-                  <div className="notice-stamp error-stamp" aria-hidden="true">
-                    <span>{WORKBENCH_COPY.corruptedStamp}</span>
-                  </div>
-                  <div className="notice-header">
-                    <span className="notice-sub">{WORKBENCH_COPY.corruptedSub}</span>
-                    <h2 className="notice-title">{WORKBENCH_COPY.corruptedTitle}</h2>
-                  </div>
-                  <blockquote className="notice-verbatim-quote">
-                    {corruptedDetails || WORKBENCH_COPY.corruptedFallbackDetails}
-                  </blockquote>
-                  <p className="state-placeholder-tip">
-                    {WORKBENCH_COPY.corruptedTip}
-                  </p>
-                  <div className="notice-actions">
-                    <button
-                      type="button"
-                      className="action-btn action-retry"
-                      onClick={() => {
-                        sessionSaveQueue.clear();
-                        dispatch({ type: 'RESET_TO_EMPTY' });
-                      }}
-                    >
-                      {WORKBENCH_COPY.restart}
-                    </button>
-                  </div>
-                </div>
+                <RecoveryPanel recovery={state.recovery ?? { kind: 'readError' }}
+                  isReadOnly={isReadOnly} onRetry={recoverProgress} onClear={clearRecovery} />
               )}
 
               {/* 态 4: 空态 (viewMode === 'empty') */}
@@ -1630,7 +1642,7 @@ export const App: React.FC = () => {
                   {/* 子视图 4.3: 默认空状态 - 3 步指引 */}
                   {!emptySubState.splitError && !emptySubState.notice && (
                     <div className="empty-state-view" data-testid="empty-state-view">
-                      <h1 className="empty-headline">
+                      <h1 className="empty-headline" ref={focusEmptyRef} tabIndex={-1}>
                         <span className="empty-headline-accent"></span>
                         {WORKBENCH_COPY.emptyHeadline}
                       </h1>

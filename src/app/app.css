@@ -1583,6 +1583,59 @@ button.save-status-error:focus-visible {
   line-height: 1.6;
 }
 
+/* 恢复页沿用纸面与朱红描边，安全出口和清除操作分开。 */
+.recovery-description {
+  max-width: 70ch;
+  line-height: 1.7;
+}
+
+.recovery-actions {
+  flex-wrap: wrap;
+}
+
+.recovery-danger {
+  margin-top: 16px;
+  padding-top: 20px;
+  border-top: 1px solid var(--sheet-border);
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+}
+
+.recovery-danger .action-replace {
+  color: var(--vermilion);
+  border: 1px solid var(--vermilion-border);
+  background: transparent;
+}
+
+.recovery-danger .action-replace:hover {
+  background: var(--vermilion-subtle);
+}
+
+.recovery-panel [role="alert"] {
+  color: var(--vermilion-strong);
+  line-height: 1.6;
+}
+
+.recovery-panel .action-btn:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+@media (max-width: 600px) {
+  .recovery-panel,
+  .recovery-confirm {
+    padding: 24px 20px;
+  }
+  .recovery-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .recovery-danger {
+    justify-items: stretch;
+  }
+}
+
 /* ==========================================================================
    Issue #24: 真实阅读态 BlockItem 渲染与状态标签
    ========================================================================== */

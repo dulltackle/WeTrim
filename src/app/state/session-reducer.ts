@@ -1,4 +1,7 @@
 import type { ArticleSnapshot, CaptureResult, Session } from '../../shared/types';
+import type { SessionRecovery } from './session-record';
+
+export type RecoveryState = Exclude<SessionRecovery, { kind: 'ready' | 'empty' }> | { kind: 'loading' };
 
 /**
  * ARCHITECTURE.md §7 & §8.5、Issue #24：
@@ -28,6 +31,7 @@ export interface AppState {
   session: Session | null;
   candidateSnapshot: ArticleSnapshot | null;
   corruptedDetails: string | null;
+  recovery: RecoveryState | null;
   emptySubState: EmptySubState;
   selfTestPassed: boolean;
   saveStatus: SaveStatus;
@@ -37,6 +41,7 @@ export interface AppState {
 }
 
 export type SessionAction =
+  | { type: 'SET_RECOVERY'; payload: RecoveryState }
   | {
       type: 'INIT_STORAGE_STATE';
       payload: {
@@ -113,10 +118,11 @@ export const initialEmptySubState: EmptySubState = {
 };
 
 export const initialAppState: AppState = {
-  viewMode: 'empty',
+  viewMode: 'corruptedRecord',
   session: null,
   candidateSnapshot: null,
   corruptedDetails: null,
+  recovery: { kind: 'loading' },
   emptySubState: initialEmptySubState,
   selfTestPassed: false,
   saveStatus: 'saved',
@@ -127,6 +133,8 @@ export const initialAppState: AppState = {
 
 export function sessionReducer(state: AppState, action: SessionAction): AppState {
   switch (action.type) {
+    case 'SET_RECOVERY':
+      return { ...state, viewMode: 'corruptedRecord', session: null, candidateSnapshot: null, recovery: action.payload };
     case 'INIT_STORAGE_STATE': {
       const { session, corrupted, corruptedDetails, isReadOnly } = action.payload;
 
@@ -147,6 +155,7 @@ export function sessionReducer(state: AppState, action: SessionAction): AppState
         return {
           ...state,
           viewMode: 'cleaning',
+          recovery: null,
           session,
           candidateSnapshot: null,
           saveStatus: 'saved',
@@ -160,6 +169,7 @@ export function sessionReducer(state: AppState, action: SessionAction): AppState
       return {
         ...state,
         viewMode: 'empty',
+        recovery: null,
         session: null,
         candidateSnapshot: null,
         saveStatus: 'saved',
@@ -345,6 +355,9 @@ export function sessionReducer(state: AppState, action: SessionAction): AppState
     case 'RESET_TO_EMPTY': {
       return {
         ...initialAppState,
+        viewMode: 'empty',
+        recovery: null,
+        isReadOnly: state.isReadOnly,
         selfTestPassed: state.selfTestPassed,
       };
     }

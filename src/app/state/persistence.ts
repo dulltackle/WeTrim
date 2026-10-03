@@ -1,6 +1,7 @@
 import type { Session } from '../../shared/types';
 import { STORAGE_KEYS } from '../../shared/storage-keys';
 import type { SaveStatus } from './session-reducer';
+import { decodeSessionRecord, type SessionRecovery } from './session-record';
 
 export type { SaveStatus };
 
@@ -20,12 +21,25 @@ export type SaveStatusListener = (status: SaveStatus, meta?: SaveStatusMeta) => 
  */
 
 export async function loadSession(): Promise<Session | null> {
+  const result = await restoreSession();
+  if (result.kind === 'empty') return null;
+  if (result.kind === 'ready') return result.session;
+  throw new Error(result.kind === 'readError' ? '暂时无法读取上次进度' : '暂时无法恢复上次进度');
+}
+
+export async function restoreSession(): Promise<SessionRecovery> {
   if (typeof chrome === 'undefined' || !chrome.storage?.local) {
-    return null;
+    // 独立开发页没有扩展存储；扩展内 API 不可用则是读取失败。
+    return typeof chrome !== 'undefined' && chrome.runtime?.id ? { kind: 'readError' } : { kind: 'empty' };
   }
-  const data = await chrome.storage.local.get(STORAGE_KEYS.CURRENT_SESSION);
-  const session = data[STORAGE_KEYS.CURRENT_SESSION] as Session | undefined;
-  return session ?? null;
+  try {
+    const data = await chrome.storage.local.get(STORAGE_KEYS.CURRENT_SESSION);
+    // key 不存在才是空会话；null、false、空字符串也必须保留供排查。
+    return Object.hasOwn(data, STORAGE_KEYS.CURRENT_SESSION)
+      ? decodeSessionRecord(data[STORAGE_KEYS.CURRENT_SESSION]) : { kind: 'empty' };
+  } catch {
+    return { kind: 'readError' };
+  }
 }
 
 export async function saveSessionDirect(session: Session): Promise<void> {
@@ -36,11 +50,13 @@ export async function saveSessionDirect(session: Session): Promise<void> {
   await chrome.storage.local.set({ [STORAGE_KEYS.CURRENT_SESSION]: session });
 }
 
-export async function clearSessionDirect(): Promise<void> {
+export async function clearSessionDirect(discardCaptures = false): Promise<void> {
   if (typeof chrome === 'undefined' || !chrome.storage?.local) {
-    return;
+    throw new Error('存储不可用，无法清除上次进度');
   }
-  await chrome.storage.local.remove(STORAGE_KEYS.CURRENT_SESSION);
+  await chrome.storage.local.remove(discardCaptures
+    ? [STORAGE_KEYS.CURRENT_SESSION, STORAGE_KEYS.PENDING_CAPTURE, STORAGE_KEYS.CANDIDATE_SNAPSHOT]
+    : STORAGE_KEYS.CURRENT_SESSION);
 }
 
 /**
@@ -154,7 +170,7 @@ export class SessionSaveQueue {
    * 清除会话：丢弃挂起写入，并从 storage 中移除 key。
    * 旧会话迟到写入不得复活或覆盖。
    */
-  public async clear(): Promise<void> {
+  public async clear(discardCaptures = false): Promise<void> {
     this.activeSessionId = null;
     this.pendingSession = null;
     this.lastError = null;
@@ -167,9 +183,11 @@ export class SessionSaveQueue {
       }
     }
     try {
-      await clearSessionDirect();
+      await clearSessionDirect(discardCaptures);
     } catch (err) {
-      console.warn('[SessionSaveQueue] clearSessionDirect error:', err);
+      this.lastError = err;
+      this.notify('error', { error: err });
+      throw err;
     }
     this.notify('saved');
   }

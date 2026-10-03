@@ -22,7 +22,8 @@
     "verify:issue33": "node test/verify-issue33.mjs",
     "verify:image-referer": "node test/verify-image-referer.mjs",
     "typecheck": "tsc --noEmit",
-    "verify:issue34": "node test/verify-issue34.mjs"
+    "verify:issue34": "node test/verify-issue34.mjs",
+    "verify:issue35": "node test/verify-issue35.mjs"
   },
   "dependencies": {
     "dompurify": "^3.4.15",
