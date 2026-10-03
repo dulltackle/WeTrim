@@ -251,36 +251,36 @@ async function run() {
         {
           index: 1,
           fileBaseName: 'image-001',
-          rawUrl: 'https://example.com/fake.jpg',
-          resolvedUrl: 'https://example.com/fake.jpg',
+          rawUrl: 'https://mmbiz.qpic.cn/fake.jpg',
+          resolvedUrl: 'https://mmbiz.qpic.cn/fake.jpg',
           alt: '图1',
         },
         {
           index: 2,
           fileBaseName: 'image-002',
-          rawUrl: 'https://example.com/error-page.png',
-          resolvedUrl: 'https://example.com/error-page.png',
+          rawUrl: 'https://mmbiz.qpic.cn/error-page.png',
+          resolvedUrl: 'https://mmbiz.qpic.cn/error-page.png',
           alt: '图2',
         },
         {
           index: 3,
           fileBaseName: 'image-003',
-          rawUrl: 'https://example.com/forbidden.png',
-          resolvedUrl: 'https://example.com/forbidden.png',
+          rawUrl: 'https://mmbiz.qpic.cn/forbidden.png',
+          resolvedUrl: 'https://mmbiz.qpic.cn/forbidden.png',
           alt: '图3',
         },
         {
           index: 4,
           fileBaseName: 'image-004',
-          rawUrl: 'https://example.com/real.webp',
-          resolvedUrl: 'https://example.com/real.webp',
+          rawUrl: 'https://mmbiz.qpic.cn/real.webp',
+          resolvedUrl: 'https://mmbiz.qpic.cn/real.webp',
           alt: '图4',
         },
       ];
 
       const progressHistory = [];
       const mockFetch = async (url) => {
-        if (url === 'https://example.com/fake.jpg') {
+        if (url === 'https://mmbiz.qpic.cn/fake.jpg') {
           // 真实内容是 PNG（100 字节）
           const data = new Uint8Array(100);
           data.set(pngBytes, 0);
@@ -289,16 +289,16 @@ async function run() {
             headers: { 'Content-Type': 'image/jpeg' }, // Content-Type 甚至是假的，全靠魔数识别
           });
         }
-        if (url === 'https://example.com/error-page.png') {
+        if (url === 'https://mmbiz.qpic.cn/error-page.png') {
           return new Response('<html><head><title>404 Not Found</title></head></html>', {
             status: 200,
             headers: { 'Content-Type': 'text/html' },
           });
         }
-        if (url === 'https://example.com/forbidden.png') {
+        if (url === 'https://mmbiz.qpic.cn/forbidden.png') {
           return new Response('Forbidden', { status: 403 });
         }
-        if (url === 'https://example.com/real.webp') {
+        if (url === 'https://mmbiz.qpic.cn/real.webp') {
           const data = new Uint8Array(50);
           data.set(webpBytes, 0);
           return new Response(data, {
@@ -321,30 +321,30 @@ async function run() {
       assert.strictEqual(result.failed.length, 2);
 
       // 验证实际扩展名（PNG 与 WebP）与文件名（图4保持 image-004，不要求下载失败后连续）
-      const item1 = result.succeeded.find((s) => s.url === 'https://example.com/fake.jpg');
+      const item1 = result.succeeded.find((s) => s.url === 'https://mmbiz.qpic.cn/fake.jpg');
       assert.ok(item1);
       assert.strictEqual(item1.format, 'png');
       assert.strictEqual(item1.extension, '.png');
       assert.strictEqual(item1.fileName, 'image-001.png');
 
-      const item4 = result.succeeded.find((s) => s.url === 'https://example.com/real.webp');
+      const item4 = result.succeeded.find((s) => s.url === 'https://mmbiz.qpic.cn/real.webp');
       assert.ok(item4);
       assert.strictEqual(item4.format, 'webp');
       assert.strictEqual(item4.extension, '.webp');
       assert.strictEqual(item4.fileName, 'image-004.webp');
 
       // 验证失败项
-      const fail2 = result.failed.find((f) => f.url === 'https://example.com/error-page.png');
+      const fail2 = result.failed.find((f) => f.url === 'https://mmbiz.qpic.cn/error-page.png');
       assert.ok(fail2);
 
-      const fail3 = result.failed.find((f) => f.url === 'https://example.com/forbidden.png');
+      const fail3 = result.failed.find((f) => f.url === 'https://mmbiz.qpic.cn/forbidden.png');
       assert.ok(fail3);
 
       // 验证映射表
-      assert.strictEqual(result.urlToRelativePathMap.get('https://example.com/fake.jpg'), 'images/image-001.png');
-      assert.strictEqual(result.urlToRelativePathMap.get('https://example.com/real.webp'), 'images/image-004.webp');
-      assert.strictEqual(result.urlToRelativePathMap.has('https://example.com/error-page.png'), false);
-      assert.strictEqual(result.urlToRelativePathMap.has('https://example.com/forbidden.png'), false);
+      assert.strictEqual(result.urlToRelativePathMap.get('https://mmbiz.qpic.cn/fake.jpg'), 'images/image-001.png');
+      assert.strictEqual(result.urlToRelativePathMap.get('https://mmbiz.qpic.cn/real.webp'), 'images/image-004.webp');
+      assert.strictEqual(result.urlToRelativePathMap.has('https://mmbiz.qpic.cn/error-page.png'), false);
+      assert.strictEqual(result.urlToRelativePathMap.has('https://mmbiz.qpic.cn/forbidden.png'), false);
 
       // 验证进度反馈（按下载字节计量，且包含累计字节）
       assert.ok(progressHistory.length >= 4);
@@ -577,6 +577,7 @@ async function run() {
       };
 
       const res = await writeArticleDirectory(rootDir, snapshot, {
+        onUnlocalized: async () => 'continue',
         fetchFn: mockFetch,
       });
 
@@ -707,6 +708,7 @@ async function run() {
 
       const res = await writeArticleDirectory(rootDir, snapshotFailedImages, {
         fetchFn: mockAllFail,
+        onUnlocalized: async () => 'continue',
       });
       assert.strictEqual(res.ok, true);
 

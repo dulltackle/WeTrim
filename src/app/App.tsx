@@ -17,6 +17,8 @@ import {
   type BlockFilterMode,
 } from './components/BlockList';
 import { CandidateConfirmDialog } from './components/CandidateConfirmDialog';
+import { UnlocalizedImagesDialog } from './components/UnlocalizedImagesDialog';
+import type { ImageDecision, ImageEditTarget, UnlocalizedImage } from './export/unlocalized-images';
 import { PreviewDialog } from './components/PreviewDialog';
 import { ExportFeedbackDialog, type ExportFeedback } from './components/ExportFeedbackDialog';
 import { CANDIDATE_COPY } from './copy/candidate';
@@ -124,6 +126,24 @@ export const App: React.FC = () => {
   const [exportFeedback, setExportFeedback] = useState<ExportFeedback | null>(null);
   // 同一时刻只允许一次导出，避免重复触发时两次写入争抢同一目录名
   const exportInFlightRef = useRef(false);
+  const [unlocalizedImages, setUnlocalizedImages] = useState<UnlocalizedImage[] | null>(null);
+  const imageDecisionRef = useRef<((decision: ImageDecision) => void) | null>(null);
+  const [imageEditTarget, setImageEditTarget] = useState<ImageEditTarget | null>(null);
+  const decideImages = (decision: ImageDecision) => {
+    const resolve = imageDecisionRef.current;
+    imageDecisionRef.current = null;
+    setUnlocalizedImages(null);
+    resolve?.(decision);
+  };
+  // 等两层原生对话框都卸载后，再让块流打开编辑器，避免焦点被模态归还覆盖。
+  useEffect(() => {
+    if (imageEditTarget && !unlocalizedImages && !isPreviewOpen) {
+      blockListRef.current?.editImageReference(imageEditTarget);
+      setImageEditTarget(null);
+    }
+  }, [imageEditTarget, unlocalizedImages, isPreviewOpen]);
+  useEffect(() => () => imageDecisionRef.current?.('cancel'), []);
+
   // 导出期间的图片下载进度（Issue #33：按实际接收字节反馈，不按张数估算）
   const [exportProgress, setExportProgress] = useState<FetchProgress | null>(null);
   // 顶栏导出请求计数：flush 防抖编辑后要等新快照提交，再在 effect 里用最新内容导出
@@ -384,6 +404,12 @@ export const App: React.FC = () => {
           options?.onProgress?.(progress);
         },
         fetchFn: options?.fetchFn,
+        hasPermission: options?.hasPermission,
+        onUnlocalized: options?.onUnlocalized ?? (images => new Promise<ImageDecision>(resolve => {
+          setExportProgress(null);
+          imageDecisionRef.current = resolve;
+          setUnlocalizedImages(images);
+        })),
       });
     } finally {
       exportInFlightRef.current = false;
@@ -394,7 +420,7 @@ export const App: React.FC = () => {
       setExportFeedback({
         isOpen: true,
         type: 'success',
-        title: EXPORT_COPY.exportSuccessTitle,
+        title: res.failedImagesCount ? EXPORT_COPY.exportExternalTitle(res.failedImagesCount) : EXPORT_COPY.exportSuccessTitle,
         desc: EXPORT_COPY.exportSuccessDesc(res.articleDirName, res.markdownFileName, {
           localized: res.localizedImagesCount ?? 0,
           failed: res.failedImagesCount ?? 0,
@@ -1458,6 +1484,18 @@ export const App: React.FC = () => {
                   exportProgressText={exportProgressText}
                 />
               )}
+
+              {unlocalizedImages && <UnlocalizedImagesDialog images={unlocalizedImages}
+                onDecision={decideImages}
+                onBack={() => {
+                  decideImages('cancel');
+                  if (isPreviewOpen) closePreviewThen(() => exportBtnRef.current?.focus());
+                }}
+                onLocate={target => {
+                  decideImages('cancel');
+                  setIsPreviewOpen(false);
+                  setImageEditTarget(target);
+                }} />}
 
               {/* 导出结果反馈对话框（Issue #32） */}
               <ExportFeedbackDialog

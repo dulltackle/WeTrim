@@ -3091,3 +3091,31 @@ button.save-status-error:focus-visible {
     animation-name: fadeInStill;
   }
 }
+
+/* 未本地化图片：纸面提示内独立滚动，操作始终可达。 */
+.unlocalized-dialog {
+  width: min(720px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+}
+.unlocalized-dialog .export-dialog-header,
+.unlocalized-dialog .export-dialog-footer { flex-shrink: 0; }
+.unlocalized-dialog .export-dialog-header { gap: 16px; }
+.unlocalized-dialog .export-dialog-body { overflow-y: auto; min-height: 0; }
+.unlocalized-list, .unlocalized-locations { list-style: none; padding: 0; margin: 0; }
+.unlocalized-list > li { padding: 20px 0; border-bottom: 1px solid var(--sheet-border); }
+.unlocalized-list > li:last-child { border-bottom: 0; padding-bottom: 0; }
+.unlocalized-reason { color: var(--ink-primary); font-weight: 600; margin: 0 0 8px; }
+.unlocalized-url { overflow-wrap: anywhere; user-select: text; margin: 0 0 12px; }
+.unlocalized-locations li + li { margin-top: 16px; }
+.unlocalized-locations p { overflow-wrap: anywhere; margin: 0 0 8px; }
+.unlocalized-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.unlocalized-invalid { color: var(--vermilion); margin: 16px 0 0; }
+.unlocalized-dialog .export-dialog-footer { flex-wrap: wrap; }
+.unlocalized-dialog button:disabled { opacity: 0.5; cursor: not-allowed; }
+.unlocalized-dialog button:focus-visible,
+.unlocalized-url:focus-visible { outline: 2px solid var(--prussian-blue); outline-offset: 3px; }
+@media (max-width: 560px) {
+  .unlocalized-dialog .export-dialog-body { padding: 16px; }
+  .unlocalized-dialog .export-dialog-footer { padding: 12px 16px; }
+  .unlocalized-dialog .action-confirm-export { width: 100%; justify-content: center; }
+}

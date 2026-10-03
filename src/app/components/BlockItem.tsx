@@ -16,6 +16,7 @@ import { IMAGE_COPY, NOTES_COPY } from '../copy/image-presentation';
 import { BLOCK_COPY } from '../copy/block';
 
 export interface BlockItemProps {
+  imageSelection?: { start: number; end: number };
   block: Block;
   onToggle: (id: string) => void;
   onUpdate?: (id: string, editedMarkdown: string | null) => void;
@@ -37,7 +38,7 @@ export interface BlockItemProps {
  * - 临时展开（isTempExpanded）：搜索命中折叠剔除块时临时展开，离开后自动收起
  */
 export const BlockItem = memo(
-  forwardRef<HTMLDivElement, BlockItemProps>(({ block, onToggle, onUpdate, isTempExpanded, registerFlush }, ref) => {
+  forwardRef<HTMLDivElement, BlockItemProps>(({ block, onToggle, onUpdate, isTempExpanded, registerFlush, imageSelection }, ref) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     const [isConfirmingRestore, setIsConfirmingRestore] = useState(false);
@@ -115,6 +116,20 @@ export const BlockItem = memo(
         flushSave();
       };
     }, [flushSave]);
+
+    useLayoutEffect(() => {
+      if (!imageSelection) return;
+      setIsExpanded(true);
+      setIsEditing(true);
+      setIsConfirmingRestore(false);
+    }, [imageSelection]);
+    useLayoutEffect(() => {
+      const textarea = textareaRef.current;
+      if (!imageSelection || !isEditing || !textarea) return;
+      textarea.focus({ preventScroll: true });
+      textarea.setSelectionRange(imageSelection.start, imageSelection.end);
+      itemContainerRef.current?.scrollIntoView({ block: 'start', behavior: 'instant' });
+    }, [imageSelection, isEditing]);
 
     // 编辑区随内容自动增高：rows 只能按显式换行符计数，无法反映自动折行占用的视觉行数，
     // 需要按 scrollHeight 撑高文本框，避免折行内容被压缩进过矮的编辑区

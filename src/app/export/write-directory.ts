@@ -8,6 +8,7 @@ import {
   type FetchedImageSuccess,
   type FetchedImageFailure,
 } from './fetch-images';
+import { describeUnlocalizedImages, type UnlocalizedImage, type ImageDecision } from './unlocalized-images';
 import { EXPORT_COPY } from '../copy/export';
 
 export interface WriteDirectorySuccess {
@@ -40,6 +41,8 @@ export interface WriteDirectoryOptions {
   resultFile?: ResultFile;
   onProgress?: (progress: FetchProgress) => void;
   fetchFn?: typeof fetch;
+  hasPermission?: (url: string) => Promise<boolean>;
+  onUnlocalized?: (images: UnlocalizedImage[]) => Promise<ImageDecision>;
 }
 
 export interface ExportArticleOptions extends WriteDirectoryOptions {
@@ -152,7 +155,7 @@ export async function writeArticleDirectory(
   const imageAnalysis = analyzeMarkdownImages(baseResultFile.body, snapshot.source?.url);
   const imageRefs = imageAnalysis.references;
 
-  // 4. 下载图片字节并判定格式（全页自己 fetch，service worker 不经手）；单张失败只记为失败，不中断导出
+  // 4. 仅下载已授权的微信图片（全页自己 fetch）；失败项在写入前等待用户决定
   let localizedUrlMap = new Map<string, string>();
   let succeededImages: FetchedImageSuccess[] = [];
   let failedImages: FetchedImageFailure[] = [];
@@ -161,17 +164,37 @@ export async function writeArticleDirectory(
     const fetchResult = await fetchAllExportImages(imageRefs, {
       onProgress: options?.onProgress,
       fetchFn: options?.fetchFn,
+      hasPermission: options?.hasPermission,
     });
     succeededImages = fetchResult.succeeded;
     failedImages = fetchResult.failed;
     localizedUrlMap = fetchResult.urlToRelativePathMap;
   }
 
-  // 5. 改写 Markdown 副本（成功本地化的改为 images/…，未成功的保留原 URL，其余文本逐字一致，不回写清洗会话）
-  const finalMarkdownText =
-    localizedUrlMap.size > 0
-      ? composeResultText(baseResultFile.frontMatter, imageAnalysis.rewrite(localizedUrlMap))
-      : baseResultFile.text;
+  let problems = describeUnlocalizedImages(snapshot, imageAnalysis, localizedUrlMap, failedImages);
+  while (problems.length > 0) {
+    const decision = await options?.onUnlocalized?.(problems) ?? 'cancel';
+    if (decision === 'continue' && problems.every(image => image.canKeepExternal)) break;
+    if (decision !== 'retry') return { ok: false, aborted: true, stage: 'prepare', message: '已取消本次导出，尚未写入文件' };
+    const failedUrls = new Set(failedImages.map(image => image.url));
+    const retried = await fetchAllExportImages(imageRefs.filter(ref => failedUrls.has(ref.resolvedUrl)), options);
+    succeededImages.push(...retried.succeeded);
+    failedImages = retried.failed;
+    for (const [url, path] of retried.urlToRelativePathMap) localizedUrlMap.set(url, path);
+    problems = describeUnlocalizedImages(snapshot, imageAnalysis, localizedUrlMap, failedImages);
+  }
+
+  // 5. 本地化成功的路径和明确保留的相对网络地址只改写导出副本。
+  // 相对网络地址必须带回文章基址，否则本地 Markdown 会把它误当成磁盘路径。
+  const outputUrlMap = new Map(localizedUrlMap);
+  for (const usage of imageAnalysis.usages) {
+    if (!outputUrlMap.has(usage.resolvedUrl) && !/^https?:/i.test(usage.rawUrl)) {
+      outputUrlMap.set(usage.resolvedUrl, usage.resolvedUrl.replace(/[()]/g, char => char === '(' ? '%28' : '%29'));
+    }
+  }
+  const finalMarkdownText = outputUrlMap.size > 0
+    ? composeResultText(baseResultFile.frontMatter, imageAnalysis.rewrite(outputUrlMap))
+    : baseResultFile.text;
 
   // 6. 文件名清理：保留中文与 emoji，不反写 ArticleSource.title
   const baseName = sanitizeArticleTitle(snapshot.source?.title);
@@ -220,6 +243,7 @@ export async function writeArticleDirectory(
         ok: false,
         error: err as Error,
         message: `检查文章目录时失败: ${errorMessage(err)}`,
+        attemptedDirName: articleDirName,
         stage: 'create_dir',
       };
     }
@@ -279,7 +303,7 @@ export async function writeArticleDirectory(
       articleDirHandle,
       parentHandle,
       localizedImagesCount: succeededImages.length,
-      failedImagesCount: failedImages.length,
+      failedImagesCount: problems.length,
       totalImagesCount: imageRefs.length,
     };
   } catch (err: unknown) {
@@ -372,5 +396,7 @@ export async function exportArticleWithPicker(
     resultFile,
     onProgress: options?.onProgress,
     fetchFn: options?.fetchFn,
+    hasPermission: options?.hasPermission,
+    onUnlocalized: options?.onUnlocalized,
   });
 }

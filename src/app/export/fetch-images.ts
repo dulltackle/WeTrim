@@ -150,6 +150,7 @@ export interface FetchedImageFailure {
   url: string;
   error: Error;
   status?: number;
+  reason?: 'outside_scope' | 'permission' | 'http' | 'not_image' | 'timeout' | 'network';
 }
 
 export type FetchedImageResult = FetchedImageSuccess | FetchedImageFailure;
@@ -265,6 +266,7 @@ export async function fetchImageResource(
     const response = await stall.guard(
       fetchFn(url, {
         referrerPolicy: 'no-referrer',
+        redirect: 'error',
         signal: stall.signal,
       })
     );
@@ -275,6 +277,7 @@ export async function fetchImageResource(
         ok: false,
         url,
         status: response.status,
+        reason: 'http',
         error: new Error(`HTTP ${response.status} ${response.statusText}`),
       };
     }
@@ -286,6 +289,7 @@ export async function fetchImageResource(
         ok: false,
         url,
         status: response.status,
+        reason: 'not_image',
         error: new Error('响应为 HTML 页面，非有效图片数据'),
       };
     }
@@ -298,6 +302,7 @@ export async function fetchImageResource(
         ok: false,
         url,
         status: response.status,
+        reason: 'not_image',
         error: new Error('返回数据无法判定为受支持的图片格式'),
       };
     }
@@ -318,13 +323,33 @@ export async function fetchImageResource(
       ok: false,
       url,
       error: toError(err),
+      reason: err instanceof ImageDownloadTimeoutError ? 'timeout' : 'network',
     };
   } finally {
     stall.dispose();
   }
 }
 
+/** 只读取当前授权；导出不会请求任何新权限。 */
+export async function hasImagePermission(url: string): Promise<boolean> {
+  try {
+    const origin = new URL(url).origin;
+    return await chrome.permissions.contains({ origins: [`${origin}/*`] });
+  } catch {
+    return false;
+  }
+}
+
+export function isAutomaticImageUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return ['http:', 'https:'].includes(parsed.protocol) && !parsed.username && !parsed.password &&
+      ['mmbiz.qpic.cn', 'mmbiz.qlogo.cn'].includes(parsed.hostname);
+  } catch { return false; }
+}
+
 export interface FetchAllExportImagesOptions {
+  hasPermission?: (url: string) => Promise<boolean>;
   onProgress?: (progress: FetchProgress) => void;
   fetchFn?: typeof fetch;
   stallTimeoutMs?: number;
@@ -372,7 +397,12 @@ export async function fetchAllExportImages(
     while (nextIndex < totalCount) {
       const idx = nextIndex++;
       const ref = imageRefs[idx];
-      const res = await fetchImageResource(ref.resolvedUrl, {
+      let res: FetchedImageResult;
+      if (!isAutomaticImageUrl(ref.resolvedUrl)) {
+        res = { ok: false, url: ref.resolvedUrl, reason: 'outside_scope', error: new Error('不在自动下载范围内') };
+      } else if (!(await (options?.hasPermission ?? hasImagePermission)(ref.resolvedUrl).catch(() => false))) {
+        res = { ok: false, url: ref.resolvedUrl, reason: 'permission', error: new Error('尚未获得此图片地址的访问权限') };
+      } else res = await fetchImageResource(ref.resolvedUrl, {
         fileBaseName: ref.fileBaseName,
         fetchFn: options?.fetchFn,
         stallTimeoutMs: options?.stallTimeoutMs,

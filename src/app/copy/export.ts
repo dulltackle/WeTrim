@@ -21,6 +21,18 @@ export const EXPORT_COPY = {
 
   // 成功反馈
   exportSuccessTitle: '导出完成',
+  exportExternalTitle: (count: number): string => `导出完成，含 ${count} 张外链图片`,
+  unlocalizedTitle: (count: number): string => `有 ${count} 张图片未保存到本地`,
+  unlocalizedDesc: '本次尚未写入文件。保留网络链接后，离线时部分图片可能无法显示。',
+  invalidImages: (count: number): string => `有 ${count} 处图片地址需要修正。请返回编辑，修正后重新导出。`,
+  imageAddress: '图片地址，可选中复制',
+  emptyImageAddress: '（空地址）',
+  locateImage: '定位到正文',
+  locateImageAria: (order: number): string => `定位到正文第 ${order} 块的图片引用`,
+  locateDefinition: (order: number): string => `修正地址定义（#${order}）`,
+  backToEdit: '返回编辑',
+  retryImages: '重试下载',
+  keepExternal: '保留外链继续导出',
   exportSuccessDesc: (
     dirName: string,
     fileName: string,
@@ -31,7 +43,7 @@ export const EXPORT_COPY = {
       desc += `${images.localized} 张图片已保存到 images/ 文件夹。`;
     }
     if (images && images.failed > 0) {
-      desc += `另有 ${images.failed} 张图片下载失败，文稿中仍保留其原网络地址。`;
+      desc += `此导出产物含 ${images.failed} 张外链图片，保留原网络链接，不保证离线完整。`;
     }
     return desc;
   },

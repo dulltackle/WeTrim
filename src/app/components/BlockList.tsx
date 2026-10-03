@@ -20,6 +20,7 @@ import {
   type BlockHit,
   type SearchState,
 } from '../search/text-search';
+import type { ImageEditTarget } from '../export/unlocalized-images';
 import { BLOCK_COPY } from '../copy/block';
 
 export type BlockFilterMode = 'all' | 'included' | 'excluded';
@@ -58,6 +59,7 @@ export interface OrderLocateResult {
  * - getCounts(): 获取各状态计数
  */
 export interface BlockListHandle {
+  editImageReference: (target: ImageEditTarget) => void;
   scrollToBlock: (id: string) => void;
   focusBlock: (id: string) => void;
   queryVisible: () => string[];
@@ -114,6 +116,7 @@ const BlockListInner = forwardRef<BlockListHandle, BlockListProps>(
     ref
   ) => {
     const { dispatch } = useAppContext();
+    const [imageSelection, setImageSelection] = useState<ImageEditTarget | null>(null);
     const itemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
     const isControlledFilter = controlledFilter !== undefined;
@@ -752,6 +755,13 @@ const BlockListInner = forwardRef<BlockListHandle, BlockListProps>(
     useImperativeHandle(
       ref,
       () => ({
+        editImageReference: (target: ImageEditTarget) => {
+          for (const flush of flushRegistryRef.current.values()) flush();
+          const block = blocks.find(b => b.id === target.blockId);
+          if (!block) return;
+          if ((filter === 'included' && !block.included) || (filter === 'excluded' && block.included)) handleFilterChange('all');
+          setImageSelection({ ...target });
+        },
         scrollToBlock,
         focusBlock,
         queryVisible,
@@ -829,6 +839,7 @@ const BlockListInner = forwardRef<BlockListHandle, BlockListProps>(
         executeSearch,
         gotoHit,
         locateOrder,
+        blocks,
         scrollToBlock,
         focusBlock,
         queryVisible,
@@ -872,6 +883,7 @@ const BlockListInner = forwardRef<BlockListHandle, BlockListProps>(
                 onToggle={handleToggleBlock}
                 onUpdate={handleUpdateBlock}
                 registerFlush={registerFlush}
+                imageSelection={imageSelection?.blockId === b.id ? imageSelection : undefined}
                 isTempExpanded={tempExpandedBlockId === b.id}
                 ref={getRefCallback(b.id)}
               />

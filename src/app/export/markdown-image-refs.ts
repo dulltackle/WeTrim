@@ -30,7 +30,17 @@ export interface ExportImageReference {
   title?: string;
 }
 
+export interface ImageSourceRange { start: number; end: number }
+
+export interface MarkdownImageUsage extends ImageSourceRange {
+  canRewrite: boolean;
+  rawUrl: string;
+  resolvedUrl: string;
+  definition?: ImageSourceRange;
+}
+
 export interface MarkdownImageAnalysis {
+  usages: MarkdownImageUsage[];
   references: ExportImageReference[];
   /** 按「完整 URL → 本地相对路径」改写导出副本；不在映射里的引用保持原样 */
   rewrite(localizedUrlMap: Map<string, string>): string;
@@ -149,6 +159,7 @@ interface TextEdit {
 }
 
 interface ImageOccurrence {
+  usage?: MarkdownImageUsage;
   token: Tokens.Image;
   resolvedUrl: string;
   /** 行内图片：目的地址的替换 */
@@ -249,17 +260,27 @@ function childTokensOf(token: Token): Token[] {
 
 export function analyzeMarkdownImages(markdown: string, baseUrl?: string): MarkdownImageAnalysis {
   if (!markdown || markdown.trim() === '') {
-    return { references: [], rewrite: () => markdown };
+    return { references: [], usages: [], rewrite: () => markdown };
   }
 
   const tokens = analysisMarked.lexer(markdown);
   const cursor = new SourceCursor(markdown);
   const occurrences: ImageOccurrence[] = [];
+  const usages: (MarkdownImageUsage & { referenceTag?: string })[] = [];
+  const definitionRanges = new Map<string, ImageSourceRange>();
   const definitions = new Map<string, LocatedDefinition>();
   const linkReferenceTags = new Set<string>();
 
   const visitImage = (token: Tokens.Image) => {
     const location = cursor.consume(token.raw);
+    const start = location.toSource(0);
+    const end = location.toSource(token.raw.length);
+    const usage = start !== null && end !== null ? {
+      start, end, rawUrl: token.href, canRewrite: false,
+      resolvedUrl: token.href ? resolveUrlString(token.href, baseUrl) : '',
+      referenceTag: parseReference(token.raw)?.tag,
+    } : undefined;
+    if (usage) usages.push(usage);
     if (!token.href) return;
     const resolvedUrl = resolveUrlString(token.href, baseUrl);
     if (!resolvedUrl) return;
@@ -271,6 +292,7 @@ export function analyzeMarkdownImages(markdown: string, baseUrl?: string): Markd
       if (range) {
         occurrences.push({
           token,
+          usage,
           resolvedUrl,
           destinationEdit: { ...range, resolvedUrl, render: (localPath) => localPath },
         });
@@ -278,18 +300,21 @@ export function analyzeMarkdownImages(markdown: string, baseUrl?: string): Markd
       return;
     }
 
-    const whole = location.toSourceRange(0, token.raw.length);
+    const labelEnd = location.toSource(3 + reference.label.length);
+    // 使用源文中的标签片段，保留多行标签所在引用/列表的前缀与缩进。
+    const whole = start !== null && end !== null ? { start, end } : null;
     const titleSuffix = token.title ? ` "${escapeTitle(token.title)}"` : '';
     occurrences.push({
       token,
+      usage,
       resolvedUrl,
       referenceTag: reference.tag,
       inlineConversionEdit:
-        whole && !token.raw.includes('\n')
+        whole && labelEnd !== null
           ? {
               ...whole,
               resolvedUrl,
-              render: (localPath) => `![${reference.label}](${localPath}${titleSuffix})`,
+              render: (localPath) => `${markdown.slice(whole.start, labelEnd)}(${localPath}${titleSuffix})`,
             }
           : undefined,
     });
@@ -298,6 +323,9 @@ export function analyzeMarkdownImages(markdown: string, baseUrl?: string): Markd
   const visitDefinition = (token: ReferenceDefinitionToken) => {
     const location = cursor.consume(token.raw);
     if (!token.registered) return;
+    const start = location.toSource(0);
+    const end = location.toSource(token.raw.trimEnd().length);
+    if (start !== null && end !== null) definitionRanges.set(token.tag, { start, end });
     const link = tokens.links[token.tag];
     const resolvedUrl = link?.href ? resolveUrlString(link.href, baseUrl) : '';
     const dest = findDefinitionDestination(token.raw);
@@ -348,6 +376,7 @@ export function analyzeMarkdownImages(markdown: string, baseUrl?: string): Markd
           : occurrence.inlineConversionEdit;
     }
     if (!edit) continue;
+    if (occurrence.usage) occurrence.usage.canRewrite = true;
     rewritable.push(occurrence);
     if (!usedDefinitionEdits.has(edit)) {
       usedDefinitionEdits.add(edit);
@@ -375,6 +404,9 @@ export function analyzeMarkdownImages(markdown: string, baseUrl?: string): Markd
 
   return {
     references,
+    usages: usages.map(({ referenceTag, ...usage }) => ({
+      ...usage, definition: referenceTag === undefined ? undefined : definitionRanges.get(referenceTag),
+    })),
     rewrite(localizedUrlMap) {
       if (localizedUrlMap.size === 0) return markdown;
       let result = '';
