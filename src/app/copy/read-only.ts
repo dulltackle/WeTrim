@@ -5,6 +5,6 @@
 export const READ_ONLY_COPY = {
   badge: '只读',
   status: '只读副本',
-  note: '这个页面是只读副本：另一个 WeTrim 页面正在编辑，这里的改动不会保存。',
+  note: '此页面暂不可编辑。正在编辑的页面关闭后，将自动在此继续。',
   btnSwitchToWriter: '切换到正在编辑的页面',
 };

@@ -1,3 +1,5 @@
+import { flushSync } from 'react-dom';
+import { queryWriter, setWriterEnabled, withWriterAccess, writerStorage } from './state/writer-access';
 import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type { CaptureResult, CandidateRecord, Session, ArticleSnapshot } from '../shared/types';
 import { STORAGE_KEYS } from '../shared/storage-keys';
@@ -28,7 +30,6 @@ import { PREVIEW_COPY } from './copy/preview';
 import { EXPORT_COPY } from './copy/export';
 import { WORKBENCH_COPY } from './copy/workbench';
 import { EMPTY_SEARCH_STATE, type SearchState } from './search/text-search';
-import { pickWriterContext } from '../shared/app-instance';
 import { renderMarkdown } from './preview/render';
 import {
   exportArticleWithPicker,
@@ -98,18 +99,24 @@ export const App: React.FC = () => {
   const replaceInFlightRef = useRef<boolean>(false);
   const focusTitleAfterReplaceRef = useRef<boolean>(false);
   // 只读实例判定在启动初始化时同步写入，供 pendingCapture 消费等非渲染路径即时读取
-  const isReadOnlyRef = useRef<boolean>(false);
+  const isReadOnlyRef = useRef<boolean>(true);
+  const [instanceMode, setInstanceMode] = useState<'checking' | 'readonly' | 'error' | 'restoring' | 'writer'>('checking');
+  const instanceModeRef = useRef(instanceMode);
+  const arbitrationBusyRef = useRef(false);
+  const [switchError, setSwitchError] = useState('');
+  const [draft, setDraft] = useState<Session | null>(null);
+  const draftRef = useRef<Session | null>(null);
+  const instanceTitleRef = useRef<HTMLHeadingElement>(null);
   const recoveryBlockedRef = useRef(true);
   const captureCutoffRef = useRef<number | null>(null);
   const recoveryInFlightRef = useRef(false);
+  const captureInFlightRef = useRef(false);
+  const captureQueuedRef = useRef(false);
   const focusEmptyRef = useRef<HTMLHeadingElement>(null);
   const focusEmptyAfterClearRef = useRef(false);
-  const switchWriterRef = useRef<HTMLButtonElement>(null);
   const initDoneRef = useRef<Promise<void> | null>(null);
   const stateRef = useRef(state);
-  useEffect(() => {
-    stateRef.current = state;
-  }, [state]);
+  stateRef.current = state;
 
   // Issue #29: 搜索、序号定位与顶栏联动状态
   const [searchQuery, setSearchQuery] = useState('');
@@ -202,6 +209,7 @@ export const App: React.FC = () => {
   useEffect(() => {
     if (state.viewMode !== 'cleaning' || state.isReadOnly) return;
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (isReadOnlyRef.current) return;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
         if (document.activeElement === searchInputRef.current) {
           // 焦点已经在搜索框时再按一次，交给浏览器原生查找
@@ -523,7 +531,7 @@ export const App: React.FC = () => {
             savedAt: new Date().toISOString(),
           };
           try {
-            await chrome.storage.local.set({ [STORAGE_KEYS.CANDIDATE_SNAPSHOT]: candidateRecord });
+            await writerStorage.set({ [STORAGE_KEYS.CANDIDATE_SNAPSHOT]: candidateRecord });
           } catch (err: unknown) {
             console.error('[WeTrim] Failed to persist candidateSnapshot:', err);
             // 候选写盘失败：不弹确认；页边夹签提示「新文章没保存下来，当前清洗没有被动过」。该夹签不自动收回，由用户手动关闭
@@ -539,6 +547,7 @@ export const App: React.FC = () => {
           }
         }
 
+        if (isReadOnlyRef.current) return;
         // 写入 candidateSnapshot 成功后：
         if (!stateRef.current.session) {
           // 无旧会话：直接提升为当前会话并入队持久化
@@ -551,7 +560,7 @@ export const App: React.FC = () => {
           };
           if (typeof chrome !== 'undefined' && chrome.storage?.local) {
             try {
-              await chrome.storage.local.remove(STORAGE_KEYS.CANDIDATE_SNAPSHOT);
+              await writerStorage.remove(STORAGE_KEYS.CANDIDATE_SNAPSHOT);
             } catch {}
           }
           sessionSaveQueue.enqueue(newSession);
@@ -586,6 +595,8 @@ export const App: React.FC = () => {
   };
 
   const checkPendingCapture = async () => {
+    if (captureInFlightRef.current) { captureQueuedRef.current = true; return; }
+    captureInFlightRef.current = true;
     try {
       // 必须等启动初始化判定完是否只读，再决定是否消费
       await initDoneRef.current;
@@ -593,11 +604,13 @@ export const App: React.FC = () => {
       if (isReadOnlyRef.current) return;
       if (typeof chrome === 'undefined' || !chrome.storage?.local) return;
       const blockedWhenReceived = recoveryBlockedRef.current;
-      const data = await chrome.storage.local.get(STORAGE_KEYS.PENDING_CAPTURE);
-      const pending = data[STORAGE_KEYS.PENDING_CAPTURE] as { result: CaptureResult; capturedAt?: string } | undefined;
+      const pending = await withWriterAccess(async () => {
+        const data = await chrome.storage.local.get(STORAGE_KEYS.PENDING_CAPTURE);
+        const value = data[STORAGE_KEYS.PENDING_CAPTURE] as { result: CaptureResult; capturedAt?: string } | undefined;
+        if (value?.result) await chrome.storage.local.remove(STORAGE_KEYS.PENDING_CAPTURE);
+        return value;
+      });
       if (pending && pending.result) {
-        // 立即删除该 key
-        await chrome.storage.local.remove(STORAGE_KEYS.PENDING_CAPTURE);
         // 清除期间产生、但延后才通知/读到的抓取也不得进入空会话分支。
         const capturedAt = Date.parse(pending.capturedAt ?? '');
         const predatesClear = captureCutoffRef.current !== null &&
@@ -612,6 +625,12 @@ export const App: React.FC = () => {
       }
     } catch (err) {
       console.warn('[WeTrim] Error reading pendingCapture:', err);
+    } finally {
+      captureInFlightRef.current = false;
+      if (captureQueuedRef.current) {
+        captureQueuedRef.current = false;
+        void checkPendingCapture();
+      }
     }
   };
 
@@ -621,15 +640,16 @@ export const App: React.FC = () => {
     recoveryBlockedRef.current = true;
     dispatch({ type: 'SET_RECOVERY', payload: { kind: 'loading' } });
     try {
-      const result = await restoreSession();
+      const result = await withWriterAccess(() => restoreSession());
       if (result.kind === 'readError' || result.kind === 'unrecognized') {
         dispatch({ type: 'SET_RECOVERY', payload: result });
         return;
       }
       // 候选不会在重开或重试时自动提升；只读副本不做任何存储写入。
       if (!isReadOnlyRef.current && typeof chrome !== 'undefined' && chrome.storage?.local) {
-        try { await chrome.storage.local.remove(STORAGE_KEYS.CANDIDATE_SNAPSHOT); } catch {}
+        try { await writerStorage.remove(STORAGE_KEYS.CANDIDATE_SNAPSHOT); } catch {}
       }
+      if (isReadOnlyRef.current) return;
       const session = result.kind === 'ready' ? result.session : null;
       if (session && !isReadOnlyRef.current) sessionSaveQueue.initLoaded(session);
       if (session) focusTitleAfterReplaceRef.current = true;
@@ -642,6 +662,13 @@ export const App: React.FC = () => {
         session, corrupted: false, isReadOnly: isReadOnlyRef.current,
       } });
       recoveryBlockedRef.current = false;
+    } catch {
+      // 恢复重试中的资格检查也可能失败，保留记录并提供可重试的实例错误态。
+      setWriterEnabled(false);
+      isReadOnlyRef.current = true;
+      instanceModeRef.current = 'error';
+      setInstanceMode('error');
+      throw new Error('暂时无法确认编辑页面');
     } finally {
       recoveryInFlightRef.current = false;
     }
@@ -665,63 +692,91 @@ export const App: React.FC = () => {
     }
   }, [state.viewMode]);
 
-  // 启动初始化：从 storage 读取当前会话或候选快照，驱动初始四态判定
-  useEffect(() => {
-    const initStorage = async () => {
-      try {
-        if (typeof chrome === 'undefined' || !chrome.storage?.local) {
-          await recoverProgress();
-          return;
-        }
+  const changeInstanceMode = (mode: typeof instanceMode) => {
+    instanceModeRef.current = mode;
+    setInstanceMode(mode);
+  };
 
-        // 检查是否为只读第二实例（ARCHITECTURE.md §4.6 与 Issue #28）
-        let isReadOnlyInstance = false;
-        try {
-          if (chrome.runtime?.getContexts && chrome.tabs?.getCurrent) {
-            const appUrl = chrome.runtime.getURL('app.html');
-            const contexts = await chrome.runtime.getContexts({
-              contextTypes: ['TAB'],
-              documentUrls: [appUrl],
-            });
-            const currentTab = await chrome.tabs.getCurrent();
-            const writer = pickWriterContext(contexts ?? []);
-            if (writer && currentTab?.id !== undefined && writer.tabId !== currentTab.id) {
-              isReadOnlyInstance = true;
-            }
-          }
-        } catch {
-          isReadOnlyInstance = false;
-        }
-        isReadOnlyRef.current = isReadOnlyInstance;
-
-        dispatch({ type: 'INIT_STORAGE_STATE', payload: {
-          session: null, corrupted: true, isReadOnly: isReadOnlyInstance,
-        } });
-        await recoverProgress();
-      } catch (err) {
-        console.warn('[WeTrim] Error initializing storage state:', err);
-        dispatch({ type: 'SET_RECOVERY', payload: { kind: 'readError' } });
-      }
-    };
-
-    initDoneRef.current = initStorage();
-    checkPendingCapture();
-
-    if (typeof chrome === 'undefined' || !chrome.runtime?.onMessage) {
-      return;
+  const stopWriting = async () => {
+    setWriterEnabled(false);
+    isReadOnlyRef.current = true;
+    // 先收回存储资格，再把输入框防抖中的文字收进内存副本。
+    flushSync(() => blockListRef.current?.flushPendingEdits());
+    const current = stateRef.current.session;
+    if (current && (sessionSaveQueue.getStatus() !== 'saved' ||
+      current.revision > sessionSaveQueue.getLastSavedRevision())) {
+      draftRef.current = current;
+      setDraft(current);
     }
+    setIsPreviewOpen(false);
+    decideImages('cancel');
+    setExportFeedback(null);
+    await sessionSaveQueue.suspend();
+  };
 
-    const messageListener = (msg: unknown) => {
-      if (msg && typeof msg === 'object' && (msg as { type?: string }).type === PENDING_CAPTURE_MESSAGE_TYPE) {
-        checkPendingCapture();
+  const arbitrate = async () => {
+    if (arbitrationBusyRef.current) return;
+    arbitrationBusyRef.current = true;
+    try {
+      const { isWriter } = await queryWriter();
+      if (!isWriter) {
+        if (!isReadOnlyRef.current) await stopWriting();
+        changeInstanceMode('readonly');
+        return;
       }
-    };
+      if (instanceModeRef.current === 'writer' || draftRef.current) return;
+      const takingOver = instanceModeRef.current !== 'checking';
+      changeInstanceMode('restoring');
+      await sessionSaveQueue.suspend();
+      setWriterEnabled(true);
+      isReadOnlyRef.current = false;
+      prevSessionRef.current = null;
+      await recoverProgress();
+      changeInstanceMode('writer');
+      if (takingOver && !recoveryBlockedRef.current) {
+        dispatch({ type: 'SET_MARGIN_CLIP_NOTE', payload: { text: '已在此页面继续编辑', autoDismiss: true } });
+      }
+    } catch {
+      await stopWriting();
+      changeInstanceMode('error');
+    } finally {
+      arbitrationBusyRef.current = false;
+    }
+  };
 
-    chrome.runtime.onMessage.addListener(messageListener);
+  useEffect(() => {
+    if (!initDoneRef.current) initDoneRef.current = arbitrate();
+    void checkPendingCapture();
+    const recheck = () => {
+      // 检查失败后等待用户重试，不以定时器掩盖错误。
+      if (instanceModeRef.current === 'error' || arbitrationBusyRef.current) return;
+      const previousMode = instanceModeRef.current;
+      initDoneRef.current = arbitrate();
+      if (previousMode !== 'writer') void checkPendingCapture();
+    };
+    const timer = window.setInterval(recheck, 1000);
+    const messageListener = (msg: unknown) => {
+      if (msg && typeof msg === 'object' && (msg as { type?: string }).type === PENDING_CAPTURE_MESSAGE_TYPE) { recheck(); void checkPendingCapture(); }
+    };
+    if (typeof chrome === 'undefined') return () => clearInterval(timer);
+    chrome.runtime?.onMessage?.addListener(messageListener);
+    chrome.tabs?.onRemoved?.addListener(recheck);
+    chrome.tabs?.onCreated?.addListener(recheck);
+    window.addEventListener('focus', recheck);
     return () => {
-      chrome.runtime.onMessage.removeListener(messageListener);
+      clearInterval(timer);
+      chrome.runtime?.onMessage?.removeListener(messageListener);
+      chrome.tabs?.onRemoved?.removeListener(recheck);
+      chrome.tabs?.onCreated?.removeListener(recheck);
+      window.removeEventListener('focus', recheck);
     };
   }, []);
+
+  useEffect(() => {
+    if (instanceMode === 'writer') {
+      (titleRef.current ?? focusEmptyRef.current)?.focus();
+    } else instanceTitleRef.current?.focus();
+  }, [instanceMode]);
 
   // 订阅持久化队列状态变更
   useEffect(() => {
@@ -767,7 +822,7 @@ export const App: React.FC = () => {
     }
 
     // 只读实例不写 storage（ARCHITECTURE.md §4.6）
-    if (state.isReadOnly) {
+    if (isReadOnlyRef.current) {
       return;
     }
 
@@ -887,10 +942,10 @@ export const App: React.FC = () => {
   // 选择继续当前清洗：删除候选、关闭签条，焦点和滚动位置恢复到签条打开之前
   const handleContinueCleaning = async () => {
     // 替换进行中（含 Esc）不接受「继续」，避免两条流程交错
-    if (replaceInFlightRef.current) return;
+    if (isReadOnlyRef.current || replaceInFlightRef.current) return;
     if (typeof chrome !== 'undefined' && chrome.storage?.local) {
       try {
-        await chrome.storage.local.remove(STORAGE_KEYS.CANDIDATE_SNAPSHOT);
+        await writerStorage.remove(STORAGE_KEYS.CANDIDATE_SNAPSHOT);
       } catch (err) {
         console.warn('[WeTrim] Failed to remove candidateSnapshot on continue:', err);
       }
@@ -913,7 +968,7 @@ export const App: React.FC = () => {
   // 再写入新会话，成功后删除候选，滚动到顶部，焦点放到标题
   const handleConfirmReplace = async () => {
     // 替换涉及多步异步写入：进行中重复点击直接忽略，避免生成两个新会话
-    if (!state.candidateSnapshot || replaceInFlightRef.current) return;
+    if (isReadOnlyRef.current || !state.candidateSnapshot || replaceInFlightRef.current) return;
     replaceInFlightRef.current = true;
     setIsReplacing(true);
     try {
@@ -942,7 +997,7 @@ export const App: React.FC = () => {
       // 3. 成功后删除候选
       if (typeof chrome !== 'undefined' && chrome.storage?.local) {
         try {
-          await chrome.storage.local.remove(STORAGE_KEYS.CANDIDATE_SNAPSHOT);
+          await writerStorage.remove(STORAGE_KEYS.CANDIDATE_SNAPSHOT);
         } catch (err) {
           console.warn('[WeTrim] Failed to remove candidateSnapshot after replace:', err);
         }
@@ -969,8 +1024,7 @@ export const App: React.FC = () => {
         if (typeof window !== 'undefined') {
           window.scrollTo({ top: 0, behavior: 'instant' });
         }
-        if (isReadOnlyRef.current) switchWriterRef.current?.focus();
-        else titleRef.current?.focus();
+        if (!isReadOnlyRef.current) titleRef.current?.focus();
       }, 50);
       return () => clearTimeout(timer);
     }
@@ -998,24 +1052,16 @@ export const App: React.FC = () => {
   // 只读副本「切换到正在编辑的页面」：按与 service worker 相同的规则现查写入方；
   // 写入方已关闭、当前页成了唯一候选时，重新加载以写入方身份启动
   const handleSwitchToWriter = async () => {
-    if (typeof chrome === 'undefined' || !chrome.runtime?.getContexts || !chrome.tabs) return;
+    setSwitchError('');
     try {
-      const contexts = await chrome.runtime.getContexts({
-        contextTypes: ['TAB'],
-        documentUrls: [chrome.runtime.getURL('app.html')],
-      });
-      const writer = pickWriterContext(contexts ?? []);
-      const currentTab = await chrome.tabs.getCurrent();
-      if (!writer || writer.tabId === undefined || writer.tabId === currentTab?.id) {
-        window.location.reload();
-        return;
-      }
+      const { writer, isWriter } = await queryWriter();
+      if (isWriter) { await arbitrate(); return; }
+      if (!writer) throw new Error('未找到编辑页面');
       await chrome.tabs.update(writer.tabId, { active: true });
-      if (writer.windowId !== undefined && chrome.windows) {
-        await chrome.windows.update(writer.windowId, { focused: true });
-      }
-    } catch (err) {
-      console.warn('[WeTrim] Failed to switch to writer page:', err);
+      if (writer.windowId !== undefined) await chrome.windows.update(writer.windowId, { focused: true });
+    } catch {
+      await arbitrate();
+      setSwitchError('切换未完成，请重试。');
     }
   };
 
@@ -1078,6 +1124,41 @@ export const App: React.FC = () => {
       : WORKBENCH_COPY.systemStatus.ready;
 
   const contextValue = useMemo(() => ({ state, dispatch }), [state, dispatch]);
+
+  if (instanceMode !== 'writer' || draft) {
+    const failed = instanceMode === 'error';
+    const readonly = instanceMode === 'readonly';
+    return <div className="app-container" data-instance-mode={instanceMode}
+      data-csp-eval-verified={state.selfTestPassed ? 'true' : 'false'}>
+      <header className="workbench-header"><div className="header-primary-row">
+        <span className="ticket-tag">WeTrim</span><span>{readonly ? READ_ONLY_COPY.badge : '检查编辑页面'}</span>
+      </div></header>
+      <main className="proof-sheet instance-sheet">
+        <section className="instance-notice" data-testid={readonly ? 'read-only-note' : 'instance-notice'}
+          data-recovery-kind={instanceMode === 'restoring' ? 'loading' : undefined}>
+          <h1 ref={instanceTitleRef} tabIndex={-1}>{failed ? '暂时无法确认编辑页面' : readonly ?
+            '另一页面正在编辑' : instanceMode === 'restoring' ? '正在恢复上次进度…' : '正在检查编辑页面…'}</h1>
+          <p role="status">{failed ? '请重试，确认后才能继续编辑。' : readonly ? READ_ONLY_COPY.note : '请稍候。'}</p>
+          {readonly && <button className="action-btn" onClick={handleSwitchToWriter}
+            data-testid="read-only-switch-writer">{READ_ONLY_COPY.btnSwitchToWriter}</button>}
+          {failed && <button className="action-btn" onClick={() => void arbitrate()}>重试</button>}
+          {switchError && <p role="alert">{switchError}</p>}
+          {draft && <div className="instance-draft" role="alert">
+            <p>编辑资格已变化，未保存修改仍保留在此页。请先下载副本；继续时将读取最后成功保存的进度，副本目前不能导入。</p>
+            <button className="action-btn" onClick={() => {
+              const url = URL.createObjectURL(new Blob([JSON.stringify(draft, null, 2)], { type: 'application/json' }));
+              const anchor = document.createElement('a'); anchor.href = url;
+              anchor.download = 'WeTrim-未保存修改.json'; anchor.click();
+              setTimeout(() => URL.revokeObjectURL(url), 60_000);
+            }}>下载未保存副本</button>
+            <button className="action-btn" onClick={() => {
+              draftRef.current = null; setDraft(null); void arbitrate();
+            }}>放弃此页未保存修改并继续</button>
+          </div>}
+        </section>
+      </main>
+    </div>;
+  }
 
   return (
     <AppContext.Provider value={contextValue}>
@@ -1423,23 +1504,6 @@ export const App: React.FC = () => {
 
             {/* 右侧版心 */}
             <section className="main-bed">
-              {/* 只读副本提示（ARCHITECTURE.md §4.6）：位于 inert 区域之外，保证切换按钮可用 */}
-              {isReadOnly && (
-                <div className="read-only-note" role="status" data-testid="read-only-note">
-                  <span className="note-badge">{READ_ONLY_COPY.badge}</span>
-                  <span className="read-only-note-text">{READ_ONLY_COPY.note}</span>
-                  <button
-                    type="button"
-                    className="action-btn action-switch-writer"
-                    ref={switchWriterRef}
-                    onClick={handleSwitchToWriter}
-                    data-testid="read-only-switch-writer"
-                  >
-                    {READ_ONLY_COPY.btnSwitchToWriter}
-                  </button>
-                </div>
-              )}
-
               {/* 态 1: 清洗态 或 候选确认态（模态签条压在清洗页之上，旧会话照常渲染在背后并压暗，满足 §8.5「先呈现已有会话」） */}
               {session && (viewMode === 'cleaning' || viewMode === 'candidateConfirm') && (
                 <div
@@ -1549,7 +1613,7 @@ export const App: React.FC = () => {
 
               {viewMode === 'corruptedRecord' && (
                 <RecoveryPanel recovery={state.recovery ?? { kind: 'readError' }}
-                  isReadOnly={isReadOnly} onRetry={recoverProgress} onClear={clearRecovery} />
+                  isReadOnly={isReadOnly} onRetry={async () => { try { await recoverProgress(); } catch {} }} onClear={clearRecovery} />
               )}
 
               {/* 态 4: 空态 (viewMode === 'empty') */}

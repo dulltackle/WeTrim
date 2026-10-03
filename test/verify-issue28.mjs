@@ -597,11 +597,11 @@ async function run() {
 
     const readOnlyUi = await page2.evaluate(() => ({
       hasSaveStatus: Boolean(document.querySelector('[data-testid="save-status"]')),
-      slipInert: document.querySelector('[data-testid="manuscript-slip"]')?.hasAttribute('inert'),
+      hasManuscript: Boolean(document.querySelector('[data-testid="manuscript-slip"]')),
       hasSwitchBtn: Boolean(document.querySelector('[data-testid="read-only-switch-writer"]')),
     }));
     assert.strictEqual(readOnlyUi.hasSaveStatus, false, 'Read-only page must not show save status');
-    assert.strictEqual(readOnlyUi.slipInert, true, 'Read-only manuscript must be inert');
+    assert.strictEqual(readOnlyUi.hasManuscript, false, 'Read-only page must not display manuscript');
     assert.strictEqual(readOnlyUi.hasSwitchBtn, true, 'Read-only page must offer switching to the writer page');
     const writerIsEditable = await page.$eval('[data-testid="manuscript-slip"]', (el) => !el.hasAttribute('inert'));
     assert.strictEqual(writerIsEditable, true, 'First app page must stay the writer');
@@ -638,8 +638,8 @@ async function run() {
     );
     await restoreExecuteScript(worker);
     await page.waitForSelector('.candidate-confirm-dialog[open]', { timeout: 5000 });
-    const readOnlyViewMode = await page2.$eval('.app-container', (el) => el.getAttribute('data-view-mode'));
-    assert.strictEqual(readOnlyViewMode, 'cleaning', 'Read-only page must not enter candidateConfirm');
+    const readOnlyViewMode = await page2.$eval('.app-container', (el) => el.getAttribute('data-instance-mode'));
+    assert.strictEqual(readOnlyViewMode, 'readonly', 'Read-only page must not enter candidateConfirm');
     await page.click('[data-testid="candidate-btn-continue"]');
     await page.waitForFunction(() => !document.querySelector('.candidate-confirm-dialog[open]'));
     await page2.close();

@@ -200,27 +200,15 @@ try {
   await seed(raw);
   const second = await browser.newPage();
   await second.goto(url);
-  await second.waitForSelector('[data-recovery-kind="unrecognized"]');
+  await second.waitForSelector('[data-testid="read-only-switch-writer"]');
   assert.equal(await second.$('::-p-text(清除并重新开始)'), null);
+  assert.equal(await second.$('.recovery-panel'), null);
   await second.evaluate(article => window.__wetrim.processCaptureResult(article), article);
   assert.deepEqual(await stored(), raw);
-  // 只读副本重试成功后，焦点必须落在 inert 区域外的可用操作上。
-  await worker.evaluate(valid => chrome.storage.local.set({ currentSession: valid }), valid);
-  await second.evaluateOnNewDocument(() => {
-    const get = chrome.storage.local.get.bind(chrome.storage.local);
-    window.failRead = true;
-    chrome.storage.local.get = async keys => {
-      if (keys === 'currentSession' && window.failRead) throw new Error('测试：只读页读取失败');
-      return get(keys);
-    };
-  });
-  await second.reload();
-  await second.waitForSelector('[data-recovery-kind="readError"]');
-  await second.evaluate(() => { window.failRead = false; });
-  await (await second.waitForSelector('::-p-aria([name="重试"][role="button"])')).click();
-  await second.waitForSelector('[data-view-mode="cleaning"]');
-  await second.waitForFunction(() => document.activeElement?.dataset.testid === 'read-only-switch-writer');
-  assert.deepEqual(await stored(), valid);
+  // #36：只读页不读取或展示会话，只有接管后才进入恢复流程。
+  await page.close();
+  await second.waitForSelector('[data-recovery-kind="unrecognized"]');
+  assert.deepEqual(await stored(), raw);
   await second.close();
   assert.deepEqual(errors, []);
   console.log('✓ 恢复未确定期间拦截新文章；只读副本不能清除或写入');

@@ -3172,3 +3172,14 @@ button.save-status-error:focus-visible {
   .unlocalized-dialog .export-dialog-footer { padding: 12px 16px; }
   .unlocalized-dialog .action-confirm-export { width: 100%; justify-content: center; }
 }
+
+/* 单实例提示沿用校样纸留白，窄窗口按阅读顺序纵向排列。 */
+.instance-sheet { min-height: 360px; }
+.instance-notice { padding: clamp(24px, 6vw, 72px); }
+.instance-notice h1 { font-size: clamp(24px, 4vw, 36px); margin: 0 0 24px; }
+.instance-notice p { max-width: 65ch; line-height: 1.8; margin-bottom: 24px; }
+.instance-draft { margin-top: 32px; }
+.instance-draft button { margin: 0 12px 12px 0; }
+@media (max-width: 600px) {
+  .instance-notice .action-btn { display: block; width: 100%; white-space: normal; }
+}

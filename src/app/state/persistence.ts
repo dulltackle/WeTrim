@@ -1,3 +1,4 @@
+import { writerStorage } from './writer-access';
 import type { Session } from '../../shared/types';
 import { STORAGE_KEYS } from '../../shared/storage-keys';
 import type { SaveStatus } from './session-reducer';
@@ -47,14 +48,14 @@ export async function saveSessionDirect(session: Session): Promise<void> {
     return;
   }
   // 整篇序列化写入单个 key，不分块
-  await chrome.storage.local.set({ [STORAGE_KEYS.CURRENT_SESSION]: session });
+  await writerStorage.set({ [STORAGE_KEYS.CURRENT_SESSION]: session });
 }
 
 export async function clearSessionDirect(discardCaptures = false): Promise<void> {
   if (typeof chrome === 'undefined' || !chrome.storage?.local) {
     throw new Error('存储不可用，无法清除上次进度');
   }
-  await chrome.storage.local.remove(discardCaptures
+  await writerStorage.remove(discardCaptures
     ? [STORAGE_KEYS.CURRENT_SESSION, STORAGE_KEYS.PENDING_CAPTURE, STORAGE_KEYS.CANDIDATE_SNAPSHOT]
     : STORAGE_KEYS.CURRENT_SESSION);
 }
@@ -77,6 +78,13 @@ export class SessionSaveQueue {
   private lastError: unknown = null;
   private currentStatus: SaveStatus = 'saved';
   private listeners: Set<SaveStatusListener> = new Set();
+
+  /** 资格变化时取消尚未发出的写入，已发出的写入由跨页锁排空。 */
+  public async suspend(): Promise<void> {
+    this.pendingSession = null;
+    await this.inFlightPromise;
+    this.pendingSession = null;
+  }
 
   public getStatus(): SaveStatus {
     return this.currentStatus;
