@@ -224,6 +224,16 @@ export const BlockItem = memo(
       onToggle(block.id);
     };
 
+    // 正文链接是待清洗内容。保留地址与事件传播，只取消导航；捕获阶段也覆盖图片内停止冒泡的操作。
+    const handleContentLinkClick = (event: React.MouseEvent<HTMLDivElement>) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const link = target.closest('.block-rendered-content a[href]');
+      if (link && event.currentTarget.contains(link)) {
+        event.preventDefault();
+      }
+    };
+
     const typeLabel: string = BLOCK_COPY.typeLabels[block.type] ?? block.type;
     const levelText =
       block.type === 'heading' && block.headingLevel ? ` H${block.headingLevel}` : '';
@@ -569,6 +579,8 @@ export const BlockItem = memo(
         data-block-empty={isLocallyEmpty ? 'true' : 'false'}
         data-block-collapsed="false"
         data-block-editing={isEditing ? 'true' : 'false'}
+        onClickCapture={handleContentLinkClick}
+        onAuxClickCapture={handleContentLinkClick}
         aria-describedby={block.notes.length > 0 ? `block-notes-${block.id}` : undefined}
       >
         {/* 页边批注栏短标记（Issue #30 设计简报 §3）：桌面端在左侧批注栏对齐顶端，窄屏退回块内 */}
