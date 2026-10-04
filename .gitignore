@@ -23,3 +23,6 @@ node_modules/
 .impeccable/
 
 .vite.log
+
+# 扩展发布附件
+release/

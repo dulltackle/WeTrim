@@ -1,0 +1,53 @@
+name: 构建扩展发布草稿
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      RELEASE_TAG: ${{ github.ref_name }}
+      PUPPETEER_SKIP_DOWNLOAD: 'true'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      - name: 校验版本与 main 来源
+        run: |
+          node scripts/release-version.mjs check "$RELEASE_TAG"
+          git merge-base --is-ancestor HEAD origin/main
+      - name: 安装固定版本 pnpm
+        run: npm install --global pnpm@11.7.0
+      - name: 安装锁定依赖
+        run: pnpm install --frozen-lockfile
+      - name: 检查 Chrome 环境
+        run: /usr/bin/google-chrome --version
+      - name: 验证发布脚本
+        run: npm run test:release
+      - name: 构建扩展
+        run: npm run build
+      - name: DOM 与 CSP 基础测试
+        run: npm test
+      - name: 打包与完整性检查
+        run: npm run package:release
+      - name: 创建或更新 Release 草稿
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const upload = require('./scripts/upload-release.cjs');
+            await upload({ github, context });
