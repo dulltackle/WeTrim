@@ -1,6 +1,5 @@
 # Issue 追踪：GitHub
 
-
 ## 约定
 
 - **创建 issue**：`gh issue create --title "..." --body "..."`。多行正文用 heredoc。

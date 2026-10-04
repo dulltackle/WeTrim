@@ -1,0 +1,740 @@
+import React, {
+  forwardRef,
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { currentMarkdown, type Block } from '../../shared/types';
+import { truncateGraphemes } from '../../shared/grapheme';
+import { renderMarkdown } from '../preview/render';
+import { renderHtmlWithImages } from '../preview/html-to-react';
+import { IMAGE_COPY, NOTES_COPY } from '../copy/image-presentation';
+import { BLOCK_COPY } from '../copy/block';
+import { SEARCH_IGNORE_ATTR } from '../search/text-search';
+
+export interface BlockItemProps {
+  imageSelection?: { start: number; end: number };
+  block: Block;
+  isEditing: boolean;
+  onStartEdit: (id: string) => void;
+  onFinishEdit: (id: string) => void;
+  onToggle: (id: string) => void;
+  onUpdate?: (id: string, editedMarkdown: string | null) => void;
+  isTempExpanded?: boolean;
+  /** 登记本块的「立即提交未保存编辑」函数，供外部（如打开检查结果前）统一刷新；传 null 表示注销 */
+  registerFlush?: (id: string, flush: ((finishEditing?: boolean) => void) | null) => void;
+}
+
+
+/**
+ * 依据 Issue #24, #25, #27 & 设计简报：
+ * - 默认真实阅读态：renderMarkdown 渲染 currentMarkdown(block)
+ * - 所有块都可编辑：点击「编辑 Markdown」原地展开源码 <textarea>，初始类型与切块不改变
+ * - 空字符串 '' 是有效编辑，用 ?? 不用 ||，不回退到初始内容
+ * - 防抖 500ms + 从首次未落盘修改起最长 2s 硬上限必须发起写入
+ * - 实时反馈 ≤50ms：编辑中徽章（已修改 / 内容为空）基于本地值同步即时更新
+ * - 还原内容：单块编辑区与常驻 meta 操作行均提供，二次内联确认，不改动保留/剔除状态
+ * - 纯键盘可达与焦点保持：完成编辑后焦点平稳回落该块，不跳顶
+ * - 临时展开（isTempExpanded）：搜索命中折叠剔除块时临时展开，离开后自动收起
+ */
+export const BlockItem = memo(
+  forwardRef<HTMLDivElement, BlockItemProps>(({ block, isEditing, onStartEdit, onFinishEdit, onToggle, onUpdate, isTempExpanded, registerFlush, imageSelection }, ref) => {
+    const [isExpanded, setIsExpanded] = useState(false);
+    const [isConfirmingRestore, setIsConfirmingRestore] = useState(false);
+    const [localValue, setLocalValue] = useState(() => currentMarkdown(block));
+
+    const itemContainerRef = useRef<HTMLDivElement | null>(null);
+    const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+    const localValueRef = useRef(localValue);
+    localValueRef.current = localValue;
+
+    const isDirtyRef = useRef(false);
+    const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const maxWaitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const prevEditedMarkdownRef = useRef(block.editedMarkdown);
+
+    // 合并 forwarded ref 与内部 container ref
+    const setRefs = useCallback(
+      (el: HTMLDivElement | null) => {
+        itemContainerRef.current = el;
+        if (typeof ref === 'function') {
+          ref(el);
+        } else if (ref) {
+          (ref as React.MutableRefObject<HTMLDivElement | null>).current = el;
+        }
+      },
+      [ref]
+    );
+
+    // 提交当前修改
+    const flushSave = useCallback(() => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
+      if (maxWaitTimerRef.current) {
+        clearTimeout(maxWaitTimerRef.current);
+        maxWaitTimerRef.current = null;
+      }
+      if (isDirtyRef.current) {
+        isDirtyRef.current = false;
+        onUpdate?.(block.id, localValueRef.current);
+      }
+    }, [block.id, onUpdate]);
+
+    // 外部 block props 同步：当外部 block.editedMarkdown 变更（如还原成功，或外部更新）
+    // 且本地无未保存修改时同步。BlockList 以 block.id 作为 key，id 变化必然导致
+    // 组件卸载重建，因此这里无需处理块身份变更的场景。
+    useEffect(() => {
+      if (block.editedMarkdown !== prevEditedMarkdownRef.current && !isDirtyRef.current) {
+        const newMd = currentMarkdown(block);
+        setLocalValue(newMd);
+        localValueRef.current = newMd;
+      }
+      prevEditedMarkdownRef.current = block.editedMarkdown;
+    }, [block.id, block.editedMarkdown, block.initialMarkdown]);
+
+    // 当外部重新包含该块时，若处于折叠态则重置
+    useEffect(() => {
+      if (block.included) {
+        setIsExpanded(false);
+      }
+    }, [block.included]);
+
+    // 向列表登记提交函数：检查结果等需要读取当前内存内容的操作，先让防抖中的编辑落入快照
+    useEffect(() => {
+      if (!registerFlush) return;
+      registerFlush(block.id, (finishEditing) => {
+        flushSave();
+        if (finishEditing && isEditing) {
+          onFinishEdit(block.id);
+          setIsConfirmingRestore(false);
+        }
+      });
+      return () => registerFlush(block.id, null);
+    }, [block.id, flushSave, registerFlush, isEditing, onFinishEdit]);
+
+    // 卸载前刷新未保存更改
+    useEffect(() => {
+      return () => {
+        flushSave();
+      };
+    }, [flushSave]);
+
+    useLayoutEffect(() => {
+      const textarea = textareaRef.current;
+      if (!isEditing || !textarea) return;
+      textarea.focus({ preventScroll: true });
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    }, [isEditing]);
+
+    useLayoutEffect(() => {
+      if (!imageSelection) return;
+      setIsExpanded(true);
+      setIsConfirmingRestore(false);
+    }, [imageSelection]);
+    useLayoutEffect(() => {
+      const textarea = textareaRef.current;
+      if (!imageSelection || !isEditing || !textarea) return;
+      textarea.focus({ preventScroll: true });
+      textarea.setSelectionRange(imageSelection.start, imageSelection.end);
+      itemContainerRef.current?.scrollIntoView({ block: 'start', behavior: 'instant' });
+    }, [imageSelection, isEditing, isExpanded]);
+
+    // 编辑区随内容自动增高：rows 只能按显式换行符计数，无法反映自动折行占用的视觉行数，
+    // 需要按 scrollHeight 撑高文本框，避免折行内容被压缩进过矮的编辑区
+    useLayoutEffect(() => {
+      const el = textareaRef.current;
+      if (isEditing && el) {
+        el.style.height = 'auto';
+        el.style.height = `${el.scrollHeight}px`;
+      }
+    }, [isEditing, localValue, isExpanded]);
+
+    // 文本框输入事件
+    const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      const nextVal = e.target.value;
+      setLocalValue(nextVal);
+      localValueRef.current = nextVal;
+      isDirtyRef.current = true;
+
+      // 重置 500ms 防抖定时器
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+      debounceTimerRef.current = setTimeout(() => {
+        flushSave();
+      }, 500);
+
+      // 首次未保存修改起最长 2s 硬上限定时器
+      if (!maxWaitTimerRef.current) {
+        maxWaitTimerRef.current = setTimeout(() => {
+          flushSave();
+        }, 2000);
+      }
+    };
+
+    // 进入编辑态
+    const handleStartEdit = () => {
+      if (!block.included && !isExpanded) {
+        setIsExpanded(true);
+      }
+      onStartEdit(block.id);
+      setIsConfirmingRestore(false);
+    };
+
+    const handleContentDoubleClick = (event: React.MouseEvent<HTMLDivElement>) => {
+      if (isEditing || !(event.target instanceof Element)) return;
+      const target = event.target;
+      if (target.closest(`[${SEARCH_IGNORE_ATTR}], button, input, [role="button"], dialog`)) return;
+      const content = target.closest('.block-rendered-content, .block-empty-placeholder');
+      if (!content || !event.currentTarget.contains(content)) return;
+      if (!content.classList.contains('block-empty-placeholder')) {
+        const selection = window.getSelection();
+        if (!selection || selection.isCollapsed || !selection.toString().trim() ||
+            !content.contains(selection.anchorNode) || !content.contains(selection.focusNode)) return;
+      }
+      handleStartEdit();
+    };
+
+    // 完成编辑
+    const handleFinishEdit = () => {
+      flushSave();
+      onFinishEdit(block.id);
+      setIsConfirmingRestore(false);
+      setTimeout(() => {
+        itemContainerRef.current?.focus();
+      }, 0);
+    };
+
+    // 启动还原确认
+    const handleStartRestore = () => {
+      setIsConfirmingRestore(true);
+    };
+
+    // 取消还原
+    const handleCancelRestore = () => {
+      setIsConfirmingRestore(false);
+    };
+
+    // 确认还原：恢复初始内容并丢弃当前编辑，不改变保留或剔除状态
+    const handleConfirmRestore = () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
+      if (maxWaitTimerRef.current) {
+        clearTimeout(maxWaitTimerRef.current);
+        maxWaitTimerRef.current = null;
+      }
+      isDirtyRef.current = false;
+      setLocalValue(block.initialMarkdown);
+      localValueRef.current = block.initialMarkdown;
+      setIsConfirmingRestore(false);
+      onFinishEdit(block.id);
+      onUpdate?.(block.id, null);
+      setTimeout(() => {
+        itemContainerRef.current?.focus();
+      }, 0);
+    };
+
+    const handleToggle = () => {
+      onToggle(block.id);
+    };
+
+    // 正文链接是待清洗内容。保留地址与事件传播，只取消导航；捕获阶段也覆盖图片内停止冒泡的操作。
+    const handleContentLinkClick = (event: React.MouseEvent<HTMLDivElement>) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const link = target.closest('.block-rendered-content a[href]');
+      if (link && event.currentTarget.contains(link)) {
+        event.preventDefault();
+      }
+    };
+
+    const typeLabel: string = BLOCK_COPY.typeLabels[block.type] ?? block.type;
+    const levelText =
+      block.type === 'heading' && block.headingLevel ? ` H${block.headingLevel}` : '';
+
+    // 编辑区字号随块类型贴近渲染态量级，避免标题块切入编辑态时字号骤降
+    const HEADING_EDITOR_FONT_SIZE: Record<number, string> = {
+      1: '20px',
+      2: '18px',
+      3: '16px',
+    };
+    const editorFontSize =
+      block.type === 'heading'
+        ? HEADING_EDITOR_FONT_SIZE[block.headingLevel ?? 0] ?? '15px'
+        : '15px';
+
+    // 实时状态计算：在编辑态下以 localValue 为准，阅读态以 currentMarkdown 为准
+    const effectiveMarkdown = isEditing ? localValue : currentMarkdown(block);
+    const isLocallyEmpty = effectiveMarkdown.trim() === '';
+    const isLocallyEdited =
+      block.editedMarkdown !== null || (isEditing && localValue !== block.initialMarkdown);
+
+    // 列表、引用、表格为整体块，展示操作提示
+    const isComposite = block.type === 'list' || block.type === 'quote' || block.type === 'table';
+
+    const previewText = useMemo(() => truncateGraphemes(effectiveMarkdown, 20), [effectiveMarkdown]);
+    const summaryPreview = isLocallyEmpty ? BLOCK_COPY.emptyContent : previewText;
+
+    const isCollapsed = !block.included && !isExpanded && !isTempExpanded;
+
+    // 展开态渲染内容缓存：顶层 Hook 调用，折叠态跳过渲染，非折叠态缓存 marked 解析结果
+    const renderedHtml = useMemo(
+      () => (!isLocallyEmpty && !isCollapsed ? renderMarkdown(effectiveMarkdown) : ''),
+      [isLocallyEmpty, isCollapsed, effectiveMarkdown]
+    );
+    // 含图片时要经 DOMParser 转成 React 树，同样按渲染结果缓存
+    const renderedNode = useMemo(() => renderHtmlWithImages(renderedHtml), [renderedHtml]);
+
+    // 图片块元数据解析：折叠态显示行高小缩略图与 alt 文案
+    const imageInfo = useMemo(() => {
+      if (block.type !== 'image') return null;
+      const md = effectiveMarkdown.trim();
+      const mdMatch = md.match(/!\[(.*?)\]\((.*?)(?:\s+"(.*?)")?\)/);
+      if (mdMatch) {
+        return { alt: mdMatch[1] || '', src: mdMatch[2] || '' };
+      }
+      const htmlMatch = md.match(/<img\s+[^>]*src=["']([^"']+)["'][^>]*>/i);
+      if (htmlMatch) {
+        const altMatch = md.match(/alt=["']([^"']*)["']/i);
+        return { alt: altMatch ? altMatch[1] : '', src: htmlMatch[1] || '' };
+      }
+      return null;
+    }, [block.type, effectiveMarkdown]);
+
+    // 折叠态小缩略图加载失败时退回只显示替代文字，不露出浏览器的破图图标；记下失败的地址，换图后自然复位
+    const [failedCollapsedThumbSrc, setFailedCollapsedThumbSrc] = useState<string | null>(null);
+
+    // 页边批注栏短标记：折叠态与展开态共用
+    const marginNoteMarkers =
+      block.notes.length > 0 ? (
+        <div
+          className="block-margin-note-markers"
+          data-testid="block-margin-note-markers"
+          aria-hidden="true"
+        >
+          {block.notes.map((note, idx) => (
+            <span
+              key={`${note.code}-${idx}`}
+              className={`margin-note-marker marker-code-${note.code}`}
+              title={note.message}
+              data-note-code={note.code}
+            >
+              {NOTES_COPY.shortBadges[note.code] || NOTES_COPY.shortBadges.fallback}
+            </span>
+          ))}
+        </div>
+      ) : null;
+
+    // 整体块提示图标与浮层
+    const compositeTip = isComposite ? (
+      <span
+        className="composite-block-tip-trigger"
+        data-testid="composite-block-tip"
+        tabIndex={0}
+        role="img"
+        aria-label={BLOCK_COPY.compositeTip}
+      >
+        <svg
+          className="tip-icon"
+          viewBox="0 0 16 16"
+          width="13"
+          height="13"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <circle cx="8" cy="8" r="6.25" />
+          <line x1="8" y1="7.5" x2="8" y2="11.5" />
+          <circle cx="8" cy="4.75" r="0.5" fill="currentColor" />
+        </svg>
+        {/* 可见浮层只给视觉用户；读屏已经从 aria-label 读到同一句，避免重复朗读 */}
+        <span className="tip-tooltip" aria-hidden="true">
+          {BLOCK_COPY.compositeTip}
+        </span>
+      </span>
+    ) : null;
+
+    // 内联二次确认条
+    const inlineRestoreConfirm = (
+      <div className="restore-confirm-inline" data-testid="restore-confirm-inline">
+        <span className="restore-confirm-tip">
+          {BLOCK_COPY.restoreConfirmTip}
+        </span>
+        <button
+          type="button"
+          className="block-action-btn block-action-confirm-restore"
+          data-testid="block-action-confirm-restore"
+          aria-label={BLOCK_COPY.confirmRestoreAria(block.order)}
+          onClick={handleConfirmRestore}
+        >
+          {BLOCK_COPY.confirmRestore}
+        </button>
+        <button
+          type="button"
+          className="block-action-btn block-action-cancel-restore"
+          data-testid="block-action-cancel-restore"
+          aria-label={BLOCK_COPY.cancelRestoreAria(block.order)}
+          onClick={handleCancelRestore}
+        >
+          {BLOCK_COPY.cancelRestore}
+        </button>
+      </div>
+    );
+
+    // 折叠摘要态（剔除且未展开）
+    if (isCollapsed) {
+      return (
+        <div
+          ref={setRefs}
+          tabIndex={-1}
+          className={`block-item block-excluded block-collapsed ${
+            isLocallyEdited ? 'block-is-edited' : ''
+          } ${isLocallyEmpty ? 'block-is-empty' : ''}`}
+          data-testid="block-item"
+          data-block-id={block.id}
+          data-block-type={block.type}
+          data-block-order={block.order}
+          data-block-included="false"
+          data-block-edited={isLocallyEdited ? 'true' : 'false'}
+          data-block-empty={isLocallyEmpty ? 'true' : 'false'}
+          data-block-collapsed="true"
+          data-block-editing="false"
+          aria-describedby={block.notes.length > 0 ? `block-notes-${block.id}` : undefined}
+        >
+          {/* 折叠态页边批注栏短标记保留（Issue #30 设计简报 §3） */}
+          {marginNoteMarkers}
+
+          {/* 折叠态无障碍转换提示文本（供 aria-describedby 读屏技术关联） */}
+          {block.notes.length > 0 && (
+            <div
+              id={`block-notes-${block.id}`}
+              className="sr-only"
+              data-testid="block-notes-sr"
+            >
+              {block.notes.map((note) => note.message).join('；')}
+            </div>
+          )}
+
+          <div className="block-item-meta block-collapsed-summary-bar">
+            <span className="block-order-badge" data-testid="block-order-badge">
+              #{block.order}
+            </span>
+            <span
+              className={`block-type-badge block-type-${block.type}`}
+              data-testid="block-type-badge"
+            >
+              {typeLabel}
+              {levelText}
+            </span>
+            {compositeTip}
+            {isLocallyEdited && (
+              <span className="block-edited-badge" data-testid="block-edited-badge">
+                {BLOCK_COPY.editedBadge}
+              </span>
+            )}
+            {isLocallyEmpty && (
+              <span className="block-empty-badge" data-testid="block-empty-badge">
+                {BLOCK_COPY.emptyBadge}
+              </span>
+            )}
+            <span
+              className="block-status-tag status-excluded"
+              data-testid="block-status-tag"
+            >
+              {BLOCK_COPY.statusExcluded}
+            </span>
+
+            {/* 折叠摘要带小图（Issue #30 设计简报 §3）：剔除折叠图片块放行高小图与 alt */}
+            {block.type === 'image' && imageInfo?.src ? (
+              <span
+                className="block-summary-image-preview"
+                data-testid="block-summary-image-preview"
+              >
+                {failedCollapsedThumbSrc !== imageInfo.src && (
+                  <img
+                    src={imageInfo.src}
+                    alt={imageInfo.alt || IMAGE_COPY.defaultImageAlt}
+                    className="block-collapsed-thumb"
+                    data-testid="block-collapsed-thumb"
+                    loading="lazy"
+                    decoding="async"
+                    onError={() => setFailedCollapsedThumbSrc(imageInfo.src)}
+                  />
+                )}
+                <span className="block-collapsed-alt" data-testid="block-collapsed-alt">
+                  {imageInfo.alt || IMAGE_COPY.defaultImageAlt}
+                </span>
+              </span>
+            ) : (
+              <span className="block-summary-preview" data-testid="block-summary-preview">
+                {summaryPreview}
+              </span>
+            )}
+
+            <div className="block-item-actions">
+              <button
+                type="button"
+                className="block-toggle-btn block-action-restore"
+                data-testid="block-action-restore"
+                aria-label={BLOCK_COPY.restoreIncludedAria(block.order)}
+                onClick={handleToggle}
+              >
+                {BLOCK_COPY.restoreIncluded}
+              </button>
+
+              {isLocallyEdited && (
+                isConfirmingRestore ? (
+                  inlineRestoreConfirm
+                ) : (
+                  <button
+                    type="button"
+                    className="block-action-btn block-action-restore-content"
+                    data-testid="block-action-restore-content"
+                    aria-label={BLOCK_COPY.restoreContentAria(block.order)}
+                    onClick={handleStartRestore}
+                  >
+                    {BLOCK_COPY.restoreContent}
+                  </button>
+                )
+              )}
+
+              <button
+                type="button"
+                className="block-action-btn block-action-expand"
+                data-testid="block-action-expand"
+                aria-label={BLOCK_COPY.expandAria(block.order)}
+                onClick={() => setIsExpanded(true)}
+              >
+                {BLOCK_COPY.expand}
+              </button>
+              <button
+                type="button"
+                className="block-action-btn block-action-edit"
+                data-testid="block-action-edit"
+                aria-label={BLOCK_COPY.editAria(block.order)}
+                onClick={handleStartEdit}
+              >
+                {BLOCK_COPY.edit}
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // 展开态（保留态，或剔除后点击展开 / 编辑）
+    let contentNode: React.ReactNode;
+    if (isEditing) {
+      contentNode = (
+        <div className="block-editor" data-testid="block-editor">
+          <textarea
+            ref={textareaRef}
+            className="block-editor-textarea"
+            data-testid="block-editor-textarea"
+            style={{ fontSize: editorFontSize }}
+            value={localValue}
+            onChange={handleTextareaChange}
+            aria-label={BLOCK_COPY.editAria(block.order)}
+            autoFocus
+          />
+          <div className="block-editor-toolbar" data-testid="block-editor-toolbar">
+            {isLocallyEdited && !isConfirmingRestore && (
+              <button
+                type="button"
+                className="block-action-btn block-action-restore-content"
+                data-testid="block-action-restore-content"
+                aria-label={BLOCK_COPY.restoreContentAria(block.order)}
+                onClick={handleStartRestore}
+              >
+                {BLOCK_COPY.restoreContent}
+              </button>
+            )}
+            {isConfirmingRestore && inlineRestoreConfirm}
+            <button
+              type="button"
+              className="block-action-btn block-action-finish-edit"
+              data-testid="block-action-finish-edit"
+              aria-label={BLOCK_COPY.finishEditAria(block.order)}
+              onClick={handleFinishEdit}
+            >
+              {BLOCK_COPY.finishEdit}
+            </button>
+          </div>
+        </div>
+      );
+    } else if (isLocallyEmpty) {
+      contentNode = (
+        <div className="block-empty-placeholder" data-testid="block-empty-placeholder">
+          {BLOCK_COPY.emptyContent}
+        </div>
+      );
+    } else {
+      contentNode = renderedNode;
+    }
+
+    return (
+      <div
+        ref={setRefs}
+        tabIndex={-1}
+        className={`block-item ${
+          block.included ? 'block-included' : 'block-excluded block-expanded'
+        } ${isLocallyEdited ? 'block-is-edited' : ''} ${
+          isLocallyEmpty ? 'block-is-empty' : ''
+        } ${isEditing ? 'block-is-editing' : ''}`}
+        data-testid="block-item"
+        data-block-id={block.id}
+        data-block-type={block.type}
+        data-block-order={block.order}
+        data-block-included={block.included ? 'true' : 'false'}
+        data-block-edited={isLocallyEdited ? 'true' : 'false'}
+        data-block-empty={isLocallyEmpty ? 'true' : 'false'}
+        data-block-collapsed="false"
+        data-block-editing={isEditing ? 'true' : 'false'}
+        onClickCapture={handleContentLinkClick}
+        onAuxClickCapture={handleContentLinkClick}
+        onDoubleClick={handleContentDoubleClick}
+        aria-describedby={block.notes.length > 0 ? `block-notes-${block.id}` : undefined}
+      >
+        {/* 页边批注栏短标记（Issue #30 设计简报 §3）：桌面端在左侧批注栏对齐顶端，窄屏退回块内 */}
+        {marginNoteMarkers}
+
+        {/* 周边文字状态徽章与操作条 */}
+        <div className="block-item-meta">
+          <span className="block-order-badge" data-testid="block-order-badge">
+            #{block.order}
+          </span>
+          <span
+            className={`block-type-badge block-type-${block.type}`}
+            data-testid="block-type-badge"
+          >
+            {typeLabel}
+            {levelText}
+          </span>
+          {compositeTip}
+          {isLocallyEdited && (
+            <span className="block-edited-badge" data-testid="block-edited-badge">
+              {BLOCK_COPY.editedBadge}
+            </span>
+          )}
+          {isLocallyEmpty && (
+            <span className="block-empty-badge" data-testid="block-empty-badge">
+              {BLOCK_COPY.emptyBadge}
+            </span>
+          )}
+          <span
+            className={`block-status-tag ${block.included ? 'status-included' : 'status-excluded'}`}
+            data-testid="block-status-tag"
+          >
+            {block.included ? BLOCK_COPY.statusIncluded : BLOCK_COPY.statusExcluded}
+          </span>
+
+          <div className="block-item-actions">
+            {block.included ? (
+              <button
+                type="button"
+                className="block-toggle-btn block-action-exclude"
+                data-testid="block-action-exclude"
+                aria-label={BLOCK_COPY.excludeAria(block.order)}
+                onClick={handleToggle}
+              >
+                {BLOCK_COPY.exclude}
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="block-toggle-btn block-action-restore"
+                  data-testid="block-action-restore"
+                  aria-label={BLOCK_COPY.restoreIncludedAria(block.order)}
+                  onClick={handleToggle}
+                >
+                  {BLOCK_COPY.restoreIncluded}
+                </button>
+                {!isEditing && (
+                  <button
+                    type="button"
+                    className="block-action-btn block-action-collapse"
+                    data-testid="block-action-collapse"
+                    aria-label={BLOCK_COPY.collapseAria(block.order)}
+                    onClick={() => setIsExpanded(false)}
+                  >
+                    {BLOCK_COPY.collapse}
+                  </button>
+                )}
+              </>
+            )}
+
+            {/* 还原入口：常驻 meta 操作行 */}
+            {isLocallyEdited && (
+              isConfirmingRestore ? (
+                inlineRestoreConfirm
+              ) : (
+                <button
+                  type="button"
+                  className="block-action-btn block-action-restore-content"
+                  data-testid="block-action-restore-content"
+                  aria-label={BLOCK_COPY.restoreContentAria(block.order)}
+                  onClick={handleStartRestore}
+                >
+                  {BLOCK_COPY.restoreContent}
+                </button>
+              )
+            )}
+
+            {/* 编辑入口：完成编辑按钮已在编辑区工具栏提供，此处编辑态下不重复渲染 */}
+            {!isEditing && (
+              <button
+                type="button"
+                className="block-action-btn block-action-edit"
+                data-testid="block-action-edit"
+                aria-label={BLOCK_COPY.editAria(block.order)}
+                onClick={handleStartEdit}
+              >
+                {BLOCK_COPY.edit}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* 块内展开的完整转换提示（Issue #30 设计简报 §3）：令牌化配色与 aria-describedby 关联 */}
+        {block.notes.length > 0 && (
+          <div
+            id={`block-notes-${block.id}`}
+            className="block-notes"
+            data-testid="block-notes"
+          >
+            {block.notes.map((note, idx) => (
+              <div
+                key={`${note.code}-${idx}`}
+                id={`block-note-${block.id}-${idx}`}
+                className={`block-note note-code-${note.code}`}
+              >
+                <span className="note-badge">
+                  {NOTES_COPY.shortBadges[note.code] || NOTES_COPY.shortBadges.fallback}
+                </span>
+                <span className="note-message">{note.message}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* 内容区：编辑态原地替换为 <textarea>，阅读态渲染语义 HTML */}
+        {contentNode}
+      </div>
+    );
+  })
+);
+
+BlockItem.displayName = 'BlockItem';

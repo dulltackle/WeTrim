@@ -1,0 +1,426 @@
+{
+  "date": "2026-10-03",
+  "environment": "Google Chrome stable 154.0.8037.97 / Linux x86_64 / Ryzen 7 5800H / CDP CPU 4×",
+  "performance": {
+    "chrome": "Chrome/154.0.8037.97",
+    "cpuRate": 4,
+    "viewport": "1280×900",
+    "rounds": [
+      {
+        "name": "真实347",
+        "sourceElements": 5569,
+        "sourceSpans": 4234,
+        "count": 347,
+        "warning": false,
+        "load": 1393.699999999255,
+        "toggle": 29.5,
+        "open": 25.199999999254942,
+        "edit": 12.899999999441206,
+        "close": 30.90000000037253,
+        "preview": 235.5,
+        "search": 45.700000000186265,
+        "filterOut": 30.200000000186265,
+        "filterAll": 41.10000000055879,
+        "filterMixedOut": 55.299999999813735,
+        "filterMixedAll": 57.90000000037253,
+        "serialize": 8.900000000372529,
+        "storage": 26.299999999813735,
+        "save": 31.799999999813735,
+        "convert": 326.79999999981374,
+        "convertedCount": 347,
+        "bytes": 419066
+      },
+      {
+        "name": "真实347",
+        "sourceElements": 5569,
+        "sourceSpans": 4234,
+        "count": 347,
+        "warning": false,
+        "load": 1121.199999999255,
+        "toggle": 22.09999999962747,
+        "open": 20.799999999813735,
+        "edit": 11,
+        "close": 30.5,
+        "preview": 209.20000000018626,
+        "search": 34.30000000074506,
+        "filterOut": 29,
+        "filterAll": 47.09999999962747,
+        "filterMixedOut": 51.89999999944121,
+        "filterMixedAll": 68.59999999962747,
+        "serialize": 7.2999999998137355,
+        "storage": 29.299999999813735,
+        "save": 49.799999999813735,
+        "convert": 304.90000000037253,
+        "convertedCount": 347,
+        "bytes": 419066
+      },
+      {
+        "name": "真实347",
+        "sourceElements": 5569,
+        "sourceSpans": 4234,
+        "count": 347,
+        "warning": false,
+        "load": 1076.5,
+        "toggle": 24.700000000186265,
+        "open": 19.59999999962747,
+        "edit": 9.900000000372529,
+        "close": 33.39999999944121,
+        "preview": 222.29999999981374,
+        "search": 34.299999999813735,
+        "filterOut": 32.40000000037253,
+        "filterAll": 40.60000000055879,
+        "filterMixedOut": 53.90000000037253,
+        "filterMixedAll": 61.200000000186265,
+        "serialize": 7.8999999994412065,
+        "storage": 28.200000000186265,
+        "save": 28.799999999813735,
+        "convert": 307,
+        "convertedCount": 347,
+        "bytes": 419066
+      },
+      {
+        "name": "构造600",
+        "sourceElements": 660,
+        "sourceSpans": 0,
+        "count": 600,
+        "warning": false,
+        "load": 1110.0999999996275,
+        "toggle": 35.5,
+        "open": 25.40000000037253,
+        "edit": 13,
+        "close": 33.299999999813735,
+        "preview": 289.1000000005588,
+        "search": 43.5,
+        "filterOut": 38.89999999944121,
+        "filterAll": 62,
+        "filterMixedOut": 78.59999999962747,
+        "filterMixedAll": 88.3999999994412,
+        "serialize": 4.5,
+        "storage": 30.799999999813735,
+        "save": 42.299999999813735,
+        "convert": 181.09999999962747,
+        "convertedCount": 600,
+        "bytes": 320621
+      },
+      {
+        "name": "构造600",
+        "sourceElements": 660,
+        "sourceSpans": 0,
+        "count": 600,
+        "warning": false,
+        "load": 1207.7999999998137,
+        "toggle": 35.40000000037253,
+        "open": 22,
+        "edit": 12.399999999441206,
+        "close": 41.60000000055879,
+        "preview": 287.59999999962747,
+        "search": 39.40000000037253,
+        "filterOut": 39.799999999813735,
+        "filterAll": 67.40000000037253,
+        "filterMixedOut": 71.79999999981374,
+        "filterMixedAll": 96,
+        "serialize": 5.3999999994412065,
+        "storage": 30.600000000558794,
+        "save": 38.39999999944121,
+        "convert": 164.29999999981374,
+        "convertedCount": 600,
+        "bytes": 320621
+      },
+      {
+        "name": "构造600",
+        "sourceElements": 660,
+        "sourceSpans": 0,
+        "count": 600,
+        "warning": false,
+        "load": 1106.6000000005588,
+        "toggle": 35.299999999813735,
+        "open": 21.5,
+        "edit": 11.700000000186265,
+        "close": 37.40000000037253,
+        "preview": 281.6000000005588,
+        "search": 43,
+        "filterOut": 40.69999999925494,
+        "filterAll": 60.69999999925494,
+        "filterMixedOut": 78.29999999981374,
+        "filterMixedAll": 98.19999999925494,
+        "serialize": 4.5,
+        "storage": 31.90000000037253,
+        "save": 38.200000000186265,
+        "convert": 169.5,
+        "convertedCount": 600,
+        "bytes": 320621
+      }
+    ],
+    "inputDuringSave": [
+      {
+        "synchronous": 24.40000000037253,
+        "total": 32.60000000055879
+      },
+      {
+        "synchronous": 16.5,
+        "total": 29.299999999813735
+      }
+    ]
+  },
+  "realImageMemory": {
+    "chrome": "Chrome/154.0.8037.97",
+    "cpuRate": 4,
+    "baselineRssKiB": 847696,
+    "passes": [
+      {
+        "rssKiB": 1049520,
+        "heapBytes": 6385992,
+        "dimensions": [
+          [
+            945,
+            1265
+          ],
+          [
+            945,
+            1265
+          ],
+          [
+            945,
+            1265
+          ],
+          [
+            945,
+            1265
+          ],
+          [
+            945,
+            1265
+          ],
+          [
+            945,
+            1265
+          ]
+        ]
+      },
+      {
+        "rssKiB": 1043480,
+        "heapBytes": 6395808,
+        "dimensions": [
+          [
+            945,
+            1265
+          ],
+          [
+            945,
+            1265
+          ],
+          [
+            945,
+            1265
+          ],
+          [
+            945,
+            1265
+          ],
+          [
+            945,
+            1265
+          ],
+          [
+            945,
+            1265
+          ]
+        ]
+      },
+      {
+        "rssKiB": 1045124,
+        "heapBytes": 6399736,
+        "dimensions": [
+          [
+            945,
+            1265
+          ],
+          [
+            945,
+            1265
+          ],
+          [
+            945,
+            1265
+          ],
+          [
+            945,
+            1265
+          ],
+          [
+            945,
+            1265
+          ],
+          [
+            945,
+            1265
+          ]
+        ]
+      }
+    ]
+  },
+  "diagnosticRun": {
+    "note": "非最终构建的诊断运行；与构建重叠且主机负载升至16.23，整体失败，保留全部样本，不作为通过基线",
+    "results": {
+      "chrome": "Chrome/154.0.8037.97",
+      "cpuRate": 4,
+      "viewport": "1280×900",
+      "rounds": [
+        {
+          "name": "真实347",
+          "sourceElements": 5569,
+          "sourceSpans": 4234,
+          "count": 347,
+          "warning": false,
+          "load": 1329.0999999996275,
+          "toggle": 27.699999999254942,
+          "open": 26.59999999962747,
+          "edit": 15.899999999441206,
+          "close": 29.09999999962747,
+          "preview": 231.20000000018626,
+          "search": 45.299999999813735,
+          "filterOut": 33.799999999813735,
+          "filterAll": 49.200000000186265,
+          "filterMixedOut": 51.80000000074506,
+          "filterMixedAll": 67.59999999962747,
+          "serialize": 9.099999999627471,
+          "storage": 30.09999999962747,
+          "save": 35.89999999944121,
+          "convert": 375.70000000018626,
+          "convertedCount": 347,
+          "bytes": 419066
+        },
+        {
+          "name": "真实347",
+          "sourceElements": 5569,
+          "sourceSpans": 4234,
+          "count": 347,
+          "warning": false,
+          "load": 4277.299999999814,
+          "toggle": 130.29999999981374,
+          "open": 81.20000000018626,
+          "edit": 45.799999999813735,
+          "close": 180.80000000074506,
+          "preview": 902.4000000003725,
+          "search": 200.30000000074506,
+          "filterOut": 230,
+          "filterAll": 302.6000000005588,
+          "filterMixedOut": 413,
+          "filterMixedAll": 234.79999999981374,
+          "serialize": 16,
+          "storage": 121.70000000018626,
+          "save": 80.79999999981374,
+          "convert": 1105.5999999996275,
+          "convertedCount": 347,
+          "bytes": 419066
+        },
+        {
+          "name": "真实347",
+          "sourceElements": 5569,
+          "sourceSpans": 4234,
+          "count": 347,
+          "warning": false,
+          "load": 4698.399999999441,
+          "toggle": 89.90000000037253,
+          "open": 112.90000000037253,
+          "edit": 49.200000000186265,
+          "close": 112.70000000018626,
+          "preview": 582.1000000005588,
+          "search": 350.8999999994412,
+          "filterOut": 79.6000000005588,
+          "filterAll": 139,
+          "filterMixedOut": 122.29999999981374,
+          "filterMixedAll": 198.40000000037253,
+          "serialize": 22.09999999962747,
+          "storage": 55.10000000055879,
+          "save": 64.19999999925494,
+          "convert": 715.7999999998137,
+          "convertedCount": 347,
+          "bytes": 419066
+        },
+        {
+          "name": "构造600",
+          "sourceElements": 660,
+          "sourceSpans": 0,
+          "count": 600,
+          "warning": false,
+          "load": 2316.800000000745,
+          "toggle": 71.6000000005588,
+          "open": 54.80000000074506,
+          "edit": 22.09999999962747,
+          "close": 64.8999999994412,
+          "preview": 728.7000000001863,
+          "search": 102,
+          "filterOut": 78.09999999962747,
+          "filterAll": 74.3999999994412,
+          "filterMixedOut": 177.1000000005588,
+          "filterMixedAll": 123.20000000018626,
+          "serialize": 9.900000000372529,
+          "storage": 45.89999999944121,
+          "save": 59.90000000037253,
+          "convert": 218.09999999962747,
+          "convertedCount": 600,
+          "bytes": 320621
+        },
+        {
+          "name": "构造600",
+          "sourceElements": 660,
+          "sourceSpans": 0,
+          "count": 600,
+          "warning": false,
+          "load": 2061.5,
+          "toggle": 46.40000000037253,
+          "open": 34.700000000186265,
+          "edit": 14.300000000745058,
+          "close": 44.39999999944121,
+          "preview": 320.79999999981374,
+          "search": 53.09999999962747,
+          "filterOut": 47.59999999962747,
+          "filterAll": 75.79999999981374,
+          "filterMixedOut": 106.59999999962747,
+          "filterMixedAll": 119.70000000018626,
+          "serialize": 4.7000000001862645,
+          "storage": 37.299999999813735,
+          "save": 48.19999999925494,
+          "convert": 189.20000000018626,
+          "convertedCount": 600,
+          "bytes": 320621
+        },
+        {
+          "name": "构造600",
+          "sourceElements": 660,
+          "sourceSpans": 0,
+          "count": 600,
+          "warning": false,
+          "load": 1467,
+          "toggle": 33.39999999944121,
+          "open": 31.5,
+          "edit": 19.300000000745058,
+          "close": 65.8999999994412,
+          "preview": 396.40000000037253,
+          "search": 80.69999999925494,
+          "filterOut": 46.40000000037253,
+          "filterAll": 84.6000000005588,
+          "filterMixedOut": 103.8999999994412,
+          "filterMixedAll": 124.3999999994412,
+          "serialize": 6.300000000745058,
+          "storage": 45.5,
+          "save": 65.29999999981374,
+          "convert": 191.5,
+          "convertedCount": 600,
+          "bytes": 320621
+        }
+      ],
+      "inputDuringSave": [
+        {
+          "synchronous": 26.59999999962747,
+          "total": 37.09999999962747
+        },
+        {
+          "synchronous": 24.299999999813735,
+          "total": 35.59999999962747
+        }
+      ]
+    }
+  }
+}

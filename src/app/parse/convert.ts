@@ -1,0 +1,431 @@
+import TurndownService from 'turndown';
+import { gfm } from 'turndown-plugin-gfm';
+import type {
+  ArticleSnapshot,
+  Block,
+  CaptureResult,
+  ConversionNote,
+} from '../../shared/types';
+import { collectImages } from '../export/collect-images';
+import { splitBlocks } from './split-blocks';
+import { LONG_ARTICLE_BLOCK_THRESHOLD, LONG_ARTICLE_MESSAGE } from './performance-policy';
+import { registerWechatRules, type WechatRulesOptions } from './rules/wechat';
+import { resetTableDegradedState, consumeTableDegradedState } from './rules/table';
+import { prepareFormulaPlaceholders } from './rules/formula';
+
+/**
+ * 装配 Turndown 转换基座与微信通用规则（对应 ARCHITECTURE.md §6.1 与 docs/conversion-rules.md §1、§4.8）
+ */
+export function createTurndown(options?: WechatRulesOptions): TurndownService {
+  const turndown = new TurndownService({
+    headingStyle: 'atx',
+    hr: '---',
+    bulletListMarker: '-',
+    codeBlockStyle: 'fenced',
+    emDelimiter: '*',
+  });
+
+  // 装配 GFM 插件（表格、删除线、任务列表）
+  turndown.use(gfm);
+
+  // 装配微信规则（透明 span、图片 data-src 与绝对地址解析、链接、富媒体占位）
+  registerWechatRules(turndown, options);
+
+  return turndown;
+}
+
+export interface ConvertBlockOptions {
+  baseUrl?: string;
+  turndownService?: TurndownService;
+}
+
+/**
+ * 将属性承载的富媒体元素转为占位节点（对应 docs/conversion-rules.md §4.10）
+ * 微信的公众号名片、小程序卡片等内容全部在属性中，内部无文本节点，
+ * Turndown 会视其为 isBlank 并在规则匹配前丢弃。
+ * 在转入 Turndown 前将富媒体属性提取为可读占位文本节点。
+ */
+export function prepareRichMediaPlaceholders(html: string): string {
+  const mightBeRich =
+    html.includes('mp-common-') ||
+    html.includes('mp-') ||
+    html.includes('mpprofile') ||
+    html.includes('video') ||
+    html.includes('audio') ||
+    html.includes('mpvoice') ||
+    html.includes('qqmusic') ||
+    html.includes('iframe');
+
+  if (!mightBeRich || typeof DOMParser === 'undefined') {
+    return html;
+  }
+
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+
+    // 1. 处理公众号名片（mp-common-profile, mpprofile）
+    // 从属性取昵称、简介、头像（docs/conversion-rules.md §4.10 与 Issue #23 验收标准）
+    const profiles = doc.querySelectorAll('mp-common-profile, mpprofile');
+    profiles.forEach((el) => {
+      const nickname = (
+        el.getAttribute('data-nickname') ||
+        el.getAttribute('data-alias') ||
+        ''
+      ).trim();
+
+      const signature = (
+        el.getAttribute('data-signature') ||
+        el.getAttribute('data-description') ||
+        el.getAttribute('data-desc') ||
+        ''
+      ).trim();
+
+      const avatar = (
+        el.getAttribute('data-headimg') ||
+        el.getAttribute('data-headimgurl') ||
+        ''
+      ).trim();
+
+      const url = (
+        el.getAttribute('data-url') ||
+        el.getAttribute('href') ||
+        ''
+      ).trim();
+
+      const container = doc.createElement('div');
+
+      // 头像图片（转为 <img> 节点供 Turndown 转换为 Markdown 图片，并由 collectImages 收集）
+      if (avatar) {
+        const imgP = doc.createElement('p');
+        const imgEl = doc.createElement('img');
+        imgEl.setAttribute('data-src', avatar);
+        imgEl.setAttribute('alt', nickname || '头像');
+        imgP.appendChild(imgEl);
+        container.appendChild(imgP);
+      }
+
+      // 公众号名称占位与链接
+      const nameP = doc.createElement('p');
+      const labelText = nickname ? `【公众号】${nickname}` : '【公众号】';
+      if (url) {
+        const linkEl = doc.createElement('a');
+        linkEl.setAttribute('href', url);
+        linkEl.textContent = labelText;
+        nameP.appendChild(linkEl);
+      } else {
+        nameP.textContent = labelText;
+      }
+      container.appendChild(nameP);
+
+      // 公众号简介
+      if (signature) {
+        const sigP = doc.createElement('p');
+        sigP.textContent = signature;
+        container.appendChild(sigP);
+      }
+
+      el.replaceWith(container);
+    });
+
+    // 2. 处理小程序（mp-common-miniprogram, mp-miniprogram）
+    const miniprograms = doc.querySelectorAll('mp-common-miniprogram, mp-miniprogram');
+    miniprograms.forEach((el) => {
+      const title = (
+        el.getAttribute('data-miniprogram-title') ||
+        el.getAttribute('data-miniprogram-nickname') ||
+        ''
+      ).trim();
+
+      const cover = (
+        el.getAttribute('data-miniprogram-imageurl') ||
+        el.getAttribute('data-miniprogram-headimg') ||
+        ''
+      ).trim();
+
+      // 小程序仅在有真实 Web 链接时生成链接（不使用内部路由 data-miniprogram-path）
+      const rawUrl = (
+        el.getAttribute('href') ||
+        el.getAttribute('data-url') ||
+        ''
+      ).trim();
+      const url = /^https?:\/\//i.test(rawUrl) || rawUrl.startsWith('/') ? rawUrl : '';
+
+      const container = doc.createElement('div');
+
+      if (cover) {
+        const imgP = doc.createElement('p');
+        const imgEl = doc.createElement('img');
+        imgEl.setAttribute('data-src', cover);
+        imgEl.setAttribute('alt', title || '小程序封面');
+        imgP.appendChild(imgEl);
+        container.appendChild(imgP);
+      }
+
+      const titleP = doc.createElement('p');
+      const labelText = title ? `【小程序】${title}` : '【小程序】';
+      if (url) {
+        const linkEl = doc.createElement('a');
+        linkEl.setAttribute('href', url);
+        linkEl.textContent = labelText;
+        titleP.appendChild(linkEl);
+      } else {
+        titleP.textContent = labelText;
+      }
+      container.appendChild(titleP);
+
+      el.replaceWith(container);
+    });
+
+    // 3. 处理视频（iframe.video_iframe, video, mpvideosnap, mp-common-videosnap）
+    // 使用 span 容器包裹链接/文字，避免在原有 <p> 中产生非法的 <p><p>...</p></p>
+    const videos = doc.querySelectorAll('iframe.video_iframe, video, mpvideosnap, mp-common-videosnap');
+    videos.forEach((el) => {
+      const title = (
+        el.getAttribute('data-title') ||
+        el.getAttribute('title') ||
+        el.getAttribute('data-name') ||
+        ''
+      ).trim();
+
+      const url = (
+        el.getAttribute('data-src') ||
+        el.getAttribute('src') ||
+        el.getAttribute('data-url') ||
+        ''
+      ).trim();
+
+      const container = doc.createElement('span');
+      const labelText = title ? `【视频】${title}` : '【视频】';
+      if (url) {
+        const linkEl = doc.createElement('a');
+        linkEl.setAttribute('href', url);
+        linkEl.textContent = labelText;
+        container.appendChild(linkEl);
+      } else {
+        container.textContent = labelText;
+      }
+      el.replaceWith(container);
+    });
+
+    // 4. 处理音频（mpvoice, mp-common-mpaudio, audio, qqmusic）
+    const audios = doc.querySelectorAll('mpvoice, mp-common-mpaudio, audio, qqmusic');
+    audios.forEach((el) => {
+      let title = (
+        el.getAttribute('name') ||
+        el.getAttribute('data-name') ||
+        el.getAttribute('data-title') ||
+        el.getAttribute('title') ||
+        el.getAttribute('data-songname') ||
+        ''
+      ).trim();
+
+      const singer = (el.getAttribute('data-singer') || '').trim();
+      if (singer && title && !title.includes(singer)) {
+        title = `${title} - ${singer}`;
+      }
+
+      const url = (
+        el.getAttribute('data-src') ||
+        el.getAttribute('src') ||
+        el.getAttribute('data-url') ||
+        ''
+      ).trim();
+
+      const container = doc.createElement('span');
+      const labelText = title ? `【音频】${title}` : '【音频】';
+      if (url) {
+        const linkEl = doc.createElement('a');
+        linkEl.setAttribute('href', url);
+        linkEl.textContent = labelText;
+        container.appendChild(linkEl);
+      } else {
+        container.textContent = labelText;
+      }
+      el.replaceWith(container);
+    });
+
+    return doc.body.innerHTML;
+  } catch {
+    return html;
+  }
+}
+
+/**
+ * 独立转换单个内容块，并提供单块级失败的降级处理（对应 ADR-0007 与 ARCHITECTURE.md §6.2）
+ *
+ * 硬约束：每个内容块独立转换，绝不整篇拼接后再回填占位符。
+ * 块内部的换行原样保留，首尾 Turndown 引入的多余换行做适当修整。
+ *
+ * 单块级失败触发条件（ARCHITECTURE.md §6.2）：
+ * 1. 转换过程抛出异常
+ * 2. 原始 HTML 非空，却转出空内容
+ * 降级行为：
+ * - block.type 降为 'unknown'
+ * - block.initialMarkdown 写入可读占位说明
+ * - block.notes 挂一条 code: 'convert-failed' 的提示
+ */
+export function convertBlock(block: Block, options?: ConvertBlockOptions): Block {
+  const turndown =
+    options?.turndownService || createTurndown({ baseUrl: options?.baseUrl });
+
+  let converted = '';
+  let failed = false;
+
+  resetTableDegradedState(turndown);
+  try {
+    const preparedHtml = prepareFormulaPlaceholders(
+      prepareRichMediaPlaceholders(block.originalHtml)
+    );
+    converted = turndown.turndown(preparedHtml);
+    // ADR-0007: 块首尾空白由外层拼接统一负责，修整首尾空行
+    converted = converted.trim();
+
+    // 独立公式方言保证：type === 'formula' 的独立块统一保证以 $$...$$ 包裹（docs/conversion-rules.md §4.9）
+    if (block.type === 'formula' && converted.length > 0) {
+      if (!converted.startsWith('$$') || !converted.endsWith('$$')) {
+        const cleanInner = converted.replace(/^\$+|\$+$/g, '').trim();
+        converted = `$$${cleanInner || '【公式】'}$$`;
+      }
+    }
+  } catch {
+    failed = true;
+  }
+  const tableDegradedInBlock = consumeTableDegradedState(turndown);
+
+  // 判定原始 HTML 是否非空（有文本或实质标签）
+  const hasOriginalHtml = Boolean(block.originalHtml && block.originalHtml.trim().length > 0);
+
+  // 单块级降级判定
+  if (failed || (hasOriginalHtml && converted.length === 0)) {
+    const notes: ConversionNote[] = [...block.notes];
+    if (!notes.some((n) => n.code === 'convert-failed')) {
+      notes.push({
+        code: 'convert-failed',
+        message: '该内容块无法转换，已降级保留原始 HTML 记录',
+      });
+    }
+
+    return {
+      ...block,
+      type: 'unknown',
+      initialMarkdown: '> 【未识别内容】该内容块无法转换为 Markdown，已降级保留原始 HTML 记录。',
+      notes,
+    };
+  }
+
+  // 富媒体卡片挂专用提示（docs/conversion-rules.md §4.10）
+  const notes: ConversionNote[] = [...block.notes];
+  if (
+    block.type === 'richMedia' ||
+    (block.originalHtml &&
+      (block.originalHtml.includes('mp-common-') ||
+        block.originalHtml.includes('mp-miniprogram') ||
+        block.originalHtml.includes('mpprofile') ||
+        block.originalHtml.includes('video_iframe') ||
+        block.originalHtml.includes('mpvoice') ||
+        block.originalHtml.includes('mpvideosnap') ||
+        block.originalHtml.includes('qqmusic') ||
+        block.originalHtml.includes('<video') ||
+        block.originalHtml.includes('<audio') ||
+        block.originalHtml.includes('<iframe')))
+  ) {
+    if (!notes.some((n) => n.code === 'richmedia-placeholder')) {
+      notes.push({
+        code: 'richmedia-placeholder',
+        message: '富媒体卡片已转换为占位说明',
+      });
+    }
+  }
+
+  // 表格降级提示挂载（docs/conversion-rules.md §4.7 与 Issue #22）
+  // 降级判定复用 wechatTable 规则在本次 turndown() 调用中已经算出的结果，
+  // 不再重新解析 originalHtml、重新遍历一遍表格。
+  if (tableDegradedInBlock) {
+    if (!notes.some((n) => n.code === 'table-degraded')) {
+      notes.push({
+        code: 'table-degraded',
+        message: '表格包含合并单元格或复杂嵌套，已降级为可读文本',
+      });
+    }
+  }
+
+  return {
+    ...block,
+    initialMarkdown: converted,
+    notes,
+  };
+}
+
+/**
+ * 批量转换内容块（以块为独立单元）
+ */
+export function convertBlocks(blocks: Block[], options?: ConvertBlockOptions): Block[] {
+  const turndown =
+    options?.turndownService || createTurndown({ baseUrl: options?.baseUrl });
+  return blocks.map((block) =>
+    convertBlock(block, { ...options, turndownService: turndown })
+  );
+}
+
+export interface BuildArticleSnapshotOptions {
+  snapshotId?: string;
+  capturedAt?: string;
+}
+
+/**
+ * 组装完整的 ArticleSnapshot（对应 ARCHITECTURE.md §4.4、§5）
+ *
+ * 流程：
+ * 1. splitBlocks 切出内容块
+ * 2. convertBlocks 逐块独立转换出 initialMarkdown（带单块级降级）
+ * 3. collectImages 收集全篇去重后的 ImageAsset[]
+ * 4. 组装 ArticleSnapshot
+ */
+export function buildArticleSnapshot(
+  capture: Extract<CaptureResult, { kind: 'article' }>,
+  options?: BuildArticleSnapshotOptions
+): ArticleSnapshot {
+  const baseUrl = capture.source.url;
+
+  // 1. 切块
+  const rawBlocks = splitBlocks(capture.contentHtml);
+
+  // 2. 逐块独立转换
+  const blocks = convertBlocks(rawBlocks, { baseUrl });
+
+  // 3. 收集并去重图片资源
+  const images = collectImages(blocks, baseUrl);
+
+  // 4. 组装 captureWarnings（如文章未完全加载）
+  const captureWarnings: ConversionNote[] = [];
+  // 解析完成、交给界面渲染之前判定；图片资源数不参与。
+  if (blocks.length >= LONG_ARTICLE_BLOCK_THRESHOLD) {
+    captureWarnings.push({ code: 'long-article', message: LONG_ARTICLE_MESSAGE });
+  }
+  if (capture.unstable) {
+    captureWarnings.push({
+      code: 'capture-unstable',
+      message: '文章可能还没显示完整，可以回到原文等它加载完再重新抓一次',
+    });
+  }
+
+  return {
+    snapshotId: options?.snapshotId || crypto.randomUUID(),
+    capturedAt: options?.capturedAt || new Date().toISOString(),
+    source: capture.source,
+    blocks,
+    images,
+    captureWarnings,
+  };
+}
+
+export const turndownService = createTurndown();
+
+/**
+ * 验证 Turndown + GFM 表格转换功能正常（自检用）
+ */
+export function verifyTurndownTable(): string {
+  const sampleHtml = '<table><tr><th>表头</th></tr><tr><td>单元格</td></tr></table>';
+  return turndownService.turndown(sampleHtml);
+}
