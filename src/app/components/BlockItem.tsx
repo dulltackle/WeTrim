@@ -14,10 +14,14 @@ import { renderMarkdown } from '../preview/render';
 import { renderHtmlWithImages } from '../preview/html-to-react';
 import { IMAGE_COPY, NOTES_COPY } from '../copy/image-presentation';
 import { BLOCK_COPY } from '../copy/block';
+import { SEARCH_IGNORE_ATTR } from '../search/text-search';
 
 export interface BlockItemProps {
   imageSelection?: { start: number; end: number };
   block: Block;
+  isEditing: boolean;
+  onStartEdit: (id: string) => void;
+  onFinishEdit: (id: string) => void;
   onToggle: (id: string) => void;
   onUpdate?: (id: string, editedMarkdown: string | null) => void;
   isTempExpanded?: boolean;
@@ -38,9 +42,8 @@ export interface BlockItemProps {
  * - 临时展开（isTempExpanded）：搜索命中折叠剔除块时临时展开，离开后自动收起
  */
 export const BlockItem = memo(
-  forwardRef<HTMLDivElement, BlockItemProps>(({ block, onToggle, onUpdate, isTempExpanded, registerFlush, imageSelection }, ref) => {
+  forwardRef<HTMLDivElement, BlockItemProps>(({ block, isEditing, onStartEdit, onFinishEdit, onToggle, onUpdate, isTempExpanded, registerFlush, imageSelection }, ref) => {
     const [isExpanded, setIsExpanded] = useState(false);
-    const [isEditing, setIsEditing] = useState(false);
     const [isConfirmingRestore, setIsConfirmingRestore] = useState(false);
     const [localValue, setLocalValue] = useState(() => currentMarkdown(block));
 
@@ -109,12 +112,12 @@ export const BlockItem = memo(
       registerFlush(block.id, (finishEditing) => {
         flushSave();
         if (finishEditing && isEditing) {
-          setIsEditing(false);
+          onFinishEdit(block.id);
           setIsConfirmingRestore(false);
         }
       });
       return () => registerFlush(block.id, null);
-    }, [block.id, flushSave, registerFlush, isEditing]);
+    }, [block.id, flushSave, registerFlush, isEditing, onFinishEdit]);
 
     // 卸载前刷新未保存更改
     useEffect(() => {
@@ -124,9 +127,15 @@ export const BlockItem = memo(
     }, [flushSave]);
 
     useLayoutEffect(() => {
+      const textarea = textareaRef.current;
+      if (!isEditing || !textarea) return;
+      textarea.focus({ preventScroll: true });
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    }, [isEditing]);
+
+    useLayoutEffect(() => {
       if (!imageSelection) return;
       setIsExpanded(true);
-      setIsEditing(true);
       setIsConfirmingRestore(false);
     }, [imageSelection]);
     useLayoutEffect(() => {
@@ -135,7 +144,7 @@ export const BlockItem = memo(
       textarea.focus({ preventScroll: true });
       textarea.setSelectionRange(imageSelection.start, imageSelection.end);
       itemContainerRef.current?.scrollIntoView({ block: 'start', behavior: 'instant' });
-    }, [imageSelection, isEditing]);
+    }, [imageSelection, isEditing, isExpanded]);
 
     // 编辑区随内容自动增高：rows 只能按显式换行符计数，无法反映自动折行占用的视觉行数，
     // 需要按 scrollHeight 撑高文本框，避免折行内容被压缩进过矮的编辑区
@@ -145,7 +154,7 @@ export const BlockItem = memo(
         el.style.height = 'auto';
         el.style.height = `${el.scrollHeight}px`;
       }
-    }, [isEditing, localValue]);
+    }, [isEditing, localValue, isExpanded]);
 
     // 文本框输入事件
     const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -175,14 +184,28 @@ export const BlockItem = memo(
       if (!block.included && !isExpanded) {
         setIsExpanded(true);
       }
-      setIsEditing(true);
+      onStartEdit(block.id);
       setIsConfirmingRestore(false);
+    };
+
+    const handleContentDoubleClick = (event: React.MouseEvent<HTMLDivElement>) => {
+      if (isEditing || !(event.target instanceof Element)) return;
+      const target = event.target;
+      if (target.closest(`[${SEARCH_IGNORE_ATTR}], button, input, [role="button"], dialog`)) return;
+      const content = target.closest('.block-rendered-content, .block-empty-placeholder');
+      if (!content || !event.currentTarget.contains(content)) return;
+      if (!content.classList.contains('block-empty-placeholder')) {
+        const selection = window.getSelection();
+        if (!selection || selection.isCollapsed || !selection.toString().trim() ||
+            !content.contains(selection.anchorNode) || !content.contains(selection.focusNode)) return;
+      }
+      handleStartEdit();
     };
 
     // 完成编辑
     const handleFinishEdit = () => {
       flushSave();
-      setIsEditing(false);
+      onFinishEdit(block.id);
       setIsConfirmingRestore(false);
       setTimeout(() => {
         itemContainerRef.current?.focus();
@@ -213,7 +236,7 @@ export const BlockItem = memo(
       setLocalValue(block.initialMarkdown);
       localValueRef.current = block.initialMarkdown;
       setIsConfirmingRestore(false);
-      setIsEditing(false);
+      onFinishEdit(block.id);
       onUpdate?.(block.id, null);
       setTimeout(() => {
         itemContainerRef.current?.focus();
@@ -581,6 +604,7 @@ export const BlockItem = memo(
         data-block-editing={isEditing ? 'true' : 'false'}
         onClickCapture={handleContentLinkClick}
         onAuxClickCapture={handleContentLinkClick}
+        onDoubleClick={handleContentDoubleClick}
         aria-describedby={block.notes.length > 0 ? `block-notes-${block.id}` : undefined}
       >
         {/* 页边批注栏短标记（Issue #30 设计简报 §3）：桌面端在左侧批注栏对齐顶端，窄屏退回块内 */}

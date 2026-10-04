@@ -26,7 +26,8 @@
     "verify:issue35": "node test/verify-issue35.mjs",
     "verify:issue36": "node test/verify-issue36.mjs",
     "verify:issue37": "node test/verify-issue37.mjs",
-    "verify:issue38": "node test/verify-issue38.mjs"
+    "verify:issue38": "node test/verify-issue38.mjs",
+    "verify:issue39": "node test/verify-issue39.mjs"
   },
   "dependencies": {
     "dompurify": "^3.4.15",

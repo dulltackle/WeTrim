@@ -119,6 +119,24 @@ const BlockListInner = forwardRef<BlockListHandle, BlockListProps>(
     const { dispatch } = useAppContext();
     const [imageSelection, setImageSelection] = useState<ImageEditTarget | null>(null);
     const flushRegistryRef = useRef(new Map<string, (finishEditing?: boolean) => void>());
+    const [editingBlockId, setEditingBlockId] = useState<string | null>(null);
+    // 命令之间同步更新归属，React 批量提交前连续触发入口也能提交正确的旧块。
+    const editingBlockIdRef = useRef<string | null>(null);
+
+    const handleFinishEdit = useCallback((id: string) => {
+      if (editingBlockIdRef.current !== id) return;
+      editingBlockIdRef.current = null;
+      setEditingBlockId(null);
+      setImageSelection(null);
+    }, []);
+
+    const handleStartEdit = useCallback((id: string) => {
+      const previous = editingBlockIdRef.current;
+      if (previous && previous !== id) flushRegistryRef.current.get(previous)?.(true);
+      editingBlockIdRef.current = id;
+      setEditingBlockId(id);
+      setImageSelection(null);
+    }, []);
     const itemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
     const isControlledFilter = controlledFilter !== undefined;
@@ -804,6 +822,7 @@ const BlockListInner = forwardRef<BlockListHandle, BlockListProps>(
           const block = blocks.find(b => b.id === target.blockId);
           if (!block) return;
           if ((filter === 'included' && !block.included) || (filter === 'excluded' && block.included)) handleFilterChange('all');
+          handleStartEdit(target.blockId);
           setImageSelection({ ...target });
         },
         scrollToBlock,
@@ -887,6 +906,7 @@ const BlockListInner = forwardRef<BlockListHandle, BlockListProps>(
         scrollToBlock,
         focusBlock,
         queryVisible,
+        handleStartEdit,
       ]
     );
 
@@ -929,6 +949,9 @@ const BlockListInner = forwardRef<BlockListHandle, BlockListProps>(
                     <BlockItem
                       key={b.id}
                       block={b}
+                      isEditing={editingBlockId === b.id}
+                      onStartEdit={handleStartEdit}
+                      onFinishEdit={handleFinishEdit}
                       onToggle={handleToggleBlock}
                       onUpdate={handleUpdateBlock}
                       registerFlush={registerFlush}

@@ -1998,6 +1998,12 @@ button.save-status-error:focus-visible {
 }
 
 /* 真实阅读渲染内容：段落/标题/列表/引用/表格/代码/公式 */
+.block-item > .block-rendered-content,
+.block-item > .block-rendered-content :where(a, pre, code),
+.block-empty-placeholder {
+  cursor: text;
+}
+
 .block-rendered-content {
   color: var(--ink-primary);
   font-size: 15px;

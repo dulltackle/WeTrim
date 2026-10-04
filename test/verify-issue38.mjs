@@ -43,17 +43,21 @@ try {
   assert.equal(page.url(), appUrl, '键盘激活不导航');
   assert.equal(await worker.evaluate(async () => (await chrome.tabs.query({})).length), tabCount, 'Ctrl 单击不打开新标签页');
 
-  // 观察浏览器产生的双击；进入编辑的处理器属于 #39，本用例不伪造它。
+  // 只验证 #38 的事件可达与不导航；是否进入编辑由 #39 的原生非空选区条件决定。
   await page.$eval(content, el => {
-    el.addEventListener('dblclick', () => { el.dataset.doubleClicked = 'true'; }, { once: true });
+    el.addEventListener('dblclick', () => {
+      el.closest('[data-testid="block-item"]').dataset.doubleClicked = 'true';
+    }, { once: true });
   });
   await page.click(`${link} strong`, { count: 2 });
   assert.equal(page.url(), appUrl, '双击期间不导航');
-  assert.equal(await page.$eval(content, el => el.dataset.doubleClicked), 'true', '双击事件仍可到达正文');
+  assert.equal(await page.$eval('[data-testid="block-item"]', el => el.dataset.doubleClicked), 'true', '双击事件仍可到达正文');
   console.log('✓ Ctrl 单击与 Enter 不导航，双击事件正常到达正文');
 
   const markdown = '[**链接文字**](https://mp.weixin.qq.com/s/links#article-link)';
-  await page.click('[data-testid="block-action-edit"]');
+  if (!(await page.$('[data-testid="block-editor-textarea"]'))) {
+    await page.click('[data-testid="block-action-edit"]');
+  }
   await page.waitForSelector('[data-testid="block-editor-textarea"]');
   assert.equal(await page.$eval('[data-testid="block-editor-textarea"]', el => el.value), markdown, '原链接 Markdown 保留');
   await page.click('[data-testid="block-action-finish-edit"]');
