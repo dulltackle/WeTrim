@@ -1,6 +1,6 @@
 # 扩展发布流程
 
-状态：方案已确认，工作流与本地脚本已实现。GitHub 上的首次运行尚待推送版本标签验证。
+状态：工作流与本地脚本已实现，`v1.0.0` 已通过远端构建、草稿上传及下载校验。
 
 ## 分发范围与术语
 
@@ -21,6 +21,8 @@
 ## 环境与产物
 
 Node.js 固定在 `.node-version`，pnpm 固定在 `package.json` 的 `packageManager`，工作流安装同一版本。依赖用 `pnpm install --frozen-lockfile` 安装。
+
+Action 自身使用 Node 24 运行时（checkout v5、setup-node v6、github-script v8），与项目构建使用的 Node 22 分别配置。发布脚本测试会在两种运行时下分别执行，检查上传逻辑的兼容性。
 
 本地打包还需要 Python 3，脚本只使用标准库。GitHub 工作流运行于 Ubuntu 24.04，使用镜像预装的 `/usr/bin/google-chrome` 完整版；若镜像不再提供该路径，环境检查会失败。Puppeteer 下载被跳过，浏览器验证遵循 `docs/agents/verification.md`。
 
@@ -48,6 +50,10 @@ npm run package:release
 `package:release` 只打包已有构建，不替代前面的构建和测试；源码变更后必须重新构建。基础测试需要完整版 Chrome。
 
 ## 发布操作
+
+仅验证工作流时，可在 Actions 中选择「构建扩展发布草稿」，点击「Run workflow」并选择 `main`，或运行 `gh workflow run release.yml --ref main`。手动运行检查版本、main 来源、构建、测试与 ZIP 完整性，并在 Action 的 Node 24 下执行发布脚本测试；上传步骤跳过，不创建标签，也不创建或修改 Release。产物只用于本次运行检查，不上传到 Release。
+
+工作流升级后应使用此入口验证。重跑旧标签的历史运行仍使用旧提交的配置，无法验证后来修改的工作流。
 
 1. 使用 `npm run version:set -- 1.0.1` 同步版本。首次发布现有 `1.0.0` 可跳过。
 2. 检查并提交变更，完成评审并合入 `main`。首次发布必须先合入本工作流。
