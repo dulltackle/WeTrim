@@ -32,7 +32,7 @@ jobs:
       - name: 准备锁定的完整版 Chrome
         run: |
           pnpm exec puppeteer browsers install chrome
-          node --input-type=module -e 'import puppeteer from "puppeteer"; console.log("CHROME_PATH=" + puppeteer.executablePath());' >> "$GITHUB_ENV"
+          node --input-type=module -e 'import puppeteer from "puppeteer"; console.log("CHROME_PATH=" + await puppeteer.executablePath());' >> "$GITHUB_ENV"
       - name: 执行本地与 CI 共用检查
         run: npm run verify:pr
       - name: 保存阶段日志与浏览器证据
