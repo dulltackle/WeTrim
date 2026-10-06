@@ -26,3 +26,6 @@ node_modules/
 
 # 扩展发布附件
 release/
+
+# PR 检查日志与截图
+artifacts/

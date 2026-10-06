@@ -1,0 +1,26 @@
+{
+  "SKILL.md": {
+    "before": "c67d9e4ba9da93ed0da8b0147235e5890aa24e659548f65b7765c5af0a470c3f",
+    "after": "1e32f4dcad65540e32ebe8008a1f5b45400c64b19ea660b4a2465316fc33786a"
+  },
+  "references/extensions/permissions.md": {
+    "before": "b9d248c90380a31d171429b6bb1c007f897647acb83f83c98e0018260d6ae299",
+    "after": "afa753b608e176cff3aa760dbc83375217f157c18a44daa91096c78db92bdcda"
+  },
+  "references/extensions/tab-management.md": {
+    "before": "f16f568aaa5015985a6fc03c748f2f85ab66284e510ed0e782f637f3ae492622",
+    "after": "624da1a01d97e80d5c78b9c18d1fca127c07330da659fa18909523b38cdc214b"
+  },
+  "references/extensions/media-capture.md": {
+    "before": "c6bddb3c51c0b0f36d302e7dfde9558dea5eb5febccda315e911119a6e08cea3",
+    "after": "47d0364c14a978c16e0e8c4eafd25f882c4bcf4c29f50e85d745f3f7b4c7aaf0"
+  },
+  "references/extensions/side-panel.md": {
+    "before": "7e6b68b9aff6532495b8d89af097bb3c0f72b3a329c92a598be3ca50a43ed15c",
+    "after": "e498c9e207f3cd1057e24828c9c4cf28973b9ea1d9240c5147da9b2de034d908"
+  },
+  "references/extensions/prompt-api.md": {
+    "before": "f376c73354ec804dc00dc1e14d0fec8f19da79f5d7c141bd5a6b40d6e49e0330",
+    "after": "2d2464e71a0be8b91c1f68a014d6e2ab4308cb9ed07f9b927e3c22bed4a1566e"
+  }
+}

@@ -1,0 +1,45 @@
+name: PR 自动检查
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-checks-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      PUPPETEER_SKIP_DOWNLOAD: 'true'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+      - name: 安装项目锁定的 pnpm
+        run: npm install --global "$(node -p 'require("./package.json").packageManager')"
+      - name: 安装锁定依赖
+        run: pnpm install --frozen-lockfile
+      - name: 准备锁定的完整版 Chrome
+        run: |
+          pnpm exec puppeteer browsers install chrome
+          node --input-type=module -e 'import puppeteer from "puppeteer"; console.log("CHROME_PATH=" + puppeteer.executablePath());' >> "$GITHUB_ENV"
+      - name: 执行本地与 CI 共用检查
+        run: npm run verify:pr
+      - name: 保存阶段日志与浏览器证据
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-checks-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/pr/
+          if-no-files-found: warn
+          retention-days: 14

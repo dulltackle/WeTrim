@@ -1,4 +1,4 @@
-import puppeteer from 'puppeteer';
+import { launchChrome } from './chrome.mjs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -8,7 +8,7 @@ const pathToExtension = path.resolve(__dirname, '../dist');
 async function run() {
   console.log('==> Launching Chrome with extension from:', pathToExtension);
 
-  const browser = await puppeteer.launch({
+  const browser = await launchChrome({
     executablePath: '/usr/bin/google-chrome',
     headless: true,
     enableExtensions: [pathToExtension],

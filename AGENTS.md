@@ -21,3 +21,7 @@ Issue 存放在本仓库的 GitHub Issues，通过 `gh` CLI 操作。见 `docs/a
 ## Verification
 
 浏览器测试（`npm test`、`npm run verify:*`、`node test/verify-*`）必须单独成行执行。见 `docs/agents/verification.md`。
+
+### 扩展工具与权限
+
+涉及扩展权限、文章抓取入口或 chrome-extensions 技能时，先读 `docs/agents/extension-tools.md`；技能重装或更新时按该文档核对定向补丁。

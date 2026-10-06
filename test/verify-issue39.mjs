@@ -1,10 +1,9 @@
-import puppeteer from 'puppeteer';
+import { launchChrome } from './chrome.mjs';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import fs from 'node:fs/promises';
-import os from 'node:os';
 
-const browser = await puppeteer.launch({
+const browser = await launchChrome({
   executablePath: '/usr/bin/google-chrome', headless: true,
   enableExtensions: [path.resolve('dist')], args: ['--no-sandbox'],
 });
@@ -174,7 +173,8 @@ try {
   await page.hover(body(1));
   assert.deepEqual(await page.$eval(body(1), el => ({ cursor: getComputedStyle(el).cursor, background: getComputedStyle(el).backgroundColor })), style);
   assert.equal(style.cursor, 'text');
-  const artifacts = await fs.mkdtemp(path.join(os.tmpdir(), 'wetrim-issue39-'));
+  const artifacts = path.resolve(process.env.WETRIM_ARTIFACTS || 'artifacts/pr', 'verify-issue39');
+  await fs.mkdir(artifacts, { recursive: true });
   await page.screenshot({ path: path.join(artifacts, 'reading.png') });
   await doubleClickText(body(1), 'Gamma');
   await page.screenshot({ path: path.join(artifacts, 'editing.png') });

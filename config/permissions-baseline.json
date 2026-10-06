@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "activeTab": "ADR-0006：用户点击图标后临时读取该文章标签页",
+    "scripting": "在已获授权的文章页注入随扩展打包的抓取脚本",
+    "storage": "保存文章快照和清洗会话",
+    "unlimitedStorage": "保存大文章及图片，维持已审核的本地存储能力"
+  },
+  "host_permissions": {
+    "*://mmbiz.qpic.cn/*": "下载文章引用的既有微信图片资源",
+    "*://mmbiz.qlogo.cn/*": "下载文章引用的既有微信图片资源"
+  },
+  "optional_permissions": {},
+  "optional_host_permissions": {}
+}
