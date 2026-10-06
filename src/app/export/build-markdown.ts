@@ -57,7 +57,7 @@ export function stripBoundaryEmptyLines(text: string): string {
 }
 
 /**
- * 清洗结果（CONTEXT.md、ARCHITECTURE.md §10.3 与 Issue #31）：
+ * 清洗结果（GLOSSARY.md、ARCHITECTURE.md §10.3 与 Issue #31）：
  * 按文章原顺序汇集保留块的当前内容所得的正文；剔除块与空白块不进入结果。
  * 块边界用一个空行连接，块内部缩进与换行原样保留。
  */

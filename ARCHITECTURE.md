@@ -4,7 +4,7 @@
 
 WeTrim v1 的**实现层**契约：架构分层、执行上下文边界、数据流、数据结构、消息协议、存储契约、源码结构，以及实现期的验证清单。
 
-产品事实——用户、定位、能力与约束、权限清单、性能目标、证据与「不得当作已验证」的清单——在根目录 [`PRODUCT.md`](./PRODUCT.md)，本文件不重复。领域术语以 [`CONTEXT.md`](./CONTEXT.md) 为准，切块规则见 [`docs/conversion-rules.md`](./docs/conversion-rules.md)，决策论证见 [`docs/adr/`](./docs/adr/) 与 [`docs/research/`](./docs/research/)。
+产品事实——用户、定位、能力与约束、权限清单、性能目标、证据与「不得当作已验证」的清单——在根目录 [`PRODUCT.md`](./PRODUCT.md)，本文件不重复。领域术语以 [`GLOSSARY.md`](./GLOSSARY.md) 为准，切块规则见 [`docs/conversion-rules.md`](./docs/conversion-rules.md)，决策论证见 [`docs/adr/`](./docs/adr/) 与 [`docs/research/`](./docs/research/)。
 
 本文件区分**已决定**、**已实测**、**尚未验证**三件事，并且从不混用；⚠️ 标记的地方是就地的诚实边界，完整清单在 `PRODUCT.md`。
 
@@ -239,7 +239,7 @@ service worker 拿到 `CaptureResult` 之后：
 
 ## 5. 块模型与数据结构
 
-概念定义在 [`CONTEXT.md`](./CONTEXT.md)，切块边界在 [ADR-0001](./docs/adr/0001-content-block-boundaries.md)，完整论证在 [#5](https://github.com/dulltackle/WeTrim/issues/5#issuecomment-5581555371)。这里只给数据结构。
+概念定义在 [`GLOSSARY.md`](./GLOSSARY.md)，切块边界在 [ADR-0001](./docs/adr/0001-content-block-boundaries.md)，完整论证在 [#5](https://github.com/dulltackle/WeTrim/issues/5#issuecomment-5581555371)。这里只给数据结构。
 
 ```ts
 // ---- 块 ----
