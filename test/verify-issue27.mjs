@@ -1,4 +1,4 @@
-import puppeteer from 'puppeteer';
+import { launchChrome } from './chrome.mjs';
 import path from 'path';
 import assert from 'assert';
 import { checkDomAccess } from './check-dom-access.mjs';
@@ -18,7 +18,7 @@ async function run() {
   // Launch Chrome Extension with Puppeteer
   // --------------------------------------------------------------------------
   const distDir = path.resolve('dist');
-  const browser = await puppeteer.launch({
+  const browser = await launchChrome({
     executablePath: '/usr/bin/google-chrome',
     headless: true,
     enableExtensions: [distDir],

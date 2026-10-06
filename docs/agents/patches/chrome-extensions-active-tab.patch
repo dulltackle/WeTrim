@@ -1,0 +1,217 @@
+--- a/SKILL.md
++++ b/SKILL.md
+@@ -79,10 +79,11 @@
+ 
+ See `references/extensions/csp-sandbox.md` for full details.
+ 
+-#### 4. `tab.url` requires the `tabs` permission
+-
+-Without it, `tab.url` silently returns `undefined` — no error thrown. See
+-`references/extensions/permissions.md`.
++#### 4. `tab.url` 需要适用的标签页访问授权
++
++读取 URL、标题或 favicon 可由 `tabs`、匹配的主机权限，或该标签页仍有效的
++`activeTab` 授权允许；缺少适用授权时敏感字段可能缺失。当前标签页不等于已授权。
++详见 `references/extensions/permissions.md`。
+ 
+ #### 5. Always use async/await — never `.then()` chains
+ 
+@@ -188,12 +189,13 @@
+ { "action": { "default_popup": "popup/popup.html" } }
+ ```
+ 
+-#### 12. `activeTab` only works on direct user gestures — not from side panels
+-
+-`activeTab` grants temporary access to the current tab ONLY on a direct user gesture (action
+-icon click, context menu item, keyboard shortcut, omnibox suggestion) — NOT from a button click
+-inside a side panel or popup. Use `tabs` + `host_permissions` instead. See
+-`references/extensions/permissions.md` and `references/extensions/side-panel.md`.
++#### 12. 区分触发 `activeTab` 与使用仍有效的授权
++
++扩展图标、扩展菜单项、commands 快捷键或 omnibox 建议可触发 `activeTab`。
++侧栏或 popup 内按钮本身不新授予权限，但可使用同一目标标签页仍有效的既有授权。
++跨源导航或关闭该标签页会撤销授权；同源导航可保留，受限制页面仍不能注入。
++后台无有效授权时需重新由用户触发；独立的后台需求才评估最小主机权限或 `tabs`。
++`tabs` 本身不允许脚本注入。见 `references/extensions/permissions.md`。
+ 
+ #### 13. DevTools panel URLs are relative to the extension root
+ 
+@@ -305,14 +307,14 @@
+ 
+ When calling `chrome.desktopCapture.chooseDesktopMedia()` from a service worker, you must pass
+ the active tab as the `targetTab` parameter. The tab object must have its `url` field populated,
+-which requires the `"tabs"` permission.
++读取该字段需适用的 `tabs`、匹配主机权限或有效 `activeTab` 授权。
+ 
+ ```js
+ // ❌ BROKEN — called without targetTab from service worker
+ chrome.desktopCapture.chooseDesktopMedia(['screen', 'window'], (streamId) => { ... });
+ // Error: "A target tab is required when called from a service worker context."
+ 
+-// ❌ BROKEN — tab doesn't have url field (missing "tabs" permission)
++// ❌ BROKEN — tab 没有 URL 字段（缺少适用的标签页访问授权）
+ const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+ chrome.desktopCapture.chooseDesktopMedia(['screen', 'window'], tab, (streamId) => { ... });
+ // Error: "targetTab doesn't have URL field set."
+@@ -503,19 +505,19 @@
+ - [ ] All icon files referenced in manifest exist as real files with correct dimensions — or icons are omitted
+ - [ ] Side panel has an explicit open trigger (not just a manifest declaration)
+ - [ ] Code execution uses sandbox/blob/srcdoc — no `eval()` in extension pages
+-- [ ] `tabs` permission declared if `tab.url` or `tab.title` is accessed
++- [ ] 读取 `tab.url` / `tab.title` 时核对适用授权：`tabs`、匹配主机权限或该标签页有效的 `activeTab`
+ - [ ] All code uses `async`/`await` — no `.then()` chains
+ - [ ] Content scripts batch DOM updates with `requestAnimationFrame`
+ - [ ] Service worker stores NO state in global variables — uses `chrome.storage`
+ - [ ] No inline scripts or event handlers in HTML
+ - [ ] Context menu actions show user confirmation
+ - [ ] `"action": {}` (or more) present in manifest if using `chrome.action.*` APIs
+-- [ ] If reading/scripting tabs from a side panel: use `tabs` + `host_permissions` (NOT `activeTab`)
++- [ ] 侧栏读取或注入时核对目标标签页授权；按钮本身不触发 `activeTab`，既有授权有效时可继续使用；注入还需 `scripting`
+ - [ ] DevTools panel paths in `chrome.devtools.panels.create()` are relative to extension root
+ - [ ] Offscreen documents use ONLY `chrome.runtime` messaging — no `chrome.downloads`, `chrome.action`, etc.
+ - [ ] All image refs in `chrome.notifications`, `chrome.action.setIcon`, etc. point to real files (or use data URLs)
+ - [ ] Tab/desktop capture uses state locking to prevent double-start errors
+-- [ ] `chrome.desktopCapture.chooseDesktopMedia` passes `targetTab` with `tabs` permission
++- [ ] `chrome.desktopCapture.chooseDesktopMedia` 传入 URL 可读的 `targetTab`，并具备 `desktopCapture` 权限
+ - [ ] `chrome.windows` calls use `getAll`/`getLastFocused`/`getCurrent` — NOT `.query()` (it doesn't exist)
+ - [ ] `chrome.permissions.request()` in a service worker `onMessage` listener is called with no `await` before it (gesture is lost after the first async gap)
+ - [ ] `chrome.userScripts` availability checked before use (API throws if user hasn't enabled it)
+--- a/references/extensions/permissions.md
++++ b/references/extensions/permissions.md
+@@ -16,40 +16,25 @@
+ 
+ Scope `host_permissions` to specific domains rather than `<all_urls>` unless the extension genuinely needs to run on every site — broad host permissions draw extra Chrome Web Store review scrutiny.
+ 
+-## `tab.url` requires the `tabs` permission
++## 标签页敏感字段与有效授权
+ 
+-Without it, `tab.url` and `tab.title` silently return `undefined` — no error thrown.
++URL、标题和 favicon 可由 `tabs`、匹配的主机权限，或目标标签页有效的 `activeTab`
++授权读取。缺少适用授权时字段可能缺失；仅查询“当前标签页”不会获得授权。
++`tabs` 不等于脚本注入或网络访问权限。
+ 
+-```js
+-// manifest.json — REQUIRED if you read tab.url or tab.title anywhere:
+-{ "permissions": ["tabs"] }
+-```
++## `activeTab` 的授予与有效期
+ 
+-See `references/extensions/tab-management.md` for the full tabs/windows API.
++用户执行扩展 action、扩展菜单项、commands 快捷键或接受 omnibox 建议时，
++可为当时标签页授予临时访问。它允许读取该页敏感字段；配合 `scripting` 可注入脚本。
++同源导航可保留授权；跨源导航或关闭标签页撤销授权，受限制页面（如 `chrome://`）仍不可注入。
+ 
+-## `activeTab` only works on direct user gestures — not from side panels
++侧栏或 popup 内按钮、后台定时任务不会自行授予 `activeTab`。这些上下文可以使用
++目标标签页仍有效的既有授权；没有授权时，请用户通过上述入口触发。
++确有独立后台需求时另行评估最小主机权限或 `tabs`，不能因为读取 URL 就一律加 `tabs`。
+ 
+-`activeTab` grants temporary access to the current tab ONLY when triggered by:
+-- Clicking the extension action icon
+-- A context menu item (including the `"tab"` context)
+-- A keyboard shortcut from the `commands` API
+-- Accepting an omnibox suggestion
+-
+-It does **NOT** grant access when clicking a button in a side panel, a popup button that opens
+-later, or any programmatic trigger.
+-
+-```js
+-// ❌ BROKEN — activeTab does NOT work from a side panel button click
+-document.getElementById('summarize').addEventListener('click', async () => {
+-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+-  await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => document.body.innerText });
+-});
+-
+-// ✅ FIX — use "tabs" permission + specific host_permissions instead
+-// manifest.json: { "permissions": ["tabs", "scripting"], "host_permissions": ["<all_urls>"] }
+-```
+-
+-See `references/extensions/side-panel.md` for the side-panel-specific writeup.
++官方依据：https://developer.chrome.com/docs/extensions/develop/concepts/activeTab
++和 https://developer.chrome.com/docs/extensions/reference/api/tabs#permissions 。
++完整标签页 API 见 `references/extensions/tab-management.md`。
+ 
+ ## `chrome.permissions.request()` needs a user gesture — the gesture survives one `sendMessage` hop, but not an `await` after that
+ 
+@@ -91,8 +76,7 @@
+ });
+ ```
+ 
+-**Rule of thumb:** call `chrome.permissions.request()` (or anything else gated on a user
+-gesture, like `activeTab`) as the very first statement of the message listener that receives the
++**Rule of thumb:** call `chrome.permissions.request()` as the very first statement of the message listener that receives the
+ click-triggered message — before any other `await`. Awaiting the *returned* promise afterward is
+ fine; awaiting anything *before* the call is what breaks it.
+ 
+--- a/references/extensions/tab-management.md
++++ b/references/extensions/tab-management.md
+@@ -9,7 +9,7 @@
+ ```
+ 
+ Note: `tabs` permission gives access to `url`, `title`, `favIconUrl` on Tab objects.
+-Without it, you can still use `chrome.tabs` but won't see sensitive tab properties.
++没有 `tabs` 时仍可使用 `chrome.tabs`；匹配主机权限或该标签页有效的 `activeTab` 也可允许读取敏感字段。
+ 
+ ## Querying Tabs
+ 
+--- a/references/extensions/media-capture.md
++++ b/references/extensions/media-capture.md
+@@ -54,8 +54,8 @@
+ { "permissions": ["tabs", "desktopCapture"] }
+ ```
+ 
+-`"tabs"` is **required** — `chooseDesktopMedia` needs a `targetTab` with its `url` field
+-populated, which requires the `"tabs"` permission.
++`chooseDesktopMedia` 需要 URL 可读的 `targetTab`。上例以 `tabs` 取得 URL；
++匹配主机权限或有效 `activeTab` 也可允许读取该字段。`desktopCapture` 的独立权限要求不变。
+ 
+ ### Pattern
+ 
+--- a/references/extensions/side-panel.md
++++ b/references/extensions/side-panel.md
+@@ -128,14 +128,14 @@
+ - Side panel HTML files have full access to chrome.* APIs
+ - The side panel persists across tab switches (per-window)
+ 
+-### ⚠️ `activeTab` does NOT work from side panel interactions
++### 侧栏按钮不会新授予 `activeTab`
+ 
+ `activeTab` only grants tab access on direct user gestures: clicking the extension icon, context
+ menu items, keyboard shortcuts, or omnibox suggestions. **Clicking a button inside a side panel
+ does NOT activate `activeTab`.**
+ 
+-If your side panel needs to read or modify page content (e.g., a "Summarize" button), use
+-`tabs` + `host_permissions` instead:
++先核对目标标签页是否仍有有效 `activeTab`；有授权时可以继续使用。没有授权且确需
++独立后台访问时，评估最小主机权限；以下为需要持续多站访问的示例，并非侧栏必需配置：
+ 
+ ```json
+ {
+@@ -144,4 +144,4 @@
+ }
+ ```
+ 
+-Do NOT rely on `activeTab` for side panel functionality.
++`tabs` 本身不允许注入。侧栏切换目标标签页时不能沿用另一标签页的临时授权。
+--- a/references/extensions/prompt-api.md
++++ b/references/extensions/prompt-api.md
+@@ -41,8 +41,8 @@
+ ## Complete extension example: page summarizer
+ 
+ A full wiring example showing manifest + service worker + side panel together.
+-Note the use of `tabs` + `host_permissions` instead of `activeTab` — side panel button
+-clicks do NOT activate `activeTab` (see Rule 12).
++此示例选择持续多站权限。侧栏按钮本身不授予 `activeTab`，但目标标签页仍有效的既有
++授权可供侧栏使用；仅处理用户通过 action 授权的页面时，应评估更窄的权限。见 Rule 12。
+ 
+ ### manifest.json
+ ```json
+@@ -85,7 +85,7 @@
+     return;
+   }
+ 
+-  // Requires "tabs" + "host_permissions" — activeTab does NOT work from a side panel button
++  // 此示例使用持续权限；侧栏也可使用目标标签页仍有效的 activeTab，按钮本身不新授予权限
+   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+   const [{ result: pageText }] = await chrome.scripting.executeScript({
+     target: { tabId: tab.id },

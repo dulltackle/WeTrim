@@ -31,7 +31,10 @@
     "version:set": "node scripts/release-version.mjs set",
     "version:check": "node scripts/release-version.mjs check",
     "package:release": "node scripts/release-version.mjs check && python3 scripts/package-release.py",
-    "test:release": "node --test test/release.test.mjs"
+    "test:release": "node --test test/release.test.mjs",
+    "check:permissions": "node scripts/check-permissions.mjs",
+    "test:permissions": "node --test test/permissions.test.mjs",
+    "verify:pr": "node scripts/verify-pr.mjs"
   },
   "dependencies": {
     "dompurify": "^3.4.15",

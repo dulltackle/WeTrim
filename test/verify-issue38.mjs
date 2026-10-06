@@ -1,9 +1,9 @@
-import puppeteer from 'puppeteer';
+import { launchChrome } from './chrome.mjs';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 
-const browser = await puppeteer.launch({
+const browser = await launchChrome({
   executablePath: '/usr/bin/google-chrome', headless: true,
   enableExtensions: [path.resolve('dist')], args: ['--no-sandbox'],
 });
