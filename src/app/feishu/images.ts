@@ -1,6 +1,7 @@
 import { fetchAllExportImages, type FetchedImageSuccess } from '../export/fetch-images';
 import { analyzeMarkdownImages, type ExportImageReference } from '../export/markdown-image-refs';
 import { ConnectionError, feishuRequest, FeishuRequestError, hasFeishuPermission, type FeishuConnection } from './connection';
+import { TEST_IMAGE_URL, testImage } from './test-sample';
 
 export const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 export interface PlannedImage { url: string; fileName: string; size: number; sha256: string; fileToken?: string }
@@ -8,14 +9,17 @@ export type ImageCache = Map<string, FetchedImageSuccess>;
 export async function imageDigest(bytes: Uint8Array): Promise<string> {
  return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', Uint8Array.from(bytes).buffer)), byte => byte.toString(16).padStart(2,'0')).join('');
 }
-async function fetchImages(references: ExportImageReference[]): Promise<ImageCache> {
- const result = await fetchAllExportImages(references);
+async function fetchImages(references: ExportImageReference[], testSample=false): Promise<ImageCache> {
+ // 仅独立测试入口的固定资源可使用内置字节；普通文章仍经过原有域名/权限检查。
+ const builtin = testSample ? references.filter(reference=>reference.resolvedUrl===TEST_IMAGE_URL) : [];
+ const result = await fetchAllExportImages(references.filter(reference=>!builtin.includes(reference)));
+ result.succeeded.push(...builtin.map(()=>testImage()));
  if (result.failed.length) throw new ConnectionError(`图片无法下载或地址不受支持：${result.failed.map(image=>image.url).join('、')}。请返回清洗会话处理后再保存。`);
  const oversized = result.succeeded.filter(image=>image.bytes.byteLength > MAX_IMAGE_BYTES);
  if (oversized.length) throw new ConnectionError(`图片超过 20 MiB：${oversized.map(image=>image.url).join('、')}。请返回清洗会话处理；没有写入飞书。`);
  return new Map(result.succeeded.map(image=>[image.url,image]));
 }
-export async function prepareImages(markdown: string, sourceUrl: string): Promise<{images: PlannedImage[]; cache: ImageCache}> {
+export async function prepareImages(markdown: string, sourceUrl: string, testSample=false): Promise<{images: PlannedImage[]; cache: ImageCache}> {
  const analysis = analyzeMarkdownImages(markdown,sourceUrl);
  const invalid = analysis.usages.find(usage => !usage.resolvedUrl || !usage.canRewrite || !analysis.references.some(reference => reference.resolvedUrl === usage.resolvedUrl));
  if (invalid) {
@@ -24,14 +28,14 @@ export async function prepareImages(markdown: string, sourceUrl: string): Promis
  }
  const references = analysis.references;
  if (references.length > 100) throw new ConnectionError('图片超过单篇 100 个附件预算，本阶段暂不能保存，请等待分篇功能。');
- const cache=await fetchImages(references);
+ const cache=await fetchImages(references,testSample);
  const images:PlannedImage[]=[];
  for(const reference of references){const image=cache.get(reference.resolvedUrl)!;images.push({url:image.url,fileName:image.fileName,size:image.bytes.length,sha256:await imageDigest(image.bytes)});}
  return {images,cache};
 }
-export async function sourceBytes(image: PlannedImage, cache: ImageCache): Promise<FetchedImageSuccess> {
+export async function sourceBytes(image: PlannedImage, cache: ImageCache, testSample=false): Promise<FetchedImageSuccess> {
  let fetched=cache.get(image.url);
- if(!fetched){const references:ExportImageReference[]=[{index:1,fileBaseName:'image-001',rawUrl:image.url,resolvedUrl:image.url,alt:''}];fetched=(await fetchImages(references)).get(image.url)!;cache.set(image.url,fetched);}
+ if(!fetched){const references:ExportImageReference[]=[{index:1,fileBaseName:'image-001',rawUrl:image.url,resolvedUrl:image.url,alt:''}];fetched=(await fetchImages(references,testSample)).get(image.url)!;cache.set(image.url,fetched);}
  if(fetched.bytes.length!==image.size||await imageDigest(fetched.bytes)!==image.sha256)throw new ConnectionError(`图片源内容已变化：${image.url}。原次保存已暂停，不会混入新图片。`);
  return fetched;
 }

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { TestSavePanel } from './TestSavePanel';
 import { checkConnection, ConnectionError, FEISHU_ORIGIN, FIELD_SCHEMA, parseTarget, readConnection, saveConnection, type CheckedConnection, type FeishuConnection } from './connection';
 
 export function ConnectionSettings() {
@@ -57,6 +58,7 @@ export function ConnectionSettings() {
     <ul>{FIELD_SCHEMA.map(([key, name]) => <li key={key}>{name} → {checked.fields[key].field_name}（检查通过）</li>)}</ul>
     <button data-feishu-confirm disabled={busy} onClick={() => void confirm()}>确认连接此表格</button>
    </div>}
+   <TestSavePanel />
   </div>
  </details>;
 }

@@ -2,6 +2,7 @@ import type { ArticleSnapshot } from '../../shared/types';
 import { buildMarkdown, parseFrontMatterDate } from '../export/build-markdown';
 import { prepareImages, sourceBytes, uploadImage, verifyUploadedImage, type PlannedImage, type ImageCache } from './images';
 import { withWriterAccess, writerStorage } from '../state/writer-access';
+import { TEST_BODY, TEST_IMAGE_URL, testSnapshot } from './test-sample';
 import { checkConnection, ConnectionError, feishuRequest, FeishuRequestError, readConnection, type FeishuConnection, type CheckedConnection, FIELD_SCHEMA, type FieldKey } from './connection';
 
 export const SAVE_KEY = 'feishuSave';
@@ -10,6 +11,7 @@ export interface SavePlan {
  version: 1; group: string; target: Pick<FeishuConnection, 'appToken' | 'tableId' | 'fieldIds' | 'url'>;
  values: Values; recordId?: string; pending: 'create' | 'associate' | 'complete' | null; completed: boolean;
  images?: PlannedImage[]; pendingUpload?: number | null; imagesAssociated?: boolean;
+ testSample?: true;
 }
 export interface SaveResult { message: string; duplicate?: boolean; plan?: SavePlan; }
 interface RemoteRecord { record_id: string; fields: Record<string, unknown> }
@@ -20,6 +22,7 @@ export async function readSave(): Promise<SavePlan | null> {
  if (!value || value.version !== 1 || typeof value.group !== 'string' || !value.target?.appToken || !value.target.tableId || !value.target.fieldIds || !value.values || value.values.group !== value.group || !['create', 'associate', 'complete', null].includes(value.pending) || typeof value.completed !== 'boolean' || FIELD_SCHEMA.some(([key]) => typeof value.target.fieldIds[key] !== 'string') || typeof value.values.body !== 'string' || typeof value.values.title !== 'string' || typeof value.values.account !== 'string' || !Number.isFinite(value.values.savedAt) || value.values.part !== 1 || value.values.total !== 1 || value.values.status !== '未完成' || (value.recordId !== undefined && typeof value.recordId !== 'string') || (value.completed && !value.recordId)) throw new ConnectionError('本机飞书保存进度无法识别，已暂停。请保留数据并检查连接。');
  if (value.images && (!Array.isArray(value.images) || value.images.length > 100 || value.images.some(image => !image || typeof image.url !== 'string' || typeof image.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(image.sha256) || (image.fileToken !== undefined && typeof image.fileToken !== 'string') || typeof image.fileName !== 'string' || !Number.isInteger(image.size) || image.size < 1 || image.size > 20 * 1024 * 1024))) throw new ConnectionError('本机图片保存计划无法识别，已暂停。');
  if ((value.pendingUpload !== undefined && value.pendingUpload !== null && (!Number.isInteger(value.pendingUpload) || value.pendingUpload < 0 || value.pendingUpload >= (value.images?.length ?? 0))) || (value.imagesAssociated !== undefined && typeof value.imagesAssociated !== 'boolean')) throw new ConnectionError('本机图片操作进度无法识别，已暂停。');
+ if (value.testSample !== undefined && (value.testSample !== true || value.values.body !== TEST_BODY || value.images?.length !== 1 || value.images[0].url !== TEST_IMAGE_URL)) throw new ConnectionError('本机测试保存样例无法识别，已暂停。');
  return value;
 }
 const persist = (plan: SavePlan) => writerStorage.set({ [SAVE_KEY]: plan });
@@ -121,7 +124,7 @@ async function settleImages(plan:SavePlan,checked:CheckedConnection,record:Remot
  for(let index=0;index<images.length;index++){
   const image=images[index];
   if(image.fileToken){await verifyUploadedImage(checked.connection,image);continue;}
-  const fetched=await sourceBytes(image,cache);
+  const fetched=await sourceBytes(image,cache,plan.testSample);
   plan.pendingUpload=index;await persist(plan);
   try{await assertWriterAndTarget(plan);}catch(error){plan.pendingUpload=null;try{await persist(plan);}catch{}throw error;}
   try{image.fileToken=await uploadImage(checked.connection,image,fetched.bytes);}catch(error){if(error instanceof ConnectionError&&!(error instanceof FeishuRequestError&&error.uncertain)){plan.pendingUpload=null;await persist(plan);}throw error;}
@@ -164,6 +167,12 @@ async function exclusive(operation: () => Promise<SaveResult>): Promise<SaveResu
 }
 export function retrySave(): Promise<SaveResult> { return exclusive(async()=>{const plan=await readSave();if(!plan) return {message:'没有待继续的保存。'};return drive(plan);}); }
 export function startSave(snapshot: ArticleSnapshot, allowDuplicate=false, tags: string[]=[]): Promise<SaveResult> {
+ return startFixedSave(snapshot,allowDuplicate,tags,false);
+}
+export function startTestSave(): Promise<SaveResult> {
+ return startFixedSave(testSnapshot(),true,[],true);
+}
+function startFixedSave(snapshot: ArticleSnapshot, allowDuplicate:boolean, tags:string[], testSample:boolean): Promise<SaveResult> {
  // 固定输入在首个 await 前，后续编辑不改变本次内容。
  const fixedTags = [...new Set(tags.map(tag=>tag.trim()).filter(Boolean))];
  const body = buildMarkdown(snapshot.blocks); const source = structuredClone(snapshot.source);
@@ -173,9 +182,10 @@ export function startSave(snapshot: ArticleSnapshot, allowDuplicate=false, tags:
   if (JSON.stringify(body).length-2>90000) return {message:'正文超过单篇安全预算，本阶段暂不能保存，请等待分篇功能。'};
   const checked=await activeConnection();
   if(!allowDuplicate && (await records(checked.connection)).some(record=>canonicalSource(String(readValue(record,checked,'url')))===canonicalSource(source.url))) return {message:'这篇原文已有保存结果。另存一份会保留旧结果及人工修改。',duplicate:true};
-  const prepared=await prepareImages(body,source.url);
+  const prepared=await prepareImages(body,source.url,testSample);
   const group=crypto.randomUUID();const date=parseFrontMatterDate(source.publishedAt);
   const plan:SavePlan={version:1,group,target:{appToken:checked.connection.appToken,tableId:checked.connection.tableId,fieldIds:checked.connection.fieldIds,url:checked.connection.url},values:{title:source.title,account:source.account??'',url:{text:source.url,link:source.url},publishedAt:date?Date.parse(`${date}T00:00:00+08:00`):null,savedAt:Date.now(),body,tags:fixedTags,images:[],group,part:1,total:1,status:'未完成'},pending:null,completed:false,images:prepared.images,pendingUpload:null,imagesAssociated:false};
+  if(testSample)plan.testSample=true;
   await persist(plan);return drive(plan,prepared.cache);
  });
 }
