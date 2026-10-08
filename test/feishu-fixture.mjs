@@ -12,6 +12,7 @@ export function feishuFixture() {
    if(server.imageFault==='uploadReject'||server.uploadRejectAt===server.uploadCount){server.imageFault=null;return {code:1254000};}
    if(data.parent_type!=='bitable_image'||data.parent_node!=='appFixture'||Number(data.size)!==Buffer.from(data.bytes,'base64').length)throw new Error('上传契约不匹配');
    const token=`file${server.uploadCount}`;server.uploads.set(token,Buffer.from(data.bytes,'base64'));
+   if(server.onUpload)await server.onUpload();
    if(server.imageFault==='uploadLost'){server.imageFault=null;return null;}
    return {code:0,data:{file_token:token}};
   });

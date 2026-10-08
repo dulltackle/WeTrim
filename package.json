@@ -42,7 +42,9 @@
     "verify:issue63": "node test/verify-issue63.mjs",
     "verify:issue58": "node test/verify-issue58.mjs",
     "verify:pr": "node scripts/verify-pr.mjs",
-    "verify:issue64": "node test/verify-issue64.mjs"
+    "verify:issue64": "node test/verify-issue64.mjs",
+    "verify:feishu": "node scripts/verify-feishu.mjs",
+    "verify:issue66": "node test/verify-issue66.mjs"
   },
   "dependencies": {
     "dompurify": "^3.4.15",

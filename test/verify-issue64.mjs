@@ -72,7 +72,7 @@ try{
 
 
  await check('tblSecond');await page.click('[data-feishu-confirm]');await status('连接已保存');const sharedBefore=await local();
- 
+
  const reader=await browser.newPage();reader.setDefaultTimeout(6000);await server.install(reader);await reader.goto(page.url());await reader.bringToFront();await server.seed(reader,false);await reader.waitForSelector('[data-feishu-settings]');await reader.click('[data-feishu-settings]');
  await reader.waitForFunction(()=>document.querySelector('#feishu-token').value.length>0);await reader.click('[data-feishu-check]');await reader.waitForSelector('[data-feishu-confirm]');await reader.click('[data-feishu-confirm]');
  await reader.waitForFunction(()=>document.querySelector('[data-feishu-status]').textContent.includes('未能保存'),{polling:50});assert.deepEqual(await local(),sharedBefore);
