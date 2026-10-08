@@ -55,9 +55,8 @@ try {
  const editFirst=async value=>{await page.click('[data-block-order="1"] [data-testid="block-action-edit"]');await page.$eval('[data-block-order="1"] textarea',(el,value)=>{Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(el,value);el.dispatchEvent(new Event('input',{bubbles:true}));},value);await page.click('[data-block-order="1"] [data-testid="block-action-finish-edit"]');};
  await page.click('[data-block-order="2"] [data-testid="block-action-exclude"]');
  await editFirst('');const boundaryWrites=server.writes;await page.click('[data-feishu-save]');await status('清洗结果为空');assert.equal(server.writes,boundaryWrites);
- await editFirst('"'.repeat(45001));await page.click('[data-feishu-save]');await status('正文超过单篇安全预算');assert.equal(server.writes,boundaryWrites);
  await editFirst('"'.repeat(45000));await begin();await status('已保存');assert.equal(server.records.at(-1).fields['正文'],'"'.repeat(45000));
- console.log('✓ #59阶段边界：空白与剔除零写入，JSON转义90000/90002预算；后续图片/分篇票应更新阶段断言');
+ console.log('✓ #59阶段边界：空白与剔除零写入，JSON转义90000预算；后续图片/分篇票应更新阶段断言');
  console.log('✓ 回执落盘失败先找回、重试内容固定、当前编辑另存、连续点击、多页面写入资格');
  console.log('✓ 普通、重复另存、明确拒绝后继续、创建/完成回执丢失、暂不可见不重建、人工修改保护、写前本地失败零远端写入');
 } finally {await browser.close();}

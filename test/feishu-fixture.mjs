@@ -31,7 +31,7 @@ export function feishuFixture() {
    if(!pathname.includes('/records')) return reply({app:{name:'个人知识库'}});
    if(request.method()==='GET') {const items=server.hide?[]:structuredClone(server.records);if(server.hideAttachments&&items.length)items.at(-1).fields['图片']=[];return reply({items,has_more:false});}
    server.writes++;
-   if(server.fault==='reject') {server.fault=null;return request.respond({status:200,headers,contentType:'application/json',body:JSON.stringify({code:1254000,msg:'业务拒绝'})});}
+   if(server.rejectWriteAt===server.writes || server.fault==='reject') {server.fault=null;return request.respond({status:200,headers,contentType:'application/json',body:JSON.stringify({code:1254000,msg:'业务拒绝'})});}
    const payload=JSON.parse(request.postData());
    if(request.method()==='PUT'&&payload.fields['图片']&&server.imageFault==='associateReject'){server.imageFault=null;return request.respond({status:200,headers,contentType:'application/json',body:JSON.stringify({code:1254000})});}
    let record;
@@ -47,7 +47,7 @@ export function feishuFixture() {
    if(request.method()==='PUT'&&payload.fields['图片']&&server.imageFault==='associateLost'){server.imageFault=null;return request.abort('failed');}
    if(server.fault==='malformed') {server.fault=null;return request.respond({status:200,headers,contentType:'application/json',body:'{}'});}
    if(server.onWrite) await server.onWrite(request.method());
-   if(server.fault==='lost' || (server.fault==='completeLost' && request.method()==='PUT')) {server.fault=null; return request.abort('failed');}
+   if(server.loseWriteAt===server.writes || server.fault==='lost' || (server.fault==='completeLost' && request.method()==='PUT')) {server.fault=null; return request.abort('failed');}
    return reply({record:structuredClone(record)});
   });
  };

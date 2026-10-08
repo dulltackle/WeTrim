@@ -30,9 +30,8 @@ try{
  await edit('![域外](https://example.com/outside.png)');await begin();await status('图片无法下载');assert.equal(server.writes,writes);
  const huge=Buffer.alloc(20*1024*1024+1);server.imageBytes.copy(huge);server.images.set('https://mmbiz.qpic.cn/huge.png',huge);await edit('![过大](https://mmbiz.qpic.cn/huge.png)');await begin();await status('超过 20 MiB');assert.equal(server.writes,writes);
  server.images.set('https://mmbiz.qpic.cn/exact.png',huge.subarray(0,20*1024*1024));await edit('![上限](https://mmbiz.qpic.cn/exact.png)');await begin();await status('已保存');assert.equal(server.uploads.get(server.records.at(-1).fields['图片'][0].file_token).length,20*1024*1024);
- await edit(Array.from({length:101},(_,i)=>`![${i}](https://mmbiz.qpic.cn/many-${i}.png)`).join('\n'));const manyWrites=server.writes;await begin();await status('100 个附件预算');assert.equal(server.writes,manyWrites);
  await edit(Array.from({length:100},(_,i)=>`![${i}](https://mmbiz.qpic.cn/many-${i}.png)`).join('\n'));await begin();await status('已保存');assert.equal(server.records.at(-1).fields['图片'].length,100);
  const stored=await page.evaluate(()=>chrome.storage.local.get('feishuSave'));assert(!JSON.stringify(stored).includes('base64'));assert(JSON.stringify(stored).length<100000,'计划只保存元数据，不缓存图片字节');
- console.log('✓ 图片预检零写入、20MiB边界、100/101附件、上传/关联拒绝补齐、未知回执保守暂停、记录与附件内容');
+ console.log('✓ 图片预检零写入、20MiB边界、100附件、上传/关联拒绝补齐、未知回执保守暂停、记录与附件内容');
  console.log('✓ 含图保存去重上传、附件字节与完成状态');
 }finally{await browser.close();}

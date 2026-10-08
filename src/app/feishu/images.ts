@@ -1,5 +1,5 @@
 import { fetchAllExportImages, type FetchedImageSuccess } from '../export/fetch-images';
-import { analyzeMarkdownImages, type ExportImageReference } from '../export/markdown-image-refs';
+import { analyzeMarkdownImages, type ExportImageReference, type MarkdownImageAnalysis } from '../export/markdown-image-refs';
 import { ConnectionError, feishuRequest, FeishuRequestError, hasFeishuPermission, type FeishuConnection } from './connection';
 import { TEST_IMAGE_URL, testImage } from './test-sample';
 
@@ -19,15 +19,14 @@ async function fetchImages(references: ExportImageReference[], testSample=false)
  if (oversized.length) throw new ConnectionError(`图片超过 20 MiB：${oversized.map(image=>image.url).join('、')}。请返回清洗会话处理；没有写入飞书。`);
  return new Map(result.succeeded.map(image=>[image.url,image]));
 }
-export async function prepareImages(markdown: string, sourceUrl: string, testSample=false): Promise<{images: PlannedImage[]; cache: ImageCache}> {
- const analysis = analyzeMarkdownImages(markdown,sourceUrl);
+export async function prepareImages(markdown: string, sourceUrl: string, parsed?:MarkdownImageAnalysis, testSample=false): Promise<{images: PlannedImage[]; cache: ImageCache}> {
+ const analysis = parsed ?? analyzeMarkdownImages(markdown,sourceUrl);
  const invalid = analysis.usages.find(usage => !usage.resolvedUrl || !usage.canRewrite || !analysis.references.some(reference => reference.resolvedUrl === usage.resolvedUrl));
  if (invalid) {
   const line = markdown.slice(0,invalid.start).split('\n').length;
   throw new ConnectionError(`图片地址无效或无法解析：第 ${line} 行「${markdown.slice(invalid.start,invalid.end).slice(0,80)}」。请返回清洗会话修复；没有写入飞书。`);
  }
  const references = analysis.references;
- if (references.length > 100) throw new ConnectionError('图片超过单篇 100 个附件预算，本阶段暂不能保存，请等待分篇功能。');
  const cache=await fetchImages(references,testSample);
  const images:PlannedImage[]=[];
  for(const reference of references){const image=cache.get(reference.resolvedUrl)!;images.push({url:image.url,fileName:image.fileName,size:image.bytes.length,sha256:await imageDigest(image.bytes)});}
