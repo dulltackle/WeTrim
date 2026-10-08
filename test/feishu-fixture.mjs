@@ -4,7 +4,7 @@ export function feishuFixture() {
  const types = [1,1,15,5,5,1,4,17,1,2,2,3];
  const fields = names.map((name,i) => ({field_id:`fld${i}`,field_name:name,type:types[i],property:i===11?{options:[{name:'未完成'},{name:'已完成'}]}:{}}));
  const recordTables=new Map();
- const server = { records:[], writes:0, fault:null, hide:false, fields, images:new Map(), uploads:new Map(), uploadCount:0, imageFault:null };
+ const server = { records:[], sourceRequests:[], writes:0, fault:null, hide:false, fields, images:new Map(), uploads:new Map(), uploadCount:0, imageFault:null };
  server.imageBytes=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII=','base64');
  server.install = async page => {
   await page.exposeFunction('__feishuFixtureUpload',async data=>{
@@ -18,7 +18,7 @@ export function feishuFixture() {
   });
   await page.setRequestInterception(true);
   page.on('request',async request => {
-   if(request.url().startsWith('https://mmbiz.qpic.cn/')) {const bytes=server.images.get(request.url())??server.imageBytes;return request.respond(bytes===false?{status:404}:{status:200,headers:{'access-control-allow-origin':'*'},contentType:'image/png',body:bytes});}
+   if(request.url().startsWith('https://mmbiz.qpic.cn/')) {server.sourceRequests.push(request.url());const bytes=server.images.get(request.url())??server.imageBytes;return request.respond(bytes===false?{status:404}:{status:200,headers:{'access-control-allow-origin':'*'},contentType:'image/png',body:bytes});}
    if (!request.url().startsWith('https://base-api.feishu.cn/')) return request.continue();
    const headers={'access-control-allow-origin':'*','access-control-allow-headers':'authorization,content-type','access-control-allow-methods':'GET,POST,PUT'};
    if(request.method()==='OPTIONS') return request.respond({status:204,headers});

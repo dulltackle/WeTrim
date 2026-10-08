@@ -12,8 +12,9 @@ try{
  const status=text=>page.waitForFunction(text=>document.querySelector('[data-feishu-save-status]').textContent.includes(text)&&!document.querySelector('[data-feishu-save]').disabled,{},text);
  const edit=async value=>{await page.$eval('[data-block-order="1"] [data-testid="block-action-edit"]',el=>el.scrollIntoView({block:'center'}));assert(await page.$eval('[data-block-order="1"] [data-testid="block-action-edit"]',el=>{const r=el.getBoundingClientRect();return el.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));}),'滚动后真实编辑按钮可命中');await page.click('[data-block-order="1"] [data-testid="block-action-edit"]');await page.waitForSelector('[data-block-order="1"] textarea');await page.$eval('[data-block-order="1"] textarea',(el,value)=>{Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(el,value);el.dispatchEvent(new Event('input',{bubbles:true}));},value);await page.click('[data-block-order="1"] [data-testid="block-action-finish-edit"]');};
  const body='正文\n\n![图](https://mmbiz.qpic.cn/one.png)\n\n- ![列表][same]\n\n> ![引用](https://mmbiz.qpic.cn/one.png)\n\n[same]: https://mmbiz.qpic.cn/one.png\n\n```\n![伪图片](https://mmbiz.qpic.cn/code.png)\n```';
- await edit(body);await page.click('[data-feishu-save]');
+ server.images.set('https://mmbiz.qpic.cn/code.png',false);await edit(body);await page.waitForNetworkIdle({idleTime:100});server.sourceRequests.length=0;await page.click('[data-feishu-save]');
  await page.waitForFunction(()=>document.querySelector('[data-feishu-save-status]').textContent.includes('已保存'));
+ assert.equal(server.sourceRequests.includes('https://mmbiz.qpic.cn/code.png'),false,'代码伪图不能触发保存下载');assert.deepEqual(server.sourceRequests,['https://mmbiz.qpic.cn/one.png']);
  assert.equal(server.uploadCount,1);assert.equal(server.records[0].fields['图片'].length,1);assert.deepEqual(server.uploads.get(server.records[0].fields['图片'][0].file_token),server.imageBytes);
  const begin=async()=>{await page.click('[data-feishu-save]');await status('已有保存结果');await page.click('[data-feishu-duplicate]');};
  assert.equal(server.records[0].fields['正文'],body);assert.equal(server.records[0].fields['保存状态'],'已完成');
@@ -32,6 +33,12 @@ try{
  server.images.set('https://mmbiz.qpic.cn/exact.png',huge.subarray(0,20*1024*1024));await edit('![上限](https://mmbiz.qpic.cn/exact.png)');await begin();await status('已保存');assert.equal(server.uploads.get(server.records.at(-1).fields['图片'][0].file_token).length,20*1024*1024);
  await edit(Array.from({length:100},(_,i)=>`![${i}](https://mmbiz.qpic.cn/many-${i}.png)`).join('\n'));await begin();await status('已保存');assert.equal(server.records.at(-1).fields['图片'].length,100);
  const stored=await page.evaluate(()=>chrome.storage.local.get('feishuSave'));assert(!JSON.stringify(stored).includes('base64'));assert(JSON.stringify(stored).length<100000,'计划只保存元数据，不缓存图片字节');
+ server.images.set('https://mmbiz.qpic.cn/excluded.png',false);
+ await page.evaluate(()=>window.__wetrim.processCaptureResult({kind:'article',source:{title:'剔除图片',account:null,publishedAt:null,url:'https://mp.weixin.qq.com/s/excluded-image'},contentHtml:'<p>保留正文</p><p><img src="https://mmbiz.qpic.cn/excluded.png"></p>',unstable:false}));
+ await page.waitForSelector('[data-testid="candidate-btn-replace"]');await page.click('[data-testid="candidate-btn-replace"]');await page.waitForFunction(()=>!document.querySelector('.candidate-confirm-dialog[open]'));
+ await page.waitForSelector('[data-block-order="2"] [data-testid="block-action-exclude"]');await page.click('[data-block-order="2"] [data-testid="block-action-exclude"]');await page.waitForNetworkIdle({idleTime:100});server.sourceRequests.length=0;
+ const excludedUploads=server.uploadCount;await page.click('[data-feishu-save]');await status('已保存');assert.deepEqual(server.sourceRequests,[],'剔除的真实图片块不触发下载');assert.equal(server.uploadCount,excludedUploads);assert.equal(server.records.at(-1).fields['正文'],'保留正文');assert.deepEqual(server.records.at(-1).fields['图片'],[]);
+ console.log('✓ 网络边界直接观察：代码伪图与已剔除的真实图片块均零下载，404图片不影响保留正文保存');
  console.log('✓ 图片预检零写入、20MiB边界、100附件、上传/关联拒绝补齐、未知回执保守暂停、记录与附件内容');
  console.log('✓ 含图保存去重上传、附件字节与完成状态');
 }finally{await browser.close();}
