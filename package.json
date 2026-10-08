@@ -34,6 +34,7 @@
     "test:release": "node --test test/release.test.mjs",
     "check:permissions": "node scripts/check-permissions.mjs",
     "test:permissions": "node --test test/permissions.test.mjs",
+    "verify:issue60": "node test/verify-issue60.mjs",
     "verify:issue59": "node test/verify-issue59.mjs",
     "verify:issue62": "node test/verify-issue62.mjs",
     "verify:issue58": "node test/verify-issue58.mjs",
