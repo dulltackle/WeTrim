@@ -34,6 +34,7 @@
     "test:release": "node --test test/release.test.mjs",
     "check:permissions": "node scripts/check-permissions.mjs",
     "test:permissions": "node --test test/permissions.test.mjs",
+    "verify:issue58": "node test/verify-issue58.mjs",
     "verify:pr": "node scripts/verify-pr.mjs"
   },
   "dependencies": {

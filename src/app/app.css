@@ -3217,3 +3217,18 @@ button.save-status-error:focus-visible {
 
 .block-filter-group[hidden],
 .block-item[hidden] { content-visibility: hidden; }
+
+.feishu-settings { max-width: 1200px; margin: 16px auto; padding: 0 24px; color: var(--ink-primary); }
+.feishu-settings summary { cursor: pointer; width: fit-content; color: var(--prussian-blue); font-weight: 600; }
+.feishu-settings-content { margin-top: 16px; padding: 24px; background: var(--sheet-bg); border: 1px solid var(--sheet-border); }
+.feishu-settings h2 { font-size: 20px; margin-bottom: 12px; }
+.feishu-settings h3 { font-size: 16px; margin: 20px 0 8px; }
+.feishu-settings p { max-width: 70ch; line-height: 1.7; margin-bottom: 12px; }
+.feishu-settings form { display: grid; gap: 8px; max-width: 640px; }
+.feishu-settings input { width: 100%; padding: 10px; border: 1px solid var(--sheet-border); background: var(--surface-raised); color: var(--ink-primary); border-radius: 4px; }
+.feishu-settings button { width: fit-content; padding: 10px 16px; margin: 8px 0; border: 1px solid var(--prussian-blue); border-radius: 4px; background: var(--prussian-blue); color: var(--ink-inverse); cursor: pointer; }
+.feishu-settings button:hover { background: var(--prussian-blue-strong); }
+.feishu-settings button:disabled { opacity: .6; cursor: wait; }
+.feishu-settings :focus-visible { outline: 2px solid var(--prussian-blue); outline-offset: 3px; }
+.feishu-settings a { color: var(--prussian-blue); text-underline-offset: 3px; }
+.feishu-settings ul { padding-left: 24px; line-height: 1.8; }
