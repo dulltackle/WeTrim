@@ -3232,3 +3232,7 @@ button.save-status-error:focus-visible {
 .feishu-settings :focus-visible { outline: 2px solid var(--prussian-blue); outline-offset: 3px; }
 .feishu-settings a { color: var(--prussian-blue); text-underline-offset: 3px; }
 .feishu-settings ul { padding-left: 24px; line-height: 1.8; }
+
+.feishu-save-panel { padding: 16px 24px; border-bottom: 1px solid var(--sheet-border); background: var(--sheet-bg); }
+.feishu-save-actions { display: flex; flex-wrap: wrap; gap: 12px; }
+.feishu-save-panel p { margin-top: 8px; line-height: 1.6; color: var(--ink-secondary); }

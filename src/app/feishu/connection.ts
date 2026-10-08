@@ -13,6 +13,10 @@ export interface FeishuTarget { appToken: string; tableId: string; url: string }
 export interface FeishuConnection extends FeishuTarget { token: string; baseName: string; tableName: string; fieldIds: Record<FieldKey, string> }
 export interface CheckedConnection { connection: FeishuConnection; fields: Record<FieldKey, FeishuField> }
 export class ConnectionError extends Error {}
+/** uncertain 表示请求可能生效，必须先核对，不能盲目重发。 */
+export class FeishuRequestError extends ConnectionError {
+ constructor(message: string, public uncertain: boolean) { super(message); }
+}
 export function parseTarget(input: string): FeishuTarget {
  const invalid = () => new ConnectionError('链接不受支持。请从飞书多维表格的数据表重新复制含 table 参数的标准链接。');
  let url: URL;
@@ -37,11 +41,12 @@ export async function feishuRequest<T>(connection: Pick<FeishuConnection, 'token
  let response: Response;
  try {
   response = await fetch(`https://base-api.feishu.cn/open-apis${path}`, { ...init, redirect: 'error', headers: { ...init.headers, Authorization: `Bearer ${connection.token}` }, signal: init.signal ?? AbortSignal.timeout(30000) });
- } catch { throw new ConnectionError('飞书网络请求未完成，请检查网络后重试。'); }
+ } catch { throw new FeishuRequestError('飞书网络请求未完成，写入结果需要核对。', true); }
  if (response.status === 401 || response.status === 403) throw new ConnectionError('飞书鉴权失败或目标不可访问，请检查该表的个人授权码与访问权限。');
  let result;
- try { result = await response.json(); } catch { throw new ConnectionError('飞书返回无法识别的结果，请稍后重新检查。'); }
- if (!response.ok || result.code !== 0) throw new ConnectionError('飞书拒绝请求，请检查个人授权码、目标访问权限及表格配置后重试。');
+ try { result = await response.json(); } catch { throw new FeishuRequestError('飞书返回无法识别的结果，写入结果需要核对。', true); }
+ if (!result || typeof result.code !== 'number') throw new FeishuRequestError('飞书返回缺少业务结果，写入结果需要核对。', true);
+ if (!response.ok || result.code !== 0) throw new FeishuRequestError('飞书拒绝请求，请检查个人授权码、目标访问权限及表格配置后重试。', response.status >= 500);
  return result.data as T;
 }
 async function listAll<T>(connection: Pick<FeishuConnection, 'token'>, path: string): Promise<T[]> {
