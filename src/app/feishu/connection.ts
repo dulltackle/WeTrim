@@ -1,6 +1,17 @@
+import type { SavePlan } from './save';
+import { withWriterAccess } from '../state/writer-access';
 /** 飞书个人 Base 连接：只读发现字段；所有错误均使用本地文案，禁止回显响应或凭据。 */
 export const FEISHU_ORIGIN = 'https://base-api.feishu.cn/*';
 export const CONNECTION_KEY = 'feishuConnection';
+export const GENERATION_KEY = 'feishuGeneration';
+export async function readGeneration():Promise<string>{return String((await chrome.storage.local.get(GENERATION_KEY))[GENERATION_KEY]??'initial');}
+/** 配置代次只含随机标识；跨页面串行化检查与本地落盘，不等待网络响应。 */
+export async function withGeneration<T>(expected:string,operation:()=>Promise<T>):Promise<T>{
+ return navigator.locks.request('wetrim-feishu-configuration',()=>withWriterAccess(async()=>{
+  if(await readGeneration()!==expected)throw new ConnectionError('连接已变化，原操作已暂停，请重新核对。');
+  return operation();
+ }));
+}
 export const FIELD_SCHEMA = [
  ['title', '标题', 1], ['account', '公众号名称', 1], ['url', '原文链接', 15],
  ['publishedAt', '原文发布日期', 5], ['savedAt', '保存时间', 5], ['body', '正文', 1],
@@ -10,7 +21,7 @@ export const FIELD_SCHEMA = [
 export type FieldKey = typeof FIELD_SCHEMA[number][0];
 export interface FeishuField { field_id: string; field_name: string; type: number; property?: { options?: { name: string; id?: string }[] } }
 export interface FeishuTarget { appToken: string; tableId: string; url: string }
-export interface FeishuConnection extends FeishuTarget { token: string; baseName: string; tableName: string; fieldIds: Record<FieldKey, string> }
+export interface FeishuConnection extends FeishuTarget { generation?: string; token: string; baseName: string; tableName: string; fieldIds: Record<FieldKey, string> }
 export interface CheckedConnection { connection: FeishuConnection; fields: Record<FieldKey, FeishuField> }
 export class ConnectionError extends Error {}
 /** uncertain 表示请求可能生效，必须先核对，不能盲目重发。 */
@@ -33,15 +44,34 @@ export async function readConnection(): Promise<FeishuConnection | null> {
  const stored = await chrome.storage.local.get(CONNECTION_KEY);
  return (stored[CONNECTION_KEY] as FeishuConnection | undefined) ?? null;
 }
-export async function saveConnection(connection: FeishuConnection): Promise<void> {
- await chrome.storage.local.set({ [CONNECTION_KEY]: connection });
+export class PendingTargetError extends ConnectionError {}
+export async function saveConnection(connection: FeishuConnection, abandon=false, expected:string): Promise<string> {
+ return withGeneration(expected,async()=>{
+  const plan=(await chrome.storage.local.get('feishuSave')).feishuSave as SavePlan|undefined;
+  const changed=plan&&(plan.target.appToken!==connection.appToken||plan.target.tableId!==connection.tableId);
+  if(changed&&!plan.completed&&!abandon)throw new PendingTargetError('原目标还有未完成保存，请继续旧保存，或明确放弃本机恢复内容后换表。');
+  const generation=crypto.randomUUID();
+  // 先可靠失效旧操作；新配置写失败时保留原配置与恢复计划。
+  await chrome.storage.local.set({[GENERATION_KEY]:generation});
+  await chrome.storage.local.set({[CONNECTION_KEY]:{...connection,generation}});
+  if(changed)await chrome.storage.local.remove('feishuSave');
+  return generation;
+ });
 }
-export async function feishuRequest<T>(connection: Pick<FeishuConnection, 'token'>, path: string, init: RequestInit = {}): Promise<T> {
+export async function clearConnection():Promise<void>{
+ await navigator.locks.request('wetrim-feishu-configuration',()=>withWriterAccess(async()=>{
+  await chrome.storage.local.set({[GENERATION_KEY]:crypto.randomUUID()});
+  await chrome.storage.local.remove([CONNECTION_KEY,'feishuSave']);
+ }));
+}
+export async function feishuRequest<T>(connection: Pick<FeishuConnection, 'token'|'generation'>, path: string, init: RequestInit = {}): Promise<T> {
  if (!await hasFeishuPermission()) throw new ConnectionError('浏览器尚未允许访问飞书。请点击检查连接并允许权限；仍可继续清洗文章。');
  let response: Response;
  try {
-  response = await fetch(`https://base-api.feishu.cn/open-apis${path}`, { ...init, redirect: 'error', headers: { ...init.headers, Authorization: `Bearer ${connection.token}` }, signal: init.signal ?? AbortSignal.timeout(30000) });
- } catch { throw new FeishuRequestError('飞书网络请求未完成，写入结果需要核对。', true); }
+  const send=()=>({pending:fetch(`https://base-api.feishu.cn/open-apis${path}`, { ...init, redirect: 'error', headers: { ...init.headers, Authorization: `Bearer ${connection.token}` }, signal: init.signal ?? AbortSignal.timeout(30000) })});
+  const request=connection.generation?await withGeneration(connection.generation,async()=>send()):send();
+  response=await request.pending;
+ } catch(error) { if(error instanceof ConnectionError)throw error;throw new FeishuRequestError('飞书网络请求未完成，写入结果需要核对。', true); }
  if (response.status === 401 || response.status === 403) throw new ConnectionError('飞书鉴权失败或目标不可访问，请检查该表的个人授权码与访问权限。');
  let result;
  try { result = await response.json(); } catch { throw new FeishuRequestError('飞书返回无法识别的结果，写入结果需要核对。', true); }

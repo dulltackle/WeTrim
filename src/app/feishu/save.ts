@@ -3,9 +3,9 @@ import { planParts } from './parts';
 import type { ArticleSnapshot } from '../../shared/types';
 import { buildMarkdown, parseFrontMatterDate } from '../export/build-markdown';
 import { prepareImages, sourceBytes, uploadImage, verifyUploadedImage, type PlannedImage, type ImageCache } from './images';
-import { withWriterAccess, writerStorage } from '../state/writer-access';
+import { withWriterAccess } from '../state/writer-access';
 import { TEST_BODY, TEST_IMAGE_URL, testSnapshot } from './test-sample';
-import { checkConnection, ConnectionError, feishuRequest, FeishuRequestError, readConnection, type FeishuConnection, type CheckedConnection, FIELD_SCHEMA, type FieldKey } from './connection';
+import { readGeneration, withGeneration, checkConnection, ConnectionError, feishuRequest, FeishuRequestError, readConnection, type FeishuConnection, type CheckedConnection, FIELD_SCHEMA, type FieldKey } from './connection';
 
 export const SAVE_KEY = 'feishuSave';
 export type Values = Partial<Record<FieldKey, unknown>>;
@@ -49,16 +49,18 @@ export async function readSave(): Promise<SavePlan | null> {
  return value;
 }
 function allParts(plan:SavePlan):SavePlan[]{return [plan,...(plan.parts??[])];}
-const persist = (plan: SavePlan, rootPlan:SavePlan=plan) => writerStorage.set({ [SAVE_KEY]: rootPlan });
+let operationGeneration='initial';
+const persist = (plan: SavePlan, rootPlan:SavePlan=plan) => withGeneration(operationGeneration,()=>chrome.storage.local.set({ [SAVE_KEY]: rootPlan }));
 function sameTarget(a: SavePlan['target'], b: FeishuConnection) { return a.appToken === b.appToken && a.tableId === b.tableId && Object.entries(a.fieldIds).every(([key,id]) => b.fieldIds[key as FieldKey] === id); }
 async function activeConnection(plan?: SavePlan): Promise<CheckedConnection> {
  const connection = await readConnection();
  if (!connection) throw new ConnectionError('请先打开飞书连接，检查并确认目标表格。');
  if (plan && !sameTarget(plan.target, connection)) throw new ConnectionError('连接目标或字段映射已变化，原次保存已暂停。');
- return checkConnection(connection, connection.token, connection);
+ const checked=await checkConnection(connection, connection.token, connection);
+ return {...checked,connection:{...checked.connection,generation:operationGeneration}};
 }
 async function assertWriterAndTarget(plan: SavePlan) {
- await withWriterAccess(async () => {
+ await withGeneration(operationGeneration,async () => {
   const current = await readConnection();
   if (!current || !sameTarget(plan.target, current)) throw new ConnectionError('连接已变化，保存已暂停。');
  });
@@ -193,9 +195,11 @@ async function drive(plan:SavePlan,cache:ImageCache=new Map()):Promise<SaveResul
  return {message:`已保存到飞书，共 ${allParts(plan).length} 篇，正文、来源与图片核对通过。`,plan};
 }
 async function exclusive(operation: () => Promise<SaveResult>): Promise<SaveResult> {
+ const requestedGeneration=await readGeneration().catch(()=>null);
+ if(requestedGeneration===null)return {message:'本机连接状态无法读取，已暂停，请重试。'};
  return navigator.locks.request('wetrim-feishu-save', {ifAvailable:true}, async lock => {
   if (!lock) return {message:'另一个保存操作正在进行，请稍候。'};
-  try { await withWriterAccess(async()=>undefined);return await operation(); }
+  try { await withWriterAccess(async()=>undefined);operationGeneration=requestedGeneration;return await operation(); }
   catch (error) { return {message: error instanceof ConnectionError ? error.message : '本机进度或写入资格检查失败，已暂停；请重试核对原次保存。'}; }
  });
 }
@@ -204,7 +208,7 @@ export function abandonSave(expectedGroup: string): Promise<SaveResult> {
  return exclusive(async()=>{
   const plan=await readSave();
   if(!plan || plan.group!==expectedGroup)throw new ConnectionError('保存进度已变化，请重新查看后操作。');
-  await writerStorage.remove(SAVE_KEY);
+  await withGeneration(operationGeneration,()=>chrome.storage.local.remove(SAVE_KEY));
   return {message:'已放弃本机恢复进度。清洗会话和远端部分均保留；请到飞书自行查看、删除远端记录。'};
  });
 }

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { TestSavePanel } from './TestSavePanel';
-import { checkConnection, ConnectionError, FEISHU_ORIGIN, FIELD_SCHEMA, parseTarget, readConnection, saveConnection, type CheckedConnection, type FeishuConnection } from './connection';
+import { readGeneration, GENERATION_KEY, CONNECTION_KEY, PendingTargetError, clearConnection, checkConnection, ConnectionError, FEISHU_ORIGIN, FIELD_SCHEMA, parseTarget, readConnection, saveConnection, type CheckedConnection, type FeishuConnection } from './connection';
 
 export function ConnectionSettings() {
  const [url, setUrl] = useState(''); const [token, setToken] = useState('');
@@ -8,12 +8,18 @@ export function ConnectionSettings() {
  const [checked, setChecked] = useState<CheckedConnection | null>(null);
  const [status, setStatus] = useState(''); const [busy, setBusy] = useState(false);
  const operation = useRef(0);
+ const checkedGeneration=useRef('initial');
+ const [switching,setSwitching]=useState(false);
+ const [clearing,setClearing]=useState(false);
+ async function clear(){operation.current++;setChecked(null);try{await clearConnection();setSaved(null);setUrl('');setToken('');setClearing(false);setStatus('已清除本机连接与恢复内容。清洗会话和远端数据均保留。');}catch{setStatus('本机连接未能清除，请重试。');}finally{setBusy(false);}}
  useEffect(() => {
-  let live = true;
-  void readConnection().then(value => { if (live && value) { setSaved(value); setUrl(value.url); setToken(value.token); setStatus(`已连接：${value.baseName} / ${value.tableName}。保存前将重新检查字段。`); } }).catch(() => { if (live) setStatus('无法读取本机连接，请重试。'); });
+  let live = true;const initial=operation.current;
+  void readConnection().then(value => { if (live && operation.current===initial && value) { setSaved(value); setUrl(value.url); setToken(value.token); setStatus(`已连接：${value.baseName} / ${value.tableName}。保存前将重新检查字段。`); } }).catch(() => { if (live) setStatus('无法读取本机连接，请重试。'); });
   const revoked = () => { operation.current++; setChecked(null); setBusy(false); setStatus('浏览器飞书权限发生变化，请重新检查连接；清洗文章不受影响。'); };
+  const changed=(changes:Record<string,chrome.storage.StorageChange>,area:string)=>{if(area!=='local'||(!changes[CONNECTION_KEY]&&!changes[GENERATION_KEY]))return;const version=++operation.current;setChecked(null);setSwitching(false);setBusy(false);void readConnection().then(value=>{if(!live||version!==operation.current)return;setSaved(value);setUrl(value?.url??'');setToken(value?.token??'');});};
+  chrome.storage.onChanged.addListener(changed);
   chrome.permissions.onRemoved.addListener(revoked);
-  return () => { live = false; operation.current++; chrome.permissions.onRemoved.removeListener(revoked); };
+  return () => { live = false; operation.current++; chrome.permissions.onRemoved.removeListener(revoked);chrome.storage.onChanged.removeListener(changed); };
  }, []);
  function invalidate() { operation.current++; setChecked(null); setStatus(''); }
  async function check(remap = false) {
@@ -25,16 +31,17 @@ export function ConnectionSettings() {
    // 紧接用户点击申请，不能先等待网络或存储而丢失 user gesture。
    const allowed = await chrome.permissions.request({ origins: [FEISHU_ORIGIN] });
    if (!allowed) throw new ConnectionError('浏览器未允许访问飞书。可再次点击检查连接申请；清洗文章不受影响。');
+   const generation=await readGeneration();
    const result = await checkConnection(target, token, remap ? null : saved);
-   if (current === operation.current) { setChecked(result); setStatus('连接检查通过：仅检查目标和字段，尚未写入任何记录。请确认目标。'); }
+   if (current === operation.current && generation===await readGeneration()) { checkedGeneration.current=generation;setChecked(result); setStatus('连接检查通过：仅检查目标和字段，尚未写入任何记录。请确认目标。'); }
   } catch (error) { if (current === operation.current) setStatus(error instanceof ConnectionError ? error.message : '连接检查未完成，请重试。'); }
   finally { if (current === operation.current) setBusy(false); }
  }
- async function confirm() {
+ async function confirm(abandon=false) {
   if (!checked || busy) return;
   setBusy(true);
-  try { await saveConnection(checked.connection); setSaved(checked.connection); setChecked(null); setStatus('连接已保存到当前浏览器。未写入飞书记录。'); }
-  catch { setStatus('连接未能保存到当前浏览器，请重试。'); }
+  try { await saveConnection(checked.connection,abandon,checkedGeneration.current);setSwitching(false); setSaved(checked.connection); setChecked(null); setStatus('连接已保存到当前浏览器。未写入飞书记录。'); }
+  catch(error) { if(error instanceof PendingTargetError)setSwitching(true);setStatus(error instanceof ConnectionError?error.message:'连接未能保存到当前浏览器，请重试。'); }
   finally { setBusy(false); }
  }
  return <details className="feishu-settings">
@@ -58,6 +65,10 @@ export function ConnectionSettings() {
     <ul>{FIELD_SCHEMA.map(([key, name]) => <li key={key}>{name} → {checked.fields[key].field_name}（检查通过）</li>)}</ul>
     <button data-feishu-confirm disabled={busy} onClick={() => void confirm()}>确认连接此表格</button>
    </div>}
+   {switching && <div data-feishu-maintenance><p>原目标还有未完成保存。取消换表后可继续旧保存；确认放弃只清本机恢复内容，保留清洗会话及旧目标远端部分。新目标将创建新的保存记录。</p><button type="button" data-feishu-maintenance-cancel onClick={()=>setSwitching(false)}>取消换表，继续旧保存</button><button type="button" data-feishu-switch-confirm disabled={busy} onClick={()=>void confirm(true)}>放弃旧恢复并连接新目标</button></div>}
+   <button type="button" data-feishu-clear onClick={()=>setClearing(true)}>清除本机连接</button>
+   {clearing && <div data-feishu-maintenance><p>确认删除本机授权码、目标配置和保存恢复内容？清洗会话和远端数据均保留。</p><button type="button" data-feishu-maintenance-cancel onClick={()=>setClearing(false)}>取消</button><button type="button" data-feishu-clear-confirm onClick={()=>void clear()}>确认清除本机连接</button></div>}
+   <p data-feishu-revoke-guide>本机清除不会撤销飞书授权。请回到飞书目标 Base 获取个人授权码的扩展工具中撤销或重置授权码；远端记录和附件需在飞书自行管理。</p>
    <TestSavePanel />
   </div>
  </details>;

@@ -3,6 +3,7 @@ export function feishuFixture() {
  const names = ['标题','公众号名称','原文链接','原文发布日期','保存时间','正文','标签','图片','文章关联标识','分篇序号','分篇总数','保存状态'];
  const types = [1,1,15,5,5,1,4,17,1,2,2,3];
  const fields = names.map((name,i) => ({field_id:`fld${i}`,field_name:name,type:types[i],property:i===11?{options:[{name:'未完成'},{name:'已完成'}]}:{}}));
+ const recordTables=new Map();
  const server = { records:[], writes:0, fault:null, hide:false, fields, images:new Map(), uploads:new Map(), uploadCount:0, imageFault:null };
  server.imageBytes=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII=','base64');
  server.install = async page => {
@@ -22,20 +23,22 @@ export function feishuFixture() {
    if(request.method()==='OPTIONS') return request.respond({status:204,headers});
    const reply=data=>request.respond({status:200,headers,contentType:'application/json',body:JSON.stringify({code:0,data})});
    const pathname=new URL(request.url()).pathname;
+   if(server.onRequest)await server.onRequest(request);
+   if(server.authStatus)return request.respond({status:server.authStatus,headers,contentType:'application/json',body:JSON.stringify({code:999})});
    if(pathname.endsWith('/download')) {const token=pathname.split('/').at(-2);const bytes=server.uploads.get(token);return request.respond(bytes?{status:200,headers,contentType:'image/png',body:bytes}:{status:404,headers});}
    if(pathname.endsWith('/fields')) {
     if(server.failFields) return request.respond({status:503,headers,contentType:'application/json',body:JSON.stringify({code:9999})});
     return reply({items:server.fields,has_more:false});
    }
-   if(pathname.endsWith('/tables')) return reply({items:[{table_id:'tblFixture',name:'我的副本'}],has_more:false});
+   if(pathname.endsWith('/tables')) return reply({items:(server.tableIds??['tblFixture']).map(table_id=>({table_id,name:'我的副本'})),has_more:false});
    if(!pathname.includes('/records')) return reply({app:{name:'个人知识库'}});
-   if(request.method()==='GET') {if(server.failRecords)return request.respond({status:503,headers,contentType:'application/json',body:JSON.stringify({code:9999})});const items=server.hide?[]:structuredClone(server.records);if(server.hideAttachments&&items.length)items.at(-1).fields['图片']=[];return reply({items,has_more:false});}
+   if(request.method()==='GET') {if(server.failRecords)return request.respond({status:503,headers,contentType:'application/json',body:JSON.stringify({code:9999})});const items=server.hide?[]:structuredClone(server.records.filter(record=>(recordTables.get(record.record_id)??'tblFixture')===pathname.split('/tables/')[1]?.split('/')[0]));if(server.hideAttachments&&items.length)items.at(-1).fields['图片']=[];return reply({items,has_more:false});}
    server.writes++;
    if(server.rejectWriteAt===server.writes || server.fault==='reject') {server.fault=null;return request.respond({status:200,headers,contentType:'application/json',body:JSON.stringify({code:1254000,msg:'业务拒绝'})});}
    const payload=JSON.parse(request.postData());
    if(request.method()==='PUT'&&payload.fields['图片']&&server.imageFault==='associateReject'){server.imageFault=null;return request.respond({status:200,headers,contentType:'application/json',body:JSON.stringify({code:1254000})});}
    let record;
-   if(request.method()==='POST') { record={record_id:`rec${server.records.length+1}`,fields:payload.fields};server.records.push(record); }
+   if(request.method()==='POST') { record={record_id:`rec${server.records.length+1}`,fields:payload.fields};server.records.push(record);recordTables.set(record.record_id,pathname.split('/tables/')[1].split('/')[0]); }
    else {record=server.records.find(r=>r.record_id===pathname.split('/').pop());Object.assign(record.fields,payload.fields);}
    // 原生多选随实际记录写入增加选项，不通过字段写入接口。
    for (const field of server.fields.filter(field=>field.type===4)) {

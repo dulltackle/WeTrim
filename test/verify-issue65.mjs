@@ -34,6 +34,7 @@ try {
  // 只读连接检查仍零写；测试内容和清洗文章完全隔离。
  await page.evaluate(()=>window.__wetrim.processCaptureResult({kind:'article',source:{title:'不能上传的用户标题',account:'用户账号',publishedAt:null,url:'https://mp.weixin.qq.com/s/private'},contentHtml:'<p>不能上传的用户正文</p>',unstable:false}));
  await page.waitForSelector('[data-feishu-save]');
+ await page.$eval('#feishu-url',el=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el,'');el.dispatchEvent(new Event('input',{bubbles:true}));});await page.$eval('#feishu-token',el=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el,'');el.dispatchEvent(new Event('input',{bubbles:true}));});
  await page.type('#feishu-url','https://example.feishu.cn/base/appFixture?table=tblFixture');await page.type('#feishu-token','fixture-not-a-secret');
  const beforeCheck=server.writes;await page.click('[data-feishu-check]');
  await page.waitForFunction(()=>document.querySelector('[data-feishu-status]').textContent.includes('连接检查通过'));
