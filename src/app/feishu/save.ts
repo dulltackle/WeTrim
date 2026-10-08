@@ -199,6 +199,34 @@ async function exclusive(operation: () => Promise<SaveResult>): Promise<SaveResu
   catch (error) { return {message: error instanceof ConnectionError ? error.message : '本机进度或写入资格检查失败，已暂停；请重试核对原次保存。'}; }
  });
 }
+/** 放弃只清除本机恢复记录；不需要远端可读，也不删除文章或附件。 */
+export function abandonSave(expectedGroup: string): Promise<SaveResult> {
+ return exclusive(async()=>{
+  const plan=await readSave();
+  if(!plan || plan.group!==expectedGroup)throw new ConnectionError('保存进度已变化，请重新查看后操作。');
+  await writerStorage.remove(SAVE_KEY);
+  return {message:'已放弃本机恢复进度。清洗会话和远端部分均保留；请到飞书自行查看、删除远端记录。'};
+ });
+}
+/** 用户明确另存固定计划；先预检完整图片，再替换本机恢复记录，保留所有远端旧结果。 */
+export function saveAsNew(expectedGroup: string): Promise<SaveResult> {
+ return exclusive(async()=>{
+  const previous=await readSave();
+  if(!previous || previous.group!==expectedGroup)throw new ConnectionError('保存进度已变化，请重新查看后操作。');
+  await activeConnection(previous);
+  const plan=structuredClone(previous);
+  const cache:ImageCache=new Map();
+  for(const part of allParts(plan))for(const image of part.images??[])await sourceBytes(image,cache,part.testSample);
+  const group=crypto.randomUUID();const savedAt=Date.now();
+  for(const part of allParts(plan)){
+   part.group=group;part.values.group=group;part.values.savedAt=savedAt;part.values.status='未完成';part.values.images=[];
+   delete part.recordId;part.pending=null;part.completed=false;part.pendingUpload=null;part.imagesAssociated=false;
+   for(const image of part.images??[])delete image.fileToken;
+  }
+  await persist(plan);
+  return drive(plan,cache);
+ });
+}
 export function retrySave(): Promise<SaveResult> { return exclusive(async()=>{const plan=await readSave();if(!plan) return {message:'没有待继续的保存。'};return drive(plan);}); }
 export function startSave(snapshot: ArticleSnapshot, allowDuplicate=false, tags: string[]=[]): Promise<SaveResult> {
  return startFixedSave(snapshot,allowDuplicate,tags,false);

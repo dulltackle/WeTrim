@@ -39,6 +39,7 @@
     "verify:issue59": "node test/verify-issue59.mjs",
     "verify:issue65": "node test/verify-issue65.mjs",
     "verify:issue62": "node test/verify-issue62.mjs",
+    "verify:issue63": "node test/verify-issue63.mjs",
     "verify:issue58": "node test/verify-issue58.mjs",
     "verify:pr": "node scripts/verify-pr.mjs"
   },

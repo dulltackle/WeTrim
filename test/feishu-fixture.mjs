@@ -29,7 +29,7 @@ export function feishuFixture() {
    }
    if(pathname.endsWith('/tables')) return reply({items:[{table_id:'tblFixture',name:'我的副本'}],has_more:false});
    if(!pathname.includes('/records')) return reply({app:{name:'个人知识库'}});
-   if(request.method()==='GET') {const items=server.hide?[]:structuredClone(server.records);if(server.hideAttachments&&items.length)items.at(-1).fields['图片']=[];return reply({items,has_more:false});}
+   if(request.method()==='GET') {if(server.failRecords)return request.respond({status:503,headers,contentType:'application/json',body:JSON.stringify({code:9999})});const items=server.hide?[]:structuredClone(server.records);if(server.hideAttachments&&items.length)items.at(-1).fields['图片']=[];return reply({items,has_more:false});}
    server.writes++;
    if(server.rejectWriteAt===server.writes || server.fault==='reject') {server.fault=null;return request.respond({status:200,headers,contentType:'application/json',body:JSON.stringify({code:1254000,msg:'业务拒绝'})});}
    const payload=JSON.parse(request.postData());
@@ -51,8 +51,8 @@ export function feishuFixture() {
    return reply({record:structuredClone(record)});
   });
  };
- server.seed = async page => {
-  await page.evaluate(async ({names})=> {
+ server.seed = async (page, writeConnection = true) => {
+  await page.evaluate(async ({names, writeConnection})=> {
    const nativeFetch=window.fetch.bind(window);
    window.fetch=async (url,init)=>{
     if(String(url)==='https://base-api.feishu.cn/open-apis/drive/v1/medias/upload_all'){
@@ -64,8 +64,8 @@ export function feishuFixture() {
    };
    // 只模拟权限 API 响应，不修改 Chrome 的真实授权状态。
    chrome.permissions.contains=async()=>true;chrome.permissions.request=async()=>true;
-   await chrome.storage.local.set({feishuConnection:{appToken:'appFixture',tableId:'tblFixture',url:'https://example.feishu.cn/base/appFixture?table=tblFixture',token:'fixture-not-a-secret',baseName:'个人知识库',tableName:'我的副本',fieldIds:Object.fromEntries(names.map((key,i)=>[key,`fld${i}`]))}});
-  },{names:['title','account','url','publishedAt','savedAt','body','tags','images','group','part','total','status']});
+   if (writeConnection) await chrome.storage.local.set({feishuConnection:{appToken:'appFixture',tableId:'tblFixture',url:'https://example.feishu.cn/base/appFixture?table=tblFixture',token:'fixture-not-a-secret',baseName:'个人知识库',tableName:'我的副本',fieldIds:Object.fromEntries(names.map((key,i)=>[key,`fld${i}`]))}});
+  },{writeConnection,names:['title','account','url','publishedAt','savedAt','body','tags','images','group','part','total','status']});
  };
  return server;
 }

@@ -1455,12 +1455,12 @@ export const App: React.FC = () => {
                 </button>
               </div>
             </nav>
-            <SavePanel getSnapshot={() => {
-              flushSync(() => blockListRef.current?.flushPendingEdits());
-              return stateRef.current.session?.snapshot;
-            }} />
             </>
           )}
+          {!isReadOnly && instanceMode === 'writer' && <SavePanel getSnapshot={() => {
+            flushSync(() => blockListRef.current?.flushPendingEdits());
+            return stateRef.current.session?.snapshot;
+          }} />}
         </header>
 
         {/* 页边浮贴夹签（Margin Clip Note，受限页误触时的非模态通知） */}
