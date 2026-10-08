@@ -12,7 +12,10 @@ export function feishuFixture() {
    if(request.method()==='OPTIONS') return request.respond({status:204,headers});
    const reply=data=>request.respond({status:200,headers,contentType:'application/json',body:JSON.stringify({code:0,data})});
    const pathname=new URL(request.url()).pathname;
-   if(pathname.endsWith('/fields')) return reply({items:server.fields,has_more:false});
+   if(pathname.endsWith('/fields')) {
+    if(server.failFields) return request.respond({status:503,headers,contentType:'application/json',body:JSON.stringify({code:9999})});
+    return reply({items:server.fields,has_more:false});
+   }
    if(pathname.endsWith('/tables')) return reply({items:[{table_id:'tblFixture',name:'我的副本'}],has_more:false});
    if(!pathname.includes('/records')) return reply({app:{name:'个人知识库'}});
    if(request.method()==='GET') return reply({items:server.hide?[]:structuredClone(server.records),has_more:false});
@@ -22,6 +25,13 @@ export function feishuFixture() {
    let record;
    if(request.method()==='POST') { record={record_id:`rec${server.records.length+1}`,fields:payload.fields};server.records.push(record); }
    else {record=server.records.find(r=>r.record_id===pathname.split('/').pop());Object.assign(record.fields,payload.fields);}
+   // 原生多选随实际记录写入增加选项，不通过字段写入接口。
+   for (const field of server.fields.filter(field=>field.type===4)) {
+    for (const name of payload.fields[field.field_name] ?? []) {
+     field.property ??= {}; field.property.options ??= [];
+     if (!field.property.options.some(option=>option.name===name)) field.property.options.push({name});
+    }
+   }
    if(server.fault==='malformed') {server.fault=null;return request.respond({status:200,headers,contentType:'application/json',body:'{}'});}
    if(server.onWrite) await server.onWrite(request.method());
    if(server.fault==='lost' || (server.fault==='completeLost' && request.method()==='PUT')) {server.fault=null; return request.abort('failed');}

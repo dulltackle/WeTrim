@@ -120,8 +120,9 @@ async function exclusive(operation: () => Promise<SaveResult>): Promise<SaveResu
  });
 }
 export function retrySave(): Promise<SaveResult> { return exclusive(async()=>{const plan=await readSave();if(!plan) return {message:'没有待继续的保存。'};return drive(plan);}); }
-export function startSave(snapshot: ArticleSnapshot, allowDuplicate=false): Promise<SaveResult> {
+export function startSave(snapshot: ArticleSnapshot, allowDuplicate=false, tags: string[]=[]): Promise<SaveResult> {
  // 固定输入在首个 await 前，后续编辑不改变本次内容。
+ const fixedTags = [...new Set(tags.map(tag=>tag.trim()).filter(Boolean))];
  const body = buildMarkdown(snapshot.blocks); const source = structuredClone(snapshot.source);
  return exclusive(async()=>{
   const existing=await readSave();if(existing && !existing.completed) return {message:'有未完成的保存，请先核对并继续原次保存。',plan:existing};
@@ -131,7 +132,7 @@ export function startSave(snapshot: ArticleSnapshot, allowDuplicate=false): Prom
   const checked=await activeConnection();
   if(!allowDuplicate && (await records(checked.connection)).some(record=>canonicalSource(String(readValue(record,checked,'url')))===canonicalSource(source.url))) return {message:'这篇原文已有保存结果。另存一份会保留旧结果及人工修改。',duplicate:true};
   const group=crypto.randomUUID();const date=parseFrontMatterDate(source.publishedAt);
-  const plan:SavePlan={version:1,group,target:{appToken:checked.connection.appToken,tableId:checked.connection.tableId,fieldIds:checked.connection.fieldIds,url:checked.connection.url},values:{title:source.title,account:source.account??'',url:{text:source.url,link:source.url},publishedAt:date?Date.parse(`${date}T00:00:00+08:00`):null,savedAt:Date.now(),body,tags:[],images:[],group,part:1,total:1,status:'未完成'},pending:null,completed:false};
+  const plan:SavePlan={version:1,group,target:{appToken:checked.connection.appToken,tableId:checked.connection.tableId,fieldIds:checked.connection.fieldIds,url:checked.connection.url},values:{title:source.title,account:source.account??'',url:{text:source.url,link:source.url},publishedAt:date?Date.parse(`${date}T00:00:00+08:00`):null,savedAt:Date.now(),body,tags:fixedTags,images:[],group,part:1,total:1,status:'未完成'},pending:null,completed:false};
   await persist(plan);return drive(plan);
  });
 }

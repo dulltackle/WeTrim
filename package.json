@@ -35,6 +35,7 @@
     "check:permissions": "node scripts/check-permissions.mjs",
     "test:permissions": "node --test test/permissions.test.mjs",
     "verify:issue59": "node test/verify-issue59.mjs",
+    "verify:issue62": "node test/verify-issue62.mjs",
     "verify:issue58": "node test/verify-issue58.mjs",
     "verify:pr": "node scripts/verify-pr.mjs"
   },

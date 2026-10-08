@@ -3236,3 +3236,16 @@ button.save-status-error:focus-visible {
 .feishu-save-panel { padding: 16px 24px; border-bottom: 1px solid var(--sheet-border); background: var(--sheet-bg); }
 .feishu-save-actions { display: flex; flex-wrap: wrap; gap: 12px; }
 .feishu-save-panel p { margin-top: 8px; line-height: 1.6; color: var(--ink-secondary); }
+
+.feishu-tags { margin-bottom: 12px; }
+.feishu-tags > span { margin-left: 12px; color: var(--ink-secondary); overflow-wrap: anywhere; }
+.feishu-tags fieldset { border: 1px solid var(--sheet-border); padding: 16px; margin-top: 12px; max-width: 640px; }
+.feishu-tags legend { padding: 0 6px; font-weight: 600; }
+.feishu-tag-options { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 8px 0 16px; }
+.feishu-tag-options label { display: flex; gap: 8px; align-items: center; min-height: 40px; overflow-wrap: anywhere; }
+.feishu-tags :focus-visible { outline: 2px solid var(--prussian-blue); outline-offset: 3px; }
+
+.feishu-tag-field { display: grid; gap: 6px; margin-top: 12px; }
+.feishu-tag-field input { min-width: 0; width: 100%; padding: 10px; border: 1px solid var(--sheet-border); background: var(--surface-raised); color: var(--ink-primary); border-radius: 4px; font: inherit; }
+.feishu-tags fieldset > .feishu-save-actions { margin-top: 16px; }
+.feishu-tags fieldset { max-height: 45vh; overflow-y: auto; }
