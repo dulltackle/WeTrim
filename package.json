@@ -1,6 +1,6 @@
 {
   "name": "WeTrim",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "手动清洗微信公众号文章，导出 Markdown 和图片。",
   "type": "module",
   "scripts": {

@@ -13,6 +13,7 @@ const stages = [
   ['发布脚本', 'npm', ['run', 'test:release']],
   ['完整版 Chrome 探测', process.env.CHROME_PATH || '/usr/bin/google-chrome', ['--version']],
   ['DOM 与真实扩展 CSP', 'npm', ['test']],
+  ['行内字体段落边界', 'node', ['test/verify-paragraph-inline.mjs']],
   ['核心 #27', 'npm', ['run', 'verify:issue27']],
   ['核心 #38', 'npm', ['run', 'verify:issue38']],
   ['核心 #39', 'npm', ['run', 'verify:issue39']],

@@ -39,6 +39,23 @@ export interface ConvertBlockOptions {
   turndownService?: TurndownService;
 }
 
+/** 合并直接相邻的粗体节点，避免 Turndown 生成 **甲****乙** 并显示多余星号。 */
+function mergeAdjacentBold(html: string): string {
+  if (!/<\/(?:b|strong)><(?:b|strong)\b/i.test(html)) return html;
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  for (const el of Array.from(doc.querySelectorAll('b, strong'))) {
+    // 代码中的 HTML 示例不能作为正文格式归一化。
+    if (el.closest('pre, code')) continue;
+    let next = el.nextSibling;
+    while (next instanceof Element && /^(B|STRONG)$/.test(next.tagName)) {
+      el.append(...Array.from(next.childNodes));
+      next.remove();
+      next = el.nextSibling;
+    }
+  }
+  return doc.body.innerHTML;
+}
+
 /**
  * 将属性承载的富媒体元素转为占位节点（对应 docs/conversion-rules.md §4.10）
  * 微信的公众号名片、小程序卡片等内容全部在属性中，内部无文本节点，
@@ -277,7 +294,7 @@ export function convertBlock(block: Block, options?: ConvertBlockOptions): Block
     const preparedHtml = prepareFormulaPlaceholders(
       prepareRichMediaPlaceholders(block.originalHtml)
     );
-    converted = turndown.turndown(preparedHtml);
+    converted = turndown.turndown(mergeAdjacentBold(preparedHtml));
     // ADR-0007: 块首尾空白由外层拼接统一负责，修整首尾空行
     converted = converted.trim();
 
