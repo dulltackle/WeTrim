@@ -1,3 +1,4 @@
+import { SavePanel } from './feishu/SavePanel';
 import { flushSync } from 'react-dom';
 import { queryWriter, setWriterEnabled, withWriterAccess, writerStorage } from './state/writer-access';
 import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
@@ -1220,6 +1221,7 @@ export const App: React.FC = () => {
 
           {/* 清洗态工具行：仅在 cleaning 态渲染，只读页隐藏整行（Issue #29 §4） */}
           {session && viewMode === 'cleaning' && !isReadOnly && (
+            <>
             <nav
               className="header-nav-toolbar"
               data-testid="header-nav-toolbar"
@@ -1453,7 +1455,12 @@ export const App: React.FC = () => {
                 </button>
               </div>
             </nav>
+            </>
           )}
+          {!isReadOnly && instanceMode === 'writer' && <SavePanel getSnapshot={() => {
+            flushSync(() => blockListRef.current?.flushPendingEdits());
+            return stateRef.current.session?.snapshot;
+          }} />}
         </header>
 
         {/* 页边浮贴夹签（Margin Clip Note，受限页误触时的非模态通知） */}

@@ -10,5 +10,7 @@
     "*://mmbiz.qlogo.cn/*": "下载文章引用的既有微信图片资源"
   },
   "optional_permissions": {},
-  "optional_host_permissions": {}
+  "optional_host_permissions": {
+    "https://base-api.feishu.cn/*": "#57：用户检查连接时按需授权个人 Base API，仅连接与保存到用户确认的目标表"
+  }
 }

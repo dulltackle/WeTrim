@@ -34,7 +34,17 @@
     "test:release": "node --test test/release.test.mjs",
     "check:permissions": "node scripts/check-permissions.mjs",
     "test:permissions": "node --test test/permissions.test.mjs",
-    "verify:pr": "node scripts/verify-pr.mjs"
+    "verify:issue61": "node test/verify-issue61.mjs",
+    "verify:issue60": "node test/verify-issue60.mjs",
+    "verify:issue59": "node test/verify-issue59.mjs",
+    "verify:issue65": "node test/verify-issue65.mjs",
+    "verify:issue62": "node test/verify-issue62.mjs",
+    "verify:issue63": "node test/verify-issue63.mjs",
+    "verify:issue58": "node test/verify-issue58.mjs",
+    "verify:pr": "node scripts/verify-pr.mjs",
+    "verify:issue64": "node test/verify-issue64.mjs",
+    "verify:feishu": "node scripts/verify-feishu.mjs",
+    "verify:issue66": "node test/verify-issue66.mjs"
   },
   "dependencies": {
     "dompurify": "^3.4.15",

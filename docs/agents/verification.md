@@ -41,3 +41,11 @@ npm run verify:pr
 `npm test` 仅是 DOM/CSP 基础检查。核心组合也不等于全部历史工单验收；未包含其他历史专项、真实微信网络、登录与反爬页面、人工视觉及真实用户 action 授权流程。本轮权限场景采用官方依据与技能行为判断，不能把浏览器 fixture 注入当作真实 action 授权测试。
 
 发布工作流仍由版本标签或手动触发，保留原有 main 来源校验、草稿和公开版本不可覆盖规则。PR 中发布脚本测试使用隔离临时文件与替身上传接口，不创建标签或 Release。
+
+## 飞书保存完整专项
+
+独立执行 `npm run verify:feishu`。入口先单独构建，再顺序执行 #58–#66 完整 UI 专项（连接、正文、图片、分篇、标签、恢复、维护、测试保存与组合）。失败即停止，后续明确为未执行。每次 `artifacts/feishu/<运行标识>/results.json` 包含 commit、证据类别、逐阶段状态和编号日志；通过不代表原生权限或真实 API 通过。
+
+正式交付需要分别运行 `npm run verify:pr` 与 `npm run verify:feishu`，不能只运行其中一个。前者保留核心 PR 范围及报告，后者覆盖飞书产品故障注入；勿并发运行带 CPU 性能检查的 PR 入口与其他 Chrome 专项。单独运行 `verify:issue<N>` 前仍先独立构建。
+
+真实 API、真人权限及跨账号模板证据见 [飞书验收索引](../verification/feishu-acceptance.md)，用户说明见 [飞书保存指南](../guides/feishu-save.md)。真实环境不能安装网络/权限替身、直接改授权状态或将测试表秘密写进报告。
