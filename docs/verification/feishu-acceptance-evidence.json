@@ -1,0 +1,289 @@
+{
+  "schemaVersion": 1,
+  "说明": "脱敏证据摘要；原始材料由任务持久运行记录保管。字段摘要、私有链接、授权码和完整配置不随仓库交付。",
+  "productCommit": "adbeb90c168d0bdafe3c605c9feebbff1f004406",
+  "sources": [
+    {
+      "file": "copy-readonly-verified.json",
+      "sha256": "8a3661349b1254439f01dcec6b9192646fb64d553c1304e1932e890b247b34c0"
+    },
+    {
+      "file": "copy-sharing-empty-user-confirmed.json",
+      "sha256": "923fca480a81341dd4e1663038fabb5289e94e88c7e4af3f3491957894bc9e53"
+    },
+    {
+      "file": "copy-local-confirmed.json",
+      "sha256": "4b5690ce1366dc754651e46ab0eba7e93c0957e5c35e8ec6260e5f05046fd6b0"
+    },
+    {
+      "file": "native-rejection-confirmed.json",
+      "sha256": "fb6794a5a89b6f662bfe4b17e8eef97b5cdc8d30bdc3510b6b0a23ea6eb18be1"
+    },
+    {
+      "file": "native-allow-confirmed.json",
+      "sha256": "a1c93cff8ebecd0d06e3e82f3f03d6faa181244b40b24ef50337ef70fa1a46d2"
+    },
+    {
+      "file": "native-reauthorized-confirmed.json",
+      "sha256": "8eda68f71ed423a70ccbfb30bada29e6fbbc29205430895da6967800afef05ba"
+    },
+    {
+      "file": "revoked-cleaning-verified.json",
+      "sha256": "93c419561f2c97306c7340c6074badc39fbb76b20cd7285e80a5888e11e0e360"
+    },
+    {
+      "file": "denied-cleaning-verified.json",
+      "sha256": "2945d32a1c9c5cec354040350cc19a0a3772b1c61409a255234c41a71e546f91"
+    },
+    {
+      "file": "real-test-save-confirmed.json",
+      "sha256": "a11c711f844f19dc66c36c436a4d52f7422fa069164482b11a803cec527d638f"
+    },
+    {
+      "file": "real-test-ui-user-confirmed.json",
+      "sha256": "24a26a9b97c9e1ae82b83a7c75cddfb2a758cf3749d4bea7994ce24abe90d033"
+    },
+    {
+      "file": "real-save-failure.json",
+      "sha256": "e0231e41e4c1eed7dd27c7fe5599d444286b243b50633cf772d4ca42901edb85"
+    },
+    {
+      "file": "real-save-result.json",
+      "sha256": "4d663d3dfc0e658e1bd83e3a81a8ea71233a60cf81000da1b5e6d196a00e6fcc"
+    },
+    {
+      "file": "deleted-test-record-recovery.json",
+      "sha256": "8ede8aa2bf84ee3bfdff54bef609fc28dc35deb22fe7a0913e9c703a0d7c4283"
+    },
+    {
+      "file": "persistent-restart-confirmed.json",
+      "sha256": "6bd89d1ce44f149319048140a58d8aa1772523bc292ac496815fe0989e22060d"
+    },
+    {
+      "file": "post-restart-real-verification.json",
+      "sha256": "c1c772112b08589aa9ff54f683b10c47fa5cb18917dca475c673621cfd2f2bab"
+    },
+    {
+      "file": "multipart-restart-result.json",
+      "sha256": "4d663d3dfc0e658e1bd83e3a81a8ea71233a60cf81000da1b5e6d196a00e6fcc"
+    },
+    {
+      "file": "multipart-full-restart-network.json",
+      "sha256": "39f96580de10fdf96739a8bde231aef31bbc82fe769a6a2199aa5d744de43776"
+    },
+    {
+      "file": "revoked-retry-confirmed.json",
+      "sha256": "0b4af03074c4ddde9360b1d39d917c8c3875b8d0d6b6f2a126c562ef2204af2c"
+    },
+    {
+      "file": "revoked-restart-confirmed.json",
+      "sha256": "f54c1b7445752c5efe92e0f6ae2b7ad182340ce0cb26a5e940680377226c24b3"
+    },
+    {
+      "file": "reauthorized-retry-confirmed.json",
+      "sha256": "c4aa01e5e57174981c27cb32522ba3a88beeb2cb1b7d1ebd42fa466d4cec143e"
+    },
+    {
+      "file": "live-fields-result.json",
+      "sha256": "fcc0b9fb9b70ada9f3eb1bf3531bedbaf34c9ce7fff8eacbb29506931ba88f74"
+    },
+    {
+      "file": "restart-permission-observation.json",
+      "sha256": "d35c8add34f78ca78685f5bf0de4f3e6e01c76698a604bd6464a65d6f9234a74"
+    },
+    {
+      "file": "real-acceptance-delta-review.md",
+      "sha256": "eed004c733e22f1d11659fd2b9fd34afb24d0182218bee60d2d319f5ff031d43"
+    },
+    {
+      "file": "review66-4-evidence-boundary.md",
+      "sha256": "c1d369b31cc61bbbccae663f4405bb4b3abd5489b9db9b50486480a731eecacd"
+    },
+    {
+      "file": "remaining-acceptance-boundary-review.md",
+      "sha256": "676c2360b43b3e8cf53300e2943e788f7178641340d47a04bef09000e25706c1"
+    }
+  ],
+  "automation": [
+    {
+      "command": "npm run verify:pr",
+      "run": "2026-10-08T09-38-32-698Z-73",
+      "commit": "adbeb90c168d0bdafe3c605c9feebbff1f004406",
+      "results": [
+        {
+          "name": "构建（含类型检查）",
+          "status": "通过",
+          "exitCode": 0,
+          "signal": null
+        },
+        {
+          "name": "权限负向测试",
+          "status": "通过",
+          "exitCode": 0,
+          "signal": null
+        },
+        {
+          "name": "源码与构建权限",
+          "status": "通过",
+          "exitCode": 0,
+          "signal": null
+        },
+        {
+          "name": "发布脚本",
+          "status": "通过",
+          "exitCode": 0,
+          "signal": null
+        },
+        {
+          "name": "完整版 Chrome 探测",
+          "status": "通过",
+          "exitCode": 0,
+          "signal": null
+        },
+        {
+          "name": "DOM 与真实扩展 CSP",
+          "status": "通过",
+          "exitCode": 0,
+          "signal": null
+        },
+        {
+          "name": "核心 #27",
+          "status": "通过",
+          "exitCode": 0,
+          "signal": null
+        },
+        {
+          "name": "核心 #38",
+          "status": "通过",
+          "exitCode": 0,
+          "signal": null
+        },
+        {
+          "name": "核心 #39",
+          "status": "通过",
+          "exitCode": 0,
+          "signal": null
+        }
+      ],
+      "sourceSha256": "7f045f68bb56731da4afc4e3dfb29e0f54b9035d4d6cfcaab7870a58fb140a7d"
+    },
+    {
+      "command": "npm run verify:feishu",
+      "run": "2026-10-08T09-39-23-222Z-73",
+      "commit": "adbeb90c168d0bdafe3c605c9feebbff1f004406",
+      "results": [
+        {
+          "name": "构建（含类型检查）",
+          "status": "通过",
+          "exitCode": 0,
+          "signal": null
+        },
+        {
+          "name": "飞书 #58（产品故障注入）",
+          "status": "通过",
+          "exitCode": 0,
+          "signal": null
+        },
+        {
+          "name": "飞书 #59（产品故障注入）",
+          "status": "通过",
+          "exitCode": 0,
+          "signal": null
+        },
+        {
+          "name": "飞书 #60（产品故障注入）",
+          "status": "通过",
+          "exitCode": 0,
+          "signal": null
+        },
+        {
+          "name": "飞书 #61（产品故障注入）",
+          "status": "通过",
+          "exitCode": 0,
+          "signal": null
+        },
+        {
+          "name": "飞书 #62（产品故障注入）",
+          "status": "通过",
+          "exitCode": 0,
+          "signal": null
+        },
+        {
+          "name": "飞书 #63（产品故障注入）",
+          "status": "通过",
+          "exitCode": 0,
+          "signal": null
+        },
+        {
+          "name": "飞书 #64（产品故障注入）",
+          "status": "通过",
+          "exitCode": 0,
+          "signal": null
+        },
+        {
+          "name": "飞书 #65（产品故障注入）",
+          "status": "通过",
+          "exitCode": 0,
+          "signal": null
+        },
+        {
+          "name": "飞书 #66（产品故障注入）",
+          "status": "通过",
+          "exitCode": 0,
+          "signal": null
+        }
+      ],
+      "sourceSha256": "de997ba73ad9b939e74d5af2b844180fc791dfef5c2b5cfbd7968c3553656766"
+    }
+  ],
+  "observed": {
+    "copy": {
+      "readRequests": 3,
+      "writeRequests": 0,
+      "fieldCount": 12,
+      "confirmedLocalFieldMatches": 12,
+      "restrictedSharingUserConfirmed": true,
+      "zeroRecordsUserConfirmed": true
+    },
+    "singleImageTest": {
+      "passed": true,
+      "bodyImageAndCompletedStatusUserConfirmed": true,
+      "designatedRowDeletedByUser": true,
+      "recoveryAfterDeleteReadRequests": 4,
+      "recoveryAfterDeleteWriteRequests": 0
+    },
+    "ordinarySave": {
+      "completed": true,
+      "duplicateCancelledWithoutWrites": true,
+      "duplicateSaveCompleted": true,
+      "laterEvidenceCollectionInterrupted": true
+    },
+    "multipartSave": {
+      "parts": 2,
+      "bodyMatches": true,
+      "tagsMatch": true,
+      "sameGroup": true,
+      "completed": true,
+      "restartRecoveryReadRequests": 6,
+      "restartRecoveryWriteRequests": 0
+    },
+    "fields": {
+      "renamedFieldRecognizedById": true,
+      "fieldRestored": true,
+      "invalidCodeRejected": true,
+      "missingTableRejected": true,
+      "originalTargetAndCodeRecheckPassed": true
+    },
+    "nativePermissions": {
+      "rejectedAllowedRevokedReauthorized": true,
+      "cleaningAndLocalSaveSurvivedDenialAndRevocation": true,
+      "cleaningFeishuRequests": 0
+    }
+  },
+  "notExecutedAgainstRealService": [
+    "101 图片批量上传",
+    "后台个人授权码轮换",
+    "实际 scope 减少或 ACL 撤销",
+    "删除字段或修改字段类型"
+  ]
+}
