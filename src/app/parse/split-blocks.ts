@@ -13,11 +13,11 @@ const PASSTHROUGH = new Set([
   'main',
   'figure',
   'center',
-  'font',
   'fieldset',
 ]);
 
-// 块级后代集合：存在这些后代意味着当前元素仍是容器，不是叶子内容
+// 块级后代集合：存在这些后代意味着当前元素仍是容器，不是叶子内容。
+// font 是行内排版标签，不能列入此集合，否则同一段落会按字体包装被拆碎。
 const BLOCKISH = new Set([
   ...PASSTHROUGH,
   ...HEADINGS,
