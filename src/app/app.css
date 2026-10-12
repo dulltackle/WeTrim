@@ -1,3 +1,52 @@
+@import "tailwindcss";
+
+@theme {
+  --color-canvas-bg: var(--canvas-bg);
+  --color-sheet-bg: var(--sheet-bg);
+  --color-sheet-bg-alt: var(--sheet-bg-alt);
+  --color-sheet-border: var(--sheet-border);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-muted: var(--surface-muted);
+  --color-surface-hover: var(--surface-hover);
+  --color-ink-primary: var(--ink-primary);
+  --color-ink-secondary: var(--ink-secondary);
+  --color-ink-tertiary: var(--ink-tertiary);
+  --color-ink-inverse: var(--ink-inverse);
+  --color-vermilion: var(--vermilion);
+  --color-vermilion-strong: var(--vermilion-strong);
+  --color-vermilion-subtle: var(--vermilion-subtle);
+  --color-vermilion-subtle-hover: var(--vermilion-subtle-hover);
+  --color-vermilion-border: var(--vermilion-border);
+  --color-prussian-blue: var(--prussian-blue);
+  --color-prussian-blue-strong: var(--prussian-blue-strong);
+  --color-prussian-blue-subtle: var(--prussian-blue-subtle);
+  --color-prussian-blue-subtle-hover: var(--prussian-blue-subtle-hover);
+  --color-prussian-blue-border: var(--prussian-blue-border);
+  --color-amber: var(--amber);
+  --color-amber-ink: var(--amber-ink);
+  --color-amber-subtle: var(--amber-subtle);
+  --color-amber-border: var(--amber-border);
+  --color-ok: var(--ok);
+  --color-ok-ink: var(--ok-ink);
+  --color-highlight-yellow: var(--highlight-yellow);
+
+  --color-background: var(--sheet-bg);
+  --color-foreground: var(--ink-primary);
+  --color-primary: var(--prussian-blue);
+  --color-primary-foreground: var(--ink-inverse);
+  --color-secondary: var(--prussian-blue-subtle);
+  --color-secondary-foreground: var(--prussian-blue-strong);
+  --color-destructive: var(--vermilion);
+  --color-destructive-foreground: var(--ink-inverse);
+  --color-muted: var(--surface-muted);
+  --color-muted-foreground: var(--ink-secondary);
+  --color-accent: var(--prussian-blue-subtle);
+  --color-accent-foreground: var(--prussian-blue-strong);
+  --color-border: var(--sheet-border);
+  --color-input: var(--sheet-border);
+  --color-ring: var(--prussian-blue);
+}
+
 /*
  * 颜色 token：界面只允许引用这里的变量。
  * 文字色（ink / *-ink / 主色本身）在 sheet、canvas 与对应 subtle 底色上都 ≥ 4.5:1；
@@ -3218,20 +3267,6 @@ button.save-status-error:focus-visible {
 .block-filter-group[hidden],
 .block-item[hidden] { content-visibility: hidden; }
 
-.feishu-settings { max-width: 1200px; margin: 16px auto; padding: 0 24px; color: var(--ink-primary); }
-.feishu-settings summary { cursor: pointer; width: fit-content; color: var(--prussian-blue); font-weight: 600; }
-.feishu-settings-content { margin-top: 16px; padding: 24px; background: var(--sheet-bg); border: 1px solid var(--sheet-border); }
-.feishu-settings h2 { font-size: 20px; margin-bottom: 12px; }
-.feishu-settings h3 { font-size: 16px; margin: 20px 0 8px; }
-.feishu-settings p { max-width: 70ch; line-height: 1.7; margin-bottom: 12px; }
-.feishu-settings form { display: grid; gap: 8px; max-width: 640px; }
-.feishu-settings input { width: 100%; padding: 10px; border: 1px solid var(--sheet-border); background: var(--surface-raised); color: var(--ink-primary); border-radius: 4px; }
-.feishu-settings button { width: fit-content; padding: 10px 16px; margin: 8px 0; border: 1px solid var(--prussian-blue); border-radius: 4px; background: var(--prussian-blue); color: var(--ink-inverse); cursor: pointer; }
-.feishu-settings button:hover { background: var(--prussian-blue-strong); }
-.feishu-settings button:disabled { opacity: .6; cursor: wait; }
-.feishu-settings :focus-visible { outline: 2px solid var(--prussian-blue); outline-offset: 3px; }
-.feishu-settings a { color: var(--prussian-blue); text-underline-offset: 3px; }
-.feishu-settings ul { padding-left: 24px; line-height: 1.8; }
 
 .feishu-save-panel { padding: 16px 24px; border-bottom: 1px solid var(--sheet-border); background: var(--sheet-bg); }
 .feishu-save-actions { display: flex; flex-wrap: wrap; gap: 12px; }

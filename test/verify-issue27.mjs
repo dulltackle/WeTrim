@@ -377,6 +377,9 @@ async function run() {
     assert.strictEqual(b3RenderedText, 'image 初始内容');
 
     // Part B: Restore from editing mode on block 1
+    await page.$eval(`${block1Selector} [data-testid="block-action-edit"]`, el => {
+      el.scrollIntoView({ block: 'center', behavior: 'instant' });
+    });
     await page.click(`${block1Selector} [data-testid="block-action-edit"]`);
     await page.waitForSelector(`${block1Selector} [data-testid="block-editor-textarea"]`);
 
