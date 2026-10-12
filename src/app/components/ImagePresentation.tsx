@@ -6,6 +6,12 @@ import React, {
   useState,
 } from 'react';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogPortal,
+  DialogBackdrop,
+  DialogPopup,
+} from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { IMAGE_COPY } from '../copy/image-presentation';
 import { SEARCH_IGNORE_ATTR } from '../search/text-search';
@@ -46,7 +52,7 @@ export function formatImageErrorUrl(url: string): { domain: string; path: string
 }
 
 /**
- * 查看完整原图浮层组件
+ * 查看完整原图浮层组件（统一使用 Dialog 基础组件）
  */
 interface ImageViewerModalProps {
   src: string;
@@ -55,66 +61,74 @@ interface ImageViewerModalProps {
 }
 
 const ImageViewerModal: React.FC<ImageViewerModalProps> = ({ src, alt, onClose }) => {
-  const dialogRef = useRef<HTMLDialogElement | null>(null);
   const closeBtnRef = useRef<HTMLButtonElement | null>(null);
 
-  // 原生 showModal()：浏览器负责把焦点限制在浮层内、让背后页面 inert，与其余对话框一致
-  useLayoutEffect(() => {
-    const dialog = dialogRef.current;
-    if (dialog && !dialog.open) {
-      dialog.showModal();
-    }
-    closeBtnRef.current?.focus();
-  }, []);
-
-  // 先关闭模态、解除背后页面的 inert，再交给 onClose 卸载并把焦点还给缩略图；顺序反了焦点会落空
-  const close = () => {
-    dialogRef.current?.close();
-    onClose();
-  };
-
-  const handleBackdropClick = (e: React.MouseEvent<HTMLElement>) => {
-    if (e.target === e.currentTarget) {
-      close();
-    }
-  };
-
   return (
-    <dialog
-      ref={dialogRef}
-      className="image-viewer-overlay"
-      data-testid="image-viewer-overlay"
-      aria-label={IMAGE_COPY.viewerTitle}
-      {...searchIgnoreProps}
-      onCancel={(e) => {
-        // Esc：阻止浏览器自行关闭，走同一条关闭路径
-        e.preventDefault();
-        close();
-      }}
-      onClick={handleBackdropClick}
-    >
-      <div className="image-viewer-toolbar">
-        <span className="image-viewer-title">{alt || IMAGE_COPY.viewerTitle}</span>
-        <button
-          ref={closeBtnRef}
-          type="button"
-          className="image-viewer-close-btn"
-          data-testid="image-viewer-close-btn"
-          aria-label={IMAGE_COPY.viewerCloseAria}
-          onClick={close}
+    <Dialog open={true} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogPortal>
+        <DialogBackdrop className="fixed inset-0 min-h-dvh bg-ink-primary/88 backdrop-blur-[3px] z-50 transition-opacity duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0" />
+        <DialogPopup
+          render={(popupProps) => (
+            <dialog
+              {...popupProps}
+              open
+              className={popupProps.className}
+              onCancel={(e) => {
+                e.preventDefault();
+                onClose();
+              }}
+              {...searchIgnoreProps}
+            />
+          )}
+          initialFocus={closeBtnRef}
+          className={cn(
+            'image-viewer-overlay fixed inset-0 z-50 w-full h-full max-w-none max-h-none m-0 p-0 border-0',
+            'bg-ink-primary/88 text-ink-inverse flex flex-col items-center justify-between',
+            'transition-opacity duration-200 data-ending-style:opacity-0 data-starting-style:opacity-0 focus:outline-none'
+          )}
+          data-testid="image-viewer-overlay"
+          aria-label={IMAGE_COPY.viewerTitle}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              onClose();
+            }
+          }}
         >
-          {IMAGE_COPY.viewerClose}
-        </button>
-      </div>
-      <div className="image-viewer-body" onClick={handleBackdropClick}>
-        <img
-          src={src}
-          alt={alt || IMAGE_COPY.defaultImageAlt}
-          className="image-viewer-full-img"
-          data-testid="image-viewer-full-img"
-        />
-      </div>
-    </dialog>
+          <div className="image-viewer-toolbar w-full px-6 py-3 flex justify-between items-center bg-black/40 text-ink-inverse shrink-0 box-border">
+            <span className="image-viewer-title text-sm font-medium text-white/85 truncate max-w-[calc(100%-100px)]">
+              {alt || IMAGE_COPY.viewerTitle}
+            </span>
+            <Button
+              ref={closeBtnRef}
+              type="button"
+              variant="outline"
+              size="sm"
+              className="image-viewer-close-btn h-auto px-3.5 py-1 text-xs font-semibold rounded-xs bg-white/15 border-white/30 text-ink-inverse hover:bg-white/30 hover:text-white"
+              data-testid="image-viewer-close-btn"
+              aria-label={IMAGE_COPY.viewerCloseAria}
+              onClick={onClose}
+            >
+              {IMAGE_COPY.viewerClose}
+            </Button>
+          </div>
+          <div
+            className="image-viewer-body flex-1 w-full overflow-auto flex items-center justify-center p-6 box-border"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) {
+                onClose();
+              }
+            }}
+          >
+            <img
+              src={src}
+              alt={alt || IMAGE_COPY.defaultImageAlt}
+              className="image-viewer-full-img max-w-full h-auto rounded-xs shadow-[0_8px_32px_rgba(0,0,0,0.4)]"
+              data-testid="image-viewer-full-img"
+            />
+          </div>
+        </DialogPopup>
+      </DialogPortal>
+    </Dialog>
   );
 };
 

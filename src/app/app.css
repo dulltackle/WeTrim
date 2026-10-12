@@ -383,13 +383,6 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* 操作按钮行 */
-.slip-actions,
-.notice-actions {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-}
 
 .action-btn {
   appearance: none;
@@ -511,184 +504,6 @@ body {
   color: var(--amber-ink);
 }
 
-.candidate-confirm-dialog {
-  border: 1px solid var(--sheet-border);
-  border-radius: 3px;
-  background-color: var(--surface-raised);
-  color: var(--ink-primary);
-  max-width: 520px;
-  width: calc(100% - 32px);
-  margin: auto;
-  padding: 32px 36px;
-  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.16), 0 2px 8px rgba(0, 0, 0, 0.06);
-  position: fixed;
-  inset: 0;
-  /* 窗口较矮或标题很长时签条内部滚动，避免操作按钮落到可视区外而无法点击 */
-  max-height: calc(100vh - 32px);
-  overflow-y: auto;
-  z-index: 1000;
-}
-
-/* 仅在打开时改为 flex：作者样式的 display 会覆盖 UA 的 dialog:not([open]) { display: none } */
-.candidate-confirm-dialog[open] {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  animation: slideInNote 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .candidate-confirm-dialog[open] {
-    animation: none;
-  }
-}
-
-.candidate-confirm-dialog::backdrop {
-  background-color: color-mix(in srgb, var(--ink-primary) 50%, transparent);
-  backdrop-filter: blur(1.5px);
-}
-
-.candidate-sections-container {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  width: 100%;
-}
-
-.candidate-section {
-  position: relative;
-  border: 1px solid var(--sheet-border);
-  border-radius: 2px;
-  padding: 14px 16px;
-  background-color: var(--sheet-bg);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.candidate-new-section .section-label-badge {
-  color: var(--amber-ink);
-}
-
-.candidate-old-section .section-label-badge {
-  color: var(--ink-secondary);
-}
-
-.section-label-badge {
-  font-size: 11px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-weight: 700;
-  text-transform: uppercase;
-  display: inline-block;
-  margin-bottom: 2px;
-}
-
-.candidate-article-info {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.candidate-article-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--ink-primary);
-  line-height: 1.4;
-  word-break: break-word;
-}
-
-.candidate-article-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  font-size: 12px;
-  color: var(--ink-secondary);
-}
-
-.candidate-article-meta .meta-item strong {
-  color: var(--ink-primary);
-  font-weight: 600;
-}
-
-.candidate-unstable-note {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background-color: var(--prussian-blue-subtle);
-  border: 1px solid color-mix(in srgb, var(--prussian-blue) 25%, transparent);
-  padding: 6px 10px;
-  border-radius: 2px;
-  font-size: 12px;
-  color: var(--ink-primary);
-  margin-top: 4px;
-}
-
-.candidate-loss-notice {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--vermilion);
-  line-height: 1.5;
-  padding: 4px 0;
-}
-
-.candidate-replace-error {
-  font-size: 13px;
-  color: var(--vermilion);
-  background-color: var(--vermilion-subtle);
-  border: 1px solid color-mix(in srgb, var(--vermilion) 30%, transparent);
-  padding: 8px 12px;
-  border-radius: 2px;
-  font-weight: 500;
-}
-
-.candidate-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  margin-top: 4px;
-}
-
-.candidate-actions .action-continue {
-  background-color: var(--prussian-blue);
-  border: 1px solid var(--prussian-blue);
-  color: var(--ink-inverse);
-  font-weight: 600;
-}
-
-.candidate-actions .action-continue:hover {
-  background-color: var(--prussian-blue-strong);
-  border-color: var(--prussian-blue-strong);
-}
-
-.candidate-actions .action-replace {
-  background-color: transparent;
-  border: 1px solid var(--vermilion);
-  color: var(--vermilion);
-  font-weight: 600;
-}
-
-.candidate-actions .action-replace:hover {
-  background-color: var(--vermilion-subtle);
-}
-
-.candidate-actions .action-return {
-  background-color: var(--surface-raised);
-  border: 1px solid var(--sheet-border);
-  color: var(--ink-secondary);
-}
-
-.candidate-actions .action-return:hover {
-  background-color: var(--surface-muted);
-  color: var(--ink-primary);
-  border-color: var(--ink-secondary);
-}
-
-.candidate-actions .action-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
 /* 只读副本提示（ARCHITECTURE.md §4.6） */
 .read-only-note {
   display: flex;
@@ -715,10 +530,24 @@ body {
   min-width: 0;
 }
 
+.empty-headline {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-bottom: 24px;
+  color: var(--ink-primary);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
 
-
-
-/* 真实阅读渲染内容：段落/标题/列表/引用/表格/代码/公式 */
+.empty-headline-accent {
+  display: inline-block;
+  width: 4px;
+  height: 22px;
+  background-color: var(--vermilion);
+  border-radius: 1px;
+}
 .block-item > .block-rendered-content,
 .block-item > .block-rendered-content :where(a, pre, code),
 .block-empty-placeholder {
@@ -860,112 +689,7 @@ body {
   margin: 6px 0;
 }
 
-/* ==========================================================================
-   Issue #30: 图片呈现层、缩略图、长图渐隐、原位占位重试与原图浮层
-   ========================================================================== */
 
-
-/* 原图全屏查看浮层（Issue #30 简报 §3） */
-/* 原生 <dialog> showModal()：覆盖 UA 的居中卡片样式，铺满视口 */
-.image-viewer-overlay {
-  position: fixed;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  max-width: none;
-  max-height: none;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  color: var(--ink-inverse);
-  background-color: color-mix(in srgb, var(--ink-primary) 88%, transparent);
-}
-
-.image-viewer-overlay[open] {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  animation: fadeInViewer 0.2s ease-out;
-}
-
-.image-viewer-overlay::backdrop {
-  background-color: transparent;
-  backdrop-filter: blur(3px);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .image-viewer-overlay[open] {
-    animation: none;
-  }
-}
-
-@keyframes fadeInViewer {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-.image-viewer-toolbar {
-  width: 100%;
-  padding: 12px 24px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background-color: rgba(0, 0, 0, 0.4);
-  color: var(--ink-inverse);
-  flex-shrink: 0;
-  box-sizing: border-box;
-}
-
-.image-viewer-title {
-  font-size: 14px;
-  font-weight: 500;
-  color: rgba(255, 255, 255, 0.85);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: calc(100% - 100px);
-}
-
-.image-viewer-close-btn {
-  appearance: none;
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  padding: 4px 14px;
-  border-radius: 2px;
-  background-color: rgba(255, 255, 255, 0.15);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  color: var(--ink-inverse);
-  cursor: pointer;
-  transition: background-color 0.15s ease;
-}
-
-.image-viewer-close-btn:hover {
-  background-color: rgba(255, 255, 255, 0.3);
-}
-
-.image-viewer-close-btn:focus-visible {
-  outline: 2px solid var(--ink-inverse);
-  outline-offset: 2px;
-}
-
-.image-viewer-body {
-  flex: 1;
-  width: 100%;
-  overflow: auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  box-sizing: border-box;
-}
-
-.image-viewer-full-img {
-  max-width: 100%;
-  height: auto;
-  border-radius: 2px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-}
 
 /* 滚动锚定保障（Issue #30 简报 §6） */
 .block-rendered-content,

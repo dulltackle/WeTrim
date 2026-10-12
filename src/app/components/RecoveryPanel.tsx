@@ -1,6 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import type { RecoveryState } from '../state/session-reducer';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogPortal,
+  DialogBackdrop,
+  DialogPopup,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
+import { cn } from '@/lib/utils';
 
 interface Props {
   recovery: RecoveryState;
@@ -9,7 +18,7 @@ interface Props {
   onClear: () => Promise<void>;
 }
 
-/** 原生对话框保护清除操作；恢复页只负责展示，不自行修改存储。 */
+/** 统一对话框保护清除操作；恢复页只负责展示，不自行修改存储。 */
 export function RecoveryPanel({ recovery, isReadOnly, onRetry, onClear }: Props) {
   const [deferred, setDeferred] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -17,7 +26,6 @@ export function RecoveryPanel({ recovery, isReadOnly, onRetry, onClear }: Props)
   const [error, setError] = useState('');
   const [downloadStatus, setDownloadStatus] = useState('');
   const heading = useRef<HTMLHeadingElement>(null);
-  const dialog = useRef<HTMLDialogElement>(null);
   const cancel = useRef<HTMLButtonElement>(null);
   const clearButton = useRef<HTMLButtonElement>(null);
   const busy = useRef(false);
@@ -34,10 +42,7 @@ export function RecoveryPanel({ recovery, isReadOnly, onRetry, onClear }: Props)
       }
       return;
     }
-    const element = dialog.current;
-    element?.showModal();
     cancel.current?.focus();
-    return () => { element?.close(); };
   }, [confirming]);
 
   const closeConfirmation = () => {
@@ -90,34 +95,71 @@ export function RecoveryPanel({ recovery, isReadOnly, onRetry, onClear }: Props)
         readable ? '原记录未被修改。你可以先下载备份，保留一份用于排查的副本。' :
           '这不代表数据损坏。尚未读到原记录，目前无法提供备份。'}
     </p>
-    {!loading && (deferred ? <div className="notice-actions recovery-actions flex gap-3 items-center flex-wrap max-sm:flex-col max-sm:items-stretch">
-      <Button variant="outline" size="sm" className="action-btn action-return" onClick={() => setDeferred(false)}>继续处理</Button>
+    {!loading && (deferred ? <div className="notice-actions recovery-actions flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
+      <Button variant="outline" size="sm" className="action-btn action-return w-full sm:w-auto" onClick={() => setDeferred(false)}>继续处理</Button>
     </div> : <>
-      <div className="notice-actions recovery-actions flex gap-3 items-center flex-wrap max-sm:flex-col max-sm:items-stretch">
-        {!readable && <Button variant="outline" size="sm" className="action-btn action-return" onClick={() => void onRetry()}>重试</Button>}
-        {readable && <Button variant="outline" size="sm" className="action-btn action-return" onClick={download}>下载原始备份</Button>}
-        <Button variant="outline" size="sm" className="action-btn action-return" onClick={() => setDeferred(true)}>暂不处理</Button>
+      <div className="notice-actions recovery-actions flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
+        {!readable && <Button variant="outline" size="sm" className="action-btn action-return w-full sm:w-auto" onClick={() => void onRetry()}>重试</Button>}
+        {readable && <Button variant="outline" size="sm" className="action-btn action-return w-full sm:w-auto" onClick={download}>下载原始备份</Button>}
+        <Button variant="outline" size="sm" className="action-btn action-return w-full sm:w-auto" onClick={() => setDeferred(true)}>暂不处理</Button>
       </div>
       {readable && <p className="state-placeholder-tip text-xs text-ink-secondary leading-relaxed">备份仅供排查，目前不能导入恢复。</p>}
       {downloadStatus && <p role="status" className="text-xs text-ink-secondary leading-relaxed">{downloadStatus}</p>}
-      {readable && !isReadOnly && <div className="recovery-danger mt-4 pt-5 border-t border-sheet-border grid justify-items-start gap-3 max-sm:justify-items-stretch">
+      {readable && !isReadOnly && <div className="recovery-danger mt-4 pt-5 border-t border-sheet-border grid justify-items-stretch sm:justify-items-start gap-3">
         <p className="state-placeholder-tip text-xs text-ink-secondary leading-relaxed">建议先下载备份；也可以直接确认清除。</p>
-        <Button ref={clearButton} variant="destructive" size="sm" className="action-btn action-replace border border-vermilion-border bg-transparent text-vermilion hover:bg-vermilion-subtle focus-visible:ring-vermilion disabled:opacity-55 disabled:cursor-wait" disabled={clearing}
+        <Button ref={clearButton} variant="destructive" size="sm" className="action-btn action-replace border border-vermilion-border bg-transparent text-vermilion hover:bg-vermilion-subtle focus-visible:ring-vermilion disabled:opacity-55 disabled:cursor-wait w-full sm:w-auto" disabled={clearing}
           onClick={() => { setError(''); setConfirming(true); }}>清除并重新开始</Button>
         {error && <p role="alert" className="text-xs text-vermilion-strong leading-relaxed">{error}</p>}
       </div>}
     </>)}
-    {confirming && <dialog ref={dialog} className="candidate-confirm-dialog recovery-confirm bg-surface-raised border border-sheet-border rounded-[3px] p-8 max-w-[480px] w-[calc(100%-32px)] m-auto shadow-xl open:flex open:flex-col open:gap-5"
-      aria-labelledby="clear-title" aria-describedby="clear-description"
-      onCancel={event => { event.preventDefault(); closeConfirmation(); }}>
-      <h2 className="notice-title text-xl font-semibold text-ink-primary" id="clear-title">清除上次进度？</h2>
-      <p id="clear-description" className="text-sm text-ink-secondary leading-relaxed">将删除保存在 WeTrim 中的上次进度，此操作无法撤销。</p>
-      <div className="candidate-actions recovery-actions flex gap-3 items-center justify-end max-sm:flex-col max-sm:items-stretch">
-        <Button ref={cancel} variant="outline" size="sm" className="action-btn action-return" disabled={clearing} onClick={closeConfirmation}>取消</Button>
-        <Button variant="destructive" size="sm" className="action-btn action-replace" disabled={clearing} onClick={() => void clear()}>
-          {clearing ? '正在清除…' : '确认清除'}
-        </Button>
-      </div>
-    </dialog>}
+    <Dialog
+      open={confirming}
+      onOpenChange={(open) => {
+        if (!open && !clearing) {
+          closeConfirmation();
+        }
+      }}
+      disablePointerDismissal={clearing}
+    >
+      <DialogPortal>
+        <DialogBackdrop />
+        <DialogPopup
+          render={(popupProps) => (
+            <dialog
+              {...popupProps}
+              open={confirming}
+              className={popupProps.className}
+              onCancel={(event) => {
+                event.preventDefault();
+                if (!clearing) {
+                  closeConfirmation();
+                }
+              }}
+            />
+          )}
+          initialFocus={cancel}
+          className={cn(
+            'candidate-confirm-dialog recovery-confirm fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50',
+            'w-[calc(100%-32px)] max-w-[480px] overflow-y-auto',
+            'bg-surface-raised border border-sheet-border rounded-[3px] p-8 shadow-xl flex flex-col gap-5 text-ink-primary focus:outline-none'
+          )}
+          aria-labelledby="clear-title"
+          aria-describedby="clear-description"
+        >
+          <DialogTitle className="notice-title text-xl font-semibold text-ink-primary" id="clear-title">
+            清除上次进度？
+          </DialogTitle>
+          <DialogDescription className="text-sm text-ink-secondary leading-relaxed" id="clear-description">
+            将删除保存在 WeTrim 中的上次进度，此操作无法撤销。
+          </DialogDescription>
+          <div className="candidate-actions recovery-actions flex flex-col sm:flex-row gap-3 items-stretch sm:items-center sm:justify-end">
+            <Button ref={cancel} autoFocus variant="outline" size="sm" className="action-btn action-return w-full sm:w-auto" disabled={clearing} onClick={closeConfirmation}>取消</Button>
+            <Button variant="destructive" size="sm" className="action-btn action-replace w-full sm:w-auto" disabled={clearing} onClick={() => void clear()}>
+              {clearing ? '正在清除…' : '确认清除'}
+            </Button>
+          </div>
+        </DialogPopup>
+      </DialogPortal>
+    </Dialog>
   </section>;
 }

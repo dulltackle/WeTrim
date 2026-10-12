@@ -1841,8 +1841,8 @@ export const App: React.FC = () => {
                   {/* 子视图 4.3: 默认空状态 - 3 步指引 */}
                   {!emptySubState.splitError && !emptySubState.notice && (
                     <div className="empty-state-view my-auto min-w-0" data-testid="empty-state-view">
-                      <h1 className="empty-headline text-[22px] font-semibold tracking-tight mb-6 text-ink-primary flex items-center gap-3" ref={focusEmptyRef} tabIndex={-1}>
-                        <span className="empty-headline-accent inline-block w-1 h-[22px] bg-vermilion rounded-[1px]"></span>
+                      <h1 className="empty-headline" ref={focusEmptyRef} tabIndex={-1}>
+                        <span className="empty-headline-accent"></span>
                         {WORKBENCH_COPY.emptyHeadline}
                       </h1>
 
