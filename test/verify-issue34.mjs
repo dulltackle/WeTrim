@@ -211,7 +211,7 @@ try {
     window.testFs = makeDirectory();
   });
   await page.emulateMediaFeatures([{name:'prefers-reduced-motion',value:'reduce'}]);
-  fs.mkdirSync('.impeccable/review', {recursive:true});
+  fs.mkdirSync('artifacts/issue34', {recursive:true});
   await page.setViewport({width:1280,height:900});
   await page.click('[data-testid="action-export"]');
   await page.waitForSelector('[data-testid="unlocalized-dialog"][open]');
@@ -232,7 +232,7 @@ try {
       return {overflow:el.scrollWidth > el.clientWidth, scrollable:body.scrollHeight>body.clientHeight, footerVisible:footer.bottom<=innerHeight};
     });
     assert.deepEqual(geometry,{overflow:false,scrollable:true,footerVisible:true});
-    await page.screenshot({path:`.impeccable/review/${name}.png`});
+    await page.screenshot({path:`artifacts/issue34/${name}.png`});
   }
   await page.keyboard.press('Escape');
   await page.waitForFunction(() => !document.querySelector('[data-testid="unlocalized-dialog"]'));

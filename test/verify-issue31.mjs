@@ -493,6 +493,10 @@ async function run() {
     const editTargetId = await page.evaluate(
       () => window.__wetrim.getState().session.snapshot.blocks.find((b) => b.initialMarkdown.includes('第一段引言'))?.id
     );
+    // 跳转后的段落按钮可能位于固定工具栏下方；先移入可点击区域，再执行真实鼠标点击。
+    await page.$eval(`[data-block-id="${editTargetId}"] [data-testid="block-action-edit"]`, el => {
+      el.scrollIntoView({ block: 'center', behavior: 'instant' });
+    });
     await page.click(`[data-block-id="${editTargetId}"] [data-testid="block-action-edit"]`);
     await page.waitForSelector(`[data-block-id="${editTargetId}"] [data-testid="block-editor-textarea"]`);
     await page.type(`[data-block-id="${editTargetId}"] [data-testid="block-editor-textarea"]`, '防抖未落盘的补充');

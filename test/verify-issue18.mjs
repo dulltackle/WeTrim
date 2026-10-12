@@ -167,18 +167,12 @@ async function runTests() {
 
     await page.waitForSelector('[data-testid="block-item"]', { timeout: 5000 });
 
-    // Inspect rendered block items
-    const blockData = await page.evaluate(() => {
-      const items = Array.from(document.querySelectorAll('[data-testid="block-item"]'));
-      return items.map((el) => {
-        const order = el.getAttribute('data-block-order');
-        const type = el.getAttribute('data-block-type');
-        const markdown = el.querySelector('.block-markdown-text')?.textContent || '';
-        const html = el.querySelector('.block-html-summary code')?.textContent || '';
-        const notes = Array.from(el.querySelectorAll('.block-note .note-message')).map((n) => n.textContent);
-        return { order, type, markdown, html, notes };
-      });
-    });
+    // 转换契约从正式文章快照读取；阅读态展示渲染后的 HTML，不展示 Markdown 源码。
+    const blockData = await page.evaluate(() => window.__wetrim.getState().session.snapshot.blocks.map(block => ({
+      order: block.order, type: block.type, markdown: block.initialMarkdown,
+      html: block.originalHtml, notes: block.notes.map(note => note.message),
+    })));
+    assert.strictEqual(await page.$eval('[data-testid="block-item"] h1', el => el.textContent), '主标题 H1');
 
     console.log(`==> Extracted ${blockData.length} blocks from test article:`);
     blockData.forEach((b) => {
@@ -243,23 +237,30 @@ async function runTests() {
     assert(degradedBlock.markdown.includes('【未识别内容】'), 'Degraded block markdown must have placeholder');
     assert(
       degradedBlock.notes.some((n) => n.includes('该内容块无法转换')),
-      'Degraded block must render conversion note'
+      '降级内容块必须保存转换提示'
     );
+    const degradedView = await page.$eval('[data-block-type="unknown"]', el => ({
+      content: el.querySelector('[data-testid="block-rendered-content"]')?.textContent,
+      note: el.querySelector('.block-note .note-message')?.textContent,
+    }));
+    assert(degradedView.content?.includes('【未识别内容】'), '阅读态必须展示降级占位');
+    assert(degradedView.note?.includes('该内容块无法转换'), '阅读态必须展示转换提示');
     console.log('✓ Degraded empty table block rendered in BlockList with notes and placeholder');
 
     // --------------------------------------------------------------------------
-    // Test 3: ImageAsset deduplication & candidateSnapshot storage persistence
+    // Test 3: ImageAsset deduplication & currentSession storage persistence
     // --------------------------------------------------------------------------
-    console.log('\n--- Test 3: ImageAsset deduplication and candidateSnapshot storage persistence ---');
+    console.log('\n--- Test 3: ImageAsset deduplication and currentSession storage persistence ---');
+    await page.evaluate(() => window.__wetrim.sessionSaveQueue.flush());
     const storageSnapshot = await worker.evaluate(async () => {
-      const data = await chrome.storage.local.get('candidateSnapshot');
-      return data.candidateSnapshot;
+      const data = await chrome.storage.local.get('currentSession');
+      return data.currentSession;
     });
 
-    assert(storageSnapshot, 'candidateSnapshot must be written to chrome.storage.local');
-    assert.strictEqual(storageSnapshot.schemaVersion, 1, 'candidateSnapshot schemaVersion must be 1');
-    assert(storageSnapshot.snapshot, 'candidateSnapshot.snapshot must exist');
-    assert(storageSnapshot.savedAt, 'candidateSnapshot.savedAt must exist');
+    assert(storageSnapshot, 'currentSession must be written to chrome.storage.local');
+    assert.strictEqual(storageSnapshot.schemaVersion, 1, 'currentSession schemaVersion must be 1');
+    assert(storageSnapshot.snapshot, 'currentSession.snapshot must exist');
+    assert(storageSnapshot.savedAt, 'currentSession.savedAt must exist');
 
     const snap = storageSnapshot.snapshot;
     assert(snap.snapshotId, 'snapshotId must be a UUID');
@@ -267,7 +268,7 @@ async function runTests() {
     assert.strictEqual(snap.source.title, '规则验证测试文章');
     assert(Array.isArray(snap.blocks), 'snap.blocks must be an array');
     assert(Array.isArray(snap.images), 'snap.images must be an array');
-    console.log(`==> candidateSnapshot saved with ${snap.blocks.length} blocks, ${snap.images.length} ImageAssets`);
+    console.log(`==> currentSession saved with ${snap.blocks.length} blocks, ${snap.images.length} ImageAssets`);
 
     // Verify ImageAsset structure & deduplication
     for (const img of snap.images) {
@@ -275,7 +276,7 @@ async function runTests() {
       assert(img.url, 'ImageAsset must have url');
       assert(img.url.startsWith('http'), 'ImageAsset URL must be absolute');
     }
-    console.log('✓ ImageAsset structure and candidateSnapshot persistence verified!');
+    console.log('✓ ImageAsset structure and currentSession persistence verified!');
 
     // --------------------------------------------------------------------------
     // Test 4: Testing currentMarkdown helper logic (?? vs ||)
