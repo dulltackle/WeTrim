@@ -75,6 +75,7 @@ import {
 import './app.css';
 import { RecoveryPanel } from './components/RecoveryPanel';
 import { CloseIcon } from './components/CloseIcon';
+import { Button } from '@/components/ui/button';
 
 const SAVE_STATUS_COPY = WORKBENCH_COPY.saveStatus;
 const FILTER_TAB_ORDER: BlockFilterMode[] = ['all', 'included', 'excluded'];
@@ -1130,57 +1131,142 @@ export const App: React.FC = () => {
   if (instanceMode !== 'writer' || draft) {
     const failed = instanceMode === 'error';
     const readonly = instanceMode === 'readonly';
-    return <div className="app-container" data-instance-mode={instanceMode}
-      data-csp-eval-verified={state.selfTestPassed ? 'true' : 'false'}>
-      <header className="workbench-header"><div className="header-primary-row">
-        <span className="ticket-tag">WeTrim</span><span>{readonly ? READ_ONLY_COPY.badge : '检查编辑页面'}</span>
-      </div></header>
-      <main className="proof-sheet instance-sheet">
-        <section className="instance-notice" data-testid={readonly ? 'read-only-note' : 'instance-notice'}
-          data-recovery-kind={instanceMode === 'restoring' ? 'loading' : undefined}>
-          <h1 ref={instanceTitleRef} tabIndex={-1}>{failed ? '暂时无法确认编辑页面' : readonly ?
-            '另一页面正在编辑' : instanceMode === 'restoring' ? '正在恢复上次进度…' : '正在检查编辑页面…'}</h1>
-          <p role="status">{failed ? '请重试，确认后才能继续编辑。' : readonly ? READ_ONLY_COPY.note : '请稍候。'}</p>
-          {readonly && <button className="action-btn" onClick={handleSwitchToWriter}
-            data-testid="read-only-switch-writer">{READ_ONLY_COPY.btnSwitchToWriter}</button>}
-          {failed && <button className="action-btn" onClick={() => void arbitrate()}>重试</button>}
-          {switchError && <p role="alert">{switchError}</p>}
-          {draft && <div className="instance-draft" role="alert">
-            <p>编辑资格已变化，未保存修改仍保留在此页。请先下载副本；继续时将读取最后成功保存的进度，副本目前不能导入。</p>
-            <button className="action-btn" onClick={() => {
-              const url = URL.createObjectURL(new Blob([JSON.stringify(draft, null, 2)], { type: 'application/json' }));
-              const anchor = document.createElement('a'); anchor.href = url;
-              anchor.download = 'WeTrim-未保存修改.json'; anchor.click();
-              setTimeout(() => URL.revokeObjectURL(url), 60_000);
-            }}>下载未保存副本</button>
-            <button className="action-btn" onClick={() => {
-              draftRef.current = null; setDraft(null); void arbitrate();
-            }}>放弃此页未保存修改并继续</button>
-          </div>}
-        </section>
-      </main>
-    </div>;
+    return (
+      <div
+        className="app-container w-full max-w-[840px] flex flex-col items-center min-w-0"
+        data-instance-mode={instanceMode}
+        data-csp-eval-verified={state.selfTestPassed ? 'true' : 'false'}
+      >
+        <header className="workbench-header w-full max-w-[840px] flex flex-col text-xs text-ink-secondary min-w-0 mb-4">
+          <div className="header-primary-row w-full flex justify-between items-center min-w-0">
+            <span className="ticket-tag bg-vermilion text-ink-inverse text-[11px] font-semibold px-1.5 py-0.5 rounded-[2px] tracking-wider font-mono">
+              WeTrim
+            </span>
+            <span className="text-xs text-ink-secondary">
+              {readonly ? READ_ONLY_COPY.badge : '检查编辑页面'}
+            </span>
+          </div>
+        </header>
+        <main className="proof-sheet instance-sheet w-full max-w-[840px] bg-sheet-bg border border-sheet-border shadow-[0_4px_20px_rgba(0,0,0,0.04),0_1px_3px_rgba(0,0,0,0.02)] relative flex flex-col rounded-[2px] min-w-0 min-h-[360px]">
+          <section
+            className="instance-notice p-6 sm:p-12 md:p-16 flex flex-col items-start gap-4 min-w-0"
+            data-testid={readonly ? 'read-only-note' : 'instance-notice'}
+            data-recovery-kind={instanceMode === 'restoring' ? 'loading' : undefined}
+          >
+            <h1
+              ref={instanceTitleRef}
+              tabIndex={-1}
+              className="text-2xl sm:text-3xl font-bold text-ink-primary mb-2 focus:outline-none"
+            >
+              {failed
+                ? '暂时无法确认编辑页面'
+                : readonly
+                ? '另一页面正在编辑'
+                : instanceMode === 'restoring'
+                ? '正在恢复上次进度…'
+                : '正在检查编辑页面…'}
+            </h1>
+            <p role="status" className="max-w-[65ch] leading-relaxed text-sm text-ink-secondary mb-4">
+              {failed ? '请重试，确认后才能继续编辑。' : readonly ? READ_ONLY_COPY.note : '请稍候。'}
+            </p>
+            {readonly && (
+              <Button
+                variant="default"
+                size="sm"
+                className="action-btn max-sm:w-full"
+                onClick={handleSwitchToWriter}
+                data-testid="read-only-switch-writer"
+              >
+                {READ_ONLY_COPY.btnSwitchToWriter}
+              </Button>
+            )}
+            {failed && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="action-btn max-sm:w-full"
+                onClick={() => void arbitrate()}
+              >
+                重试
+              </Button>
+            )}
+            {switchError && (
+              <p role="alert" className="text-xs text-vermilion-strong leading-relaxed">
+                {switchError}
+              </p>
+            )}
+            {draft && (
+              <div
+                className="instance-draft mt-6 border-t border-sheet-border pt-6 flex flex-col items-start gap-3 w-full"
+                role="alert"
+              >
+                <p className="max-w-[65ch] leading-relaxed text-sm text-ink-secondary">
+                  编辑资格已变化，未保存修改仍保留在此页。请先下载副本；继续时将读取最后成功保存的进度，副本目前不能导入。
+                </p>
+                <div className="flex flex-wrap gap-3">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="action-btn"
+                    onClick={() => {
+                      const url = URL.createObjectURL(
+                        new Blob([JSON.stringify(draft, null, 2)], { type: 'application/json' })
+                      );
+                      const anchor = document.createElement('a');
+                      anchor.href = url;
+                      anchor.download = 'WeTrim-未保存修改.json';
+                      anchor.click();
+                      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+                    }}
+                  >
+                    下载未保存副本
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    className="action-btn"
+                    onClick={() => {
+                      draftRef.current = null;
+                      setDraft(null);
+                      void arbitrate();
+                    }}
+                  >
+                    放弃此页未保存修改并继续
+                  </Button>
+                </div>
+              </div>
+            )}
+          </section>
+        </main>
+      </div>
+    );
   }
 
   return (
     <AppContext.Provider value={contextValue}>
       <div
-        className="app-container"
+        className="app-container w-full max-w-[840px] flex flex-col items-center min-w-0"
         data-csp-eval-verified={selfTestPassed ? 'true' : 'false'}
         data-view-mode={viewMode}
       >
         {/* 顶部工作台状态条（清洗态下固定在顶部，提供搜索、定位与筛选工具，Issue #29） */}
         <header
           ref={headerRef}
-          className={`workbench-header ${viewMode === 'cleaning' ? 'is-sticky' : ''}`}
+          className={`workbench-header w-full max-w-[840px] flex flex-col text-xs text-ink-secondary min-w-0 transition-[background-color,box-shadow] duration-200 ease-in-out ${
+            viewMode === 'cleaning'
+              ? 'sticky top-0 z-50 bg-canvas-bg px-3 pt-2 pb-2.5 mb-3 border-b border-sheet-border shadow-[0_4px_12px_rgba(0,0,0,0.04)] rounded-b-[2px] is-sticky'
+              : 'mb-4'
+          }`}
           data-testid="workbench-header"
         >
-          <div className="header-primary-row" data-testid="header-primary-row">
-            <div className="ticket-slug">
-              <span className="ticket-tag">{ticketTag}</span>
-              <span className="ticket-number">{ticketNumber}</span>
+          <div className="header-primary-row w-full flex justify-between items-center min-w-0" data-testid="header-primary-row">
+            <div className="ticket-slug flex items-center gap-2 font-mono">
+              <span className="ticket-tag bg-vermilion text-ink-inverse text-[11px] font-semibold px-1.5 py-0.5 rounded-[2px] tracking-wider">
+                {ticketTag}
+              </span>
+              <span className="ticket-number text-xs text-ink-secondary">{ticketNumber}</span>
             </div>
-            <div className="header-status-group" data-testid="header-status-group">
+            <div className="header-status-group flex items-center gap-4 shrink-0" data-testid="header-status-group">
               {/* 保存状态指示位（只读副本不写 storage，也不显示保存状态，见 ARCHITECTURE.md §4.6） */}
               {session && !isReadOnly && (
                 // 播报区与可操作按钮分开：role="status" 会覆盖 <button> 的原生角色
@@ -1188,23 +1274,29 @@ export const App: React.FC = () => {
                   {saveStatus === 'error' ? (
                     <button
                       type="button"
-                      className="save-status save-status-error"
+                      className="save-status save-status-error cursor-pointer bg-vermilion-subtle border border-vermilion/25 text-vermilion px-2 py-0.5 text-xs leading-normal hover:bg-vermilion-subtle-hover hover:border-vermilion focus-visible:outline-2 focus-visible:outline-vermilion focus-visible:outline-offset-1 rounded-[2px] transition-colors inline-flex items-center gap-1.5"
                       data-testid="save-status"
                       data-save-status="error"
                       onClick={handleRetrySave}
                       title={SAVE_STATUS_COPY.retryTitle}
                     >
-                      <span className="save-status-dot save-status-dot-error" aria-hidden="true"></span>
-                      <span className="save-status-text">{SAVE_STATUS_COPY.error}</span>
+                      <span className="save-status-dot save-status-dot-error w-[7px] h-[7px] rounded-full shrink-0 bg-vermilion" aria-hidden="true"></span>
+                      <span className="save-status-text font-medium">{SAVE_STATUS_COPY.error}</span>
                     </button>
                   ) : (
                     <div
-                      className={`save-status save-status-${saveStatus}`}
+                      className={`save-status save-status-${saveStatus} inline-flex items-center gap-1.5 text-xs text-ink-secondary select-none rounded-[2px]`}
                       data-testid="save-status"
                       data-save-status={saveStatus}
                     >
                       <span
-                        className={`save-status-dot save-status-dot-${saveStatus}`}
+                        className={`save-status-dot save-status-dot-${saveStatus} w-[7px] h-[7px] rounded-full shrink-0 ${
+                          saveStatus === 'saved'
+                            ? 'bg-ok'
+                            : saveStatus === 'saving'
+                            ? 'bg-prussian-blue'
+                            : 'bg-amber'
+                        }`}
                         aria-hidden="true"
                       ></span>
                       <span className="save-status-text">{saveStatusText}</span>
@@ -1212,8 +1304,19 @@ export const App: React.FC = () => {
                   )}
                 </div>
               )}
-              <div className="system-status" data-testid="system-status">
-                <span className={`status-dot status-dot-${statusDotTone}`} aria-hidden="true"></span>
+              <div className="system-status flex items-center gap-1.5 text-xs text-ink-secondary" data-testid="system-status">
+                <span
+                  className={`status-dot status-dot-${statusDotTone} w-[7px] h-[7px] rounded-full shrink-0 ${
+                    statusDotTone === 'ok'
+                      ? 'bg-ok'
+                      : statusDotTone === 'pending'
+                      ? 'bg-amber'
+                      : statusDotTone === 'error'
+                      ? 'bg-vermilion'
+                      : 'bg-ink-secondary'
+                  }`}
+                  aria-hidden="true"
+                ></span>
                 <span>{statusText}</span>
               </div>
             </div>
@@ -1223,17 +1326,17 @@ export const App: React.FC = () => {
           {session && viewMode === 'cleaning' && !isReadOnly && (
             <>
             <nav
-              className="header-nav-toolbar"
+              className="header-nav-toolbar w-full flex justify-between items-center mt-2 pt-2 border-t border-dashed border-sheet-border gap-3 min-w-0"
               data-testid="header-nav-toolbar"
               aria-label={WORKBENCH_COPY.navAriaLabel}
             >
-              <div className="nav-toolbar-main">
+              <div className="nav-toolbar-main flex items-center gap-2 flex-wrap flex-1 min-w-0">
                 {/* 搜索框 */}
-                <div className="search-box" data-testid="search-box">
+                <div className="search-box relative inline-flex items-center min-w-[130px] max-w-[180px]" data-testid="search-box">
                   <input
                     ref={searchInputRef}
                     type="search"
-                    className="search-input"
+                    className="search-input w-full h-7 text-xs py-[3px] pl-2 pr-7 border border-sheet-border rounded-[2px] bg-surface-raised text-ink-primary font-inherit focus:outline-2 focus:outline-prussian-blue focus:outline-offset-1 focus:border-prussian-blue transition-colors [&::-webkit-search-cancel-button]:hidden"
                     data-testid="search-input"
                     placeholder={NAVIGATION_COPY.searchPlaceholder}
                     aria-label={NAVIGATION_COPY.searchAriaLabel}
@@ -1244,7 +1347,7 @@ export const App: React.FC = () => {
                   {searchQuery && (
                     <button
                       type="button"
-                      className="search-clear-btn"
+                      className="search-clear-btn absolute right-0.5 min-w-6 min-h-6 bg-transparent border-0 cursor-pointer text-[13px] text-ink-tertiary hover:text-ink-primary p-0 leading-none flex items-center justify-center transition-colors"
                       data-testid="search-clear-btn"
                       aria-label={NAVIGATION_COPY.clearSearchAriaLabel}
                       title={NAVIGATION_COPY.clearSearch}
@@ -1257,9 +1360,9 @@ export const App: React.FC = () => {
 
                 {/* 命中计数与上一处/下一处 */}
                 {searchQuery.trim() !== '' && (
-                  <div className="search-nav-group" data-testid="search-nav-group">
+                  <div className="search-nav-group inline-flex items-center gap-1 bg-surface-raised border border-sheet-border rounded-[2px] p-0.5" data-testid="search-nav-group">
                     <span
-                      className="search-counter"
+                      className="search-counter text-[11px] font-mono text-ink-primary px-1 min-w-12 text-center"
                       data-testid="search-counter"
                       role="status"
                       aria-live="polite"
@@ -1277,7 +1380,7 @@ export const App: React.FC = () => {
                     </span>
                     <button
                       type="button"
-                      className="search-nav-btn search-prev-btn"
+                      className="search-nav-btn search-prev-btn w-[26px] h-[26px] inline-flex items-center justify-center bg-surface-muted border border-sheet-border rounded-[2px] cursor-pointer text-[11px] font-semibold text-ink-secondary hover:not-disabled:bg-surface-hover hover:not-disabled:text-ink-primary disabled:opacity-35 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-prussian-blue focus-visible:outline-offset-1 transition-colors"
                       data-testid="search-prev-btn"
                       aria-label={NAVIGATION_COPY.prevHitAriaLabel}
                       title={NAVIGATION_COPY.prevHit}
@@ -1288,7 +1391,7 @@ export const App: React.FC = () => {
                     </button>
                     <button
                       type="button"
-                      className="search-nav-btn search-next-btn"
+                      className="search-nav-btn search-next-btn w-[26px] h-[26px] inline-flex items-center justify-center bg-surface-muted border border-sheet-border rounded-[2px] cursor-pointer text-[11px] font-semibold text-ink-secondary hover:not-disabled:bg-surface-hover hover:not-disabled:text-ink-primary disabled:opacity-35 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-prussian-blue focus-visible:outline-offset-1 transition-colors"
                       data-testid="search-next-btn"
                       aria-label={NAVIGATION_COPY.nextHitAriaLabel}
                       title={NAVIGATION_COPY.nextHit}
@@ -1304,19 +1407,19 @@ export const App: React.FC = () => {
                 {searchQuery.trim() !== '' &&
                   searchState.totalHits === 0 &&
                   searchState.hiddenHitsCount === 0 && (
-                    <span className="search-tip search-not-found" data-testid="search-not-found">
+                    <span className="search-tip search-not-found text-[11px] inline-flex items-center gap-1.5 text-ink-secondary bg-black/[0.03] px-2 py-0.5 rounded-[2px]" data-testid="search-not-found">
                       {NAVIGATION_COPY.notFound(searchQuery.trim())}
                     </span>
                   )}
 
                 {wrappedToast && (
-                  <span className="search-tip search-wrapped-toast" data-testid="search-wrapped-tip">
+                  <span className="search-tip search-wrapped-toast text-[11px] inline-flex items-center gap-1.5 text-prussian-blue bg-prussian-blue-subtle border border-prussian-blue/20 px-2 py-0.5 rounded-[2px] font-medium animate-in fade-in duration-150" data-testid="search-wrapped-tip">
                     {NAVIGATION_COPY.wrappedToFirst}
                   </span>
                 )}
 
                 {searchQuery.trim() !== '' && searchState.hiddenHitsCount > 0 && (
-                  <div className="search-tip search-hidden-notice" data-testid="search-hidden-notice">
+                  <div className="search-tip search-hidden-notice text-[11px] inline-flex items-center gap-1.5 text-ink-secondary bg-amber-subtle border border-amber/30 px-2 py-0.5 rounded-[2px]" data-testid="search-hidden-notice">
                     <span>
                       {searchState.hiddenHitsFilter === 'excluded'
                         ? NAVIGATION_COPY.otherHitsInExcluded(searchState.hiddenHitsCount)
@@ -1324,7 +1427,7 @@ export const App: React.FC = () => {
                     </span>
                     <button
                       type="button"
-                      className="search-switch-btn"
+                      className="search-switch-btn bg-surface-raised border border-sheet-border rounded-[2px] text-ink-primary text-xs font-medium min-h-6 px-2 py-0.5 cursor-pointer hover:bg-surface-muted hover:border-ink-secondary transition-colors"
                       data-testid="search-switch-to-all"
                       onClick={() => handleFilterTabClick('all')}
                     >
@@ -1334,12 +1437,12 @@ export const App: React.FC = () => {
                 )}
 
                 {/* 「跳至 #」序号定位输入框 */}
-                <div className="order-jump-box" data-testid="order-jump-box">
+                <div className="order-jump-box relative inline-flex items-center gap-1" data-testid="order-jump-box">
                   <input
                     type="text"
                     inputMode="numeric"
                     pattern="[0-9]*"
-                    className="order-jump-input"
+                    className="order-jump-input w-[58px] h-7 text-xs text-center border border-sheet-border rounded-[2px] bg-surface-raised text-ink-primary font-inherit focus:outline-2 focus:outline-prussian-blue focus:outline-offset-1 focus:border-prussian-blue"
                     data-testid="order-jump-input"
                     placeholder={NAVIGATION_COPY.jumpPlaceholder}
                     aria-label={NAVIGATION_COPY.jumpAriaLabel}
@@ -1352,7 +1455,7 @@ export const App: React.FC = () => {
                   />
                   <button
                     type="button"
-                    className="order-jump-btn"
+                    className="order-jump-btn h-7 px-2 text-[11px] font-medium bg-surface-muted border border-sheet-border rounded-[2px] text-ink-secondary cursor-pointer hover:bg-surface-hover hover:text-ink-primary focus-visible:outline-2 focus-visible:outline-prussian-blue focus-visible:outline-offset-1 transition-colors"
                     data-testid="order-jump-btn"
                     onClick={handleOrderJump}
                   >
@@ -1360,12 +1463,12 @@ export const App: React.FC = () => {
                   </button>
 
                   {orderJumpTip && (
-                    <div className="order-jump-popover" data-testid="order-jump-tip">
-                      <span className="order-jump-tip-text">{orderJumpTip.text}</span>
+                    <div className="order-jump-popover absolute top-[calc(100%+6px)] left-0 z-60 bg-surface-raised border border-sheet-border rounded-[2px] shadow-[0_4px_14px_rgba(0,0,0,0.08)] px-2.5 py-1.5 text-[11px] whitespace-nowrap flex items-center gap-2 animate-in fade-in duration-150" data-testid="order-jump-tip">
+                      <span className="order-jump-tip-text text-ink-secondary">{orderJumpTip.text}</span>
                       {orderJumpTip.canSwitchToAll && (
                         <button
                           type="button"
-                          className="order-jump-switch-btn"
+                          className="order-jump-switch-btn bg-vermilion-subtle border border-vermilion/25 text-vermilion text-xs font-medium min-h-6 px-2 py-0.5 rounded-[2px] hover:bg-vermilion-subtle-hover hover:border-vermilion cursor-pointer transition-colors"
                           data-testid="order-jump-switch-all"
                           onClick={handleSwitchToAllAndJump}
                         >
@@ -1378,7 +1481,7 @@ export const App: React.FC = () => {
 
                 {/* 全部 / 保留 / 剔除 筛选 Tabs（从汇总条移到这里，Issue #29 §3） */}
                 <div
-                  className="summary-chips filter-tabs"
+                  className="summary-chips filter-tabs flex flex-wrap gap-1.5 min-w-0"
                   role="tablist"
                   aria-label={WORKBENCH_COPY.filterTabsAriaLabel}
                   data-testid="filter-tabs"
@@ -1401,7 +1504,11 @@ export const App: React.FC = () => {
                         aria-controls={BLOCK_LIST_PANEL_ID}
                         // 漫游 tabindex：Tab 只停在当前页签，页签之间用方向键切换
                         tabIndex={isActive ? 0 : -1}
-                        className={`summary-chip filter-tab ${isActive ? 'is-active' : ''}`}
+                        className={`summary-chip filter-tab inline-flex items-center text-xs font-medium min-h-[26px] px-2.5 py-[3px] rounded-[2px] border tabular-nums leading-normal select-none transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-prussian-blue focus-visible:outline-offset-1 ${
+                          isActive
+                            ? 'is-active bg-ink-primary text-ink-inverse border-ink-primary font-semibold'
+                            : 'bg-surface-muted text-ink-secondary border-sheet-border hover:bg-surface-hover hover:text-ink-primary hover:border-ink-tertiary'
+                        }`}
                         data-testid={`filter-tab-${mode}`}
                         ref={(el) => {
                           filterTabRefs.current[mode] = el;
@@ -1418,25 +1525,29 @@ export const App: React.FC = () => {
               </div>
 
               {/* 右侧操作区：检查结果、导出与回到原文看看（Issue #31 & Issue #32） */}
-              <div className="nav-toolbar-actions">
-                <button
+              <div className="nav-toolbar-actions flex items-center gap-2 shrink-0">
+                <Button
                   type="button"
-                  className="action-btn action-preview"
+                  variant="outline"
+                  size="sm"
+                  className="action-btn action-preview font-medium h-7 px-3 text-xs"
                   data-testid="action-preview"
                   ref={previewBtnRef}
                   onClick={handleOpenPreview}
                   aria-label={PREVIEW_COPY.openButtonAria}
                 >
                   {PREVIEW_COPY.openButton}
-                </button>
+                </Button>
                 {exportProgressText && !isPreviewOpen && (
-                  <span className="export-progress" role="status" data-testid="toolbar-export-progress">
+                  <span className="export-progress text-xs text-ink-secondary font-mono" role="status" data-testid="toolbar-export-progress">
                     {exportProgressText}
                   </span>
                 )}
-                <button
+                <Button
                   type="button"
-                  className="action-btn action-export"
+                  variant="default"
+                  size="sm"
+                  className="action-btn action-export font-medium h-7 px-3 text-xs"
                   data-testid="action-export"
                   ref={exportBtnRef}
                   onClick={handleToolbarExport}
@@ -1444,15 +1555,17 @@ export const App: React.FC = () => {
                   aria-busy={exportProgress ? true : undefined}
                 >
                   {EXPORT_COPY.toolbarExportButton}
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
-                  className="action-btn action-return"
+                  variant="outline"
+                  size="sm"
+                  className="action-btn action-return font-medium h-7 px-3 text-xs"
                   data-testid="action-return"
                   onClick={() => handleReturnToOriginal(undefined, session.snapshot.source.url)}
                 >
                   {NAVIGATION_COPY.returnToOriginal}
-                </button>
+                </Button>
               </div>
             </nav>
             </>
@@ -1466,16 +1579,16 @@ export const App: React.FC = () => {
         {/* 页边浮贴夹签（Margin Clip Note，受限页误触时的非模态通知） */}
         {emptySubState.marginClipNote && (
           <aside
-            className="margin-clip-note"
+            className="margin-clip-note fixed top-6 right-8 z-100 max-w-[380px] bg-vermilion-subtle border border-vermilion/35 shadow-[0_4px_16px_rgba(200,53,43,0.12),0_1px_3px_rgba(0,0,0,0.05)] rounded-[2px] animate-in slide-in-from-top-2 duration-250"
             role="status"
             aria-live="polite"
             data-testid="margin-clip-note"
           >
             <div className="clip-pin" aria-hidden="true"></div>
-            <div className="clip-content">
-              <span className="clip-text">{emptySubState.marginClipNote}</span>
+            <div className="clip-content flex items-center justify-between p-2.5 px-3.5 gap-3">
+              <span className="clip-text text-xs text-ink-primary leading-relaxed font-medium">{emptySubState.marginClipNote}</span>
               <button
-                className="clip-close-btn"
+                className="clip-close-btn bg-transparent border-0 text-base text-ink-secondary cursor-pointer min-w-7 min-h-7 p-1 rounded-[2px] leading-none transition-colors hover:text-vermilion hover:bg-vermilion/10 focus-visible:outline-2 focus-visible:outline-vermilion focus-visible:outline-offset-2"
                 onClick={() => dispatch({ type: 'SET_MARGIN_CLIP_NOTE', payload: null })}
                 aria-label={WORKBENCH_COPY.closeClipNoteAria}
                 type="button"
@@ -1487,7 +1600,7 @@ export const App: React.FC = () => {
         )}
 
         {/* 主校样纸张 */}
-        <main className="proof-sheet">
+        <main className="proof-sheet w-full max-w-[840px] bg-sheet-bg border border-sheet-border shadow-[0_4px_20px_rgba(0,0,0,0.04),0_1px_3px_rgba(0,0,0,0.02)] relative flex flex-col rounded-[2px] min-w-0">
           {/* 四角套准十字线 */}
           <div className="reg-cross reg-top-left" aria-hidden="true"></div>
           <div className="reg-cross reg-top-right" aria-hidden="true"></div>
@@ -1495,33 +1608,33 @@ export const App: React.FC = () => {
           <div className="reg-cross reg-bottom-right" aria-hidden="true"></div>
 
           {/* 顶部色标条：纯印刷装饰，不承载信息 */}
-          <div className="registration-bar" aria-hidden="true">
-            <div className="cmyk-swatches">
-              <span className="cmyk-swatch cmyk-swatch-cyan"></span>
-              <span className="cmyk-swatch cmyk-swatch-magenta"></span>
-              <span className="cmyk-swatch cmyk-swatch-yellow"></span>
-              <span className="cmyk-swatch cmyk-swatch-black"></span>
-              <span className="cmyk-swatch cmyk-swatch-vermilion"></span>
-              <span className="cmyk-swatch cmyk-swatch-prussian"></span>
+          <div className="registration-bar flex items-center justify-between px-4 py-2 border-b border-sheet-border bg-black/[0.01]" aria-hidden="true">
+            <div className="cmyk-swatches flex gap-1">
+              <span className="cmyk-swatch cmyk-swatch-cyan w-3.5 h-2 rounded-[1px] bg-[#00a3e0]"></span>
+              <span className="cmyk-swatch cmyk-swatch-magenta w-3.5 h-2 rounded-[1px] bg-[#e4007c]"></span>
+              <span className="cmyk-swatch cmyk-swatch-yellow w-3.5 h-2 rounded-[1px] bg-[#ffd100]"></span>
+              <span className="cmyk-swatch cmyk-swatch-black w-3.5 h-2 rounded-[1px] bg-ink-primary"></span>
+              <span className="cmyk-swatch cmyk-swatch-vermilion w-3.5 h-2 rounded-[1px] bg-vermilion"></span>
+              <span className="cmyk-swatch cmyk-swatch-prussian w-3.5 h-2 rounded-[1px] bg-prussian-blue"></span>
             </div>
           </div>
 
-          <div className="sheet-body">
+          <div className="sheet-body flex min-h-[540px] min-w-0 w-full">
             {/* 左侧页边批注栏：只是批注标记的对齐轨道，真实批注由各内容块自己输出并关联到读屏 */}
-            <div className="margin-track" aria-hidden="true"></div>
+            <div className="margin-track w-[84px] shrink-0 border-r border-dashed border-sheet-border py-6 px-3 flex flex-col items-center gap-4 bg-black/[0.005]" aria-hidden="true"></div>
 
             {/* 右侧版心 */}
-            <section className="main-bed">
+            <section className="main-bed flex-1 px-12 pt-12 pb-16 flex flex-col justify-start min-w-0 max-sm:px-4 max-sm:py-6">
               {/* 态 1: 清洗态 或 候选确认态（模态签条压在清洗页之上，旧会话照常渲染在背后并压暗，满足 §8.5「先呈现已有会话」） */}
               {session && (viewMode === 'cleaning' || viewMode === 'candidateConfirm') && (
                 <div
-                  className={`manuscript-slip ${isPreviewOpen ? 'is-preview-active' : ''}`}
+                  className={`manuscript-slip flex flex-col gap-6 min-w-0 w-full ${isPreviewOpen ? 'is-preview-active' : ''}`}
                   data-testid="manuscript-slip"
                   inert={isReadOnly}
                 >
                   {session.snapshot.captureWarnings?.filter(w => w.code === 'long-article').map(w => (
-                    <div className="unstable-note" role="status" data-testid="long-article-note" key={w.code}>
-                      <span className="note-badge">长文提示</span>
+                    <div className="unstable-note flex items-center gap-2.5 bg-prussian-blue-subtle border border-prussian-blue/30 px-3.5 py-2 rounded-[2px] text-xs text-ink-primary leading-relaxed min-w-0" role="status" data-testid="long-article-note" key={w.code}>
+                      <span className="note-badge bg-prussian-blue text-ink-inverse text-[11px] font-semibold px-1.5 py-0.5 rounded-[2px] font-mono shrink-0">长文提示</span>
                       <span>{w.message}</span>
                     </div>
                   ))}
@@ -1529,28 +1642,28 @@ export const App: React.FC = () => {
                   {session.snapshot.captureWarnings?.some(
                     (w) => w.code === 'capture-unstable' || w.code === 'unstable-capture'
                   ) && (
-                    <div className="unstable-note" data-testid="unstable-note">
-                      <span className="note-badge">{WORKBENCH_COPY.unstableBadge}</span>
+                    <div className="unstable-note flex items-center gap-2.5 bg-prussian-blue-subtle border border-prussian-blue/30 px-3.5 py-2 rounded-[2px] text-xs text-ink-primary leading-relaxed min-w-0" data-testid="unstable-note">
+                      <span className="note-badge bg-prussian-blue text-ink-inverse text-[11px] font-semibold px-1.5 py-0.5 rounded-[2px] font-mono shrink-0">{WORKBENCH_COPY.unstableBadge}</span>
                       <span>{WORKBENCH_COPY.unstableNote}</span>
                     </div>
                   )}
 
                   {/* 文章来源与标题：必须位于正文内容块之前 */}
-                  <div className="slip-header" data-testid="slip-header">
-                    <span className="slip-kicker">{WORKBENCH_COPY.slipKicker}</span>
-                    <h1 className="slip-title" ref={titleRef} tabIndex={-1}>
+                  <div className="slip-header border-b border-sheet-border pb-4.5 min-w-0" data-testid="slip-header">
+                    <span className="slip-kicker inline-block text-[11px] font-mono text-vermilion tracking-widest font-semibold uppercase mb-2">{WORKBENCH_COPY.slipKicker}</span>
+                    <h1 className="slip-title text-2xl leading-snug font-bold text-ink-primary mb-3 break-words" ref={titleRef} tabIndex={-1}>
                       {session.snapshot.source.title || WORKBENCH_COPY.untitledArticle}
                     </h1>
-                    <div className="slip-meta">
+                    <div className="slip-meta flex flex-wrap gap-4 text-xs text-ink-secondary">
                       {session.snapshot.source.account && (
                         <span className="meta-item meta-account">
-                          <strong>{WORKBENCH_COPY.accountLabel}</strong>
+                          <strong className="text-ink-primary font-semibold mr-1">{WORKBENCH_COPY.accountLabel}</strong>
                           {session.snapshot.source.account}
                         </span>
                       )}
                       {session.snapshot.source.publishedAt && (
                         <span className="meta-item meta-date">
-                          <strong>{WORKBENCH_COPY.publishedAtLabel}</strong>
+                          <strong className="text-ink-primary font-semibold mr-1">{WORKBENCH_COPY.publishedAtLabel}</strong>
                           {session.snapshot.source.publishedAt}
                         </span>
                       )}
@@ -1635,20 +1748,22 @@ export const App: React.FC = () => {
                 <>
                   {/* 子视图 4.1: 整篇级失败卡片 */}
                   {emptySubState.splitError && (
-                    <div className="article-failure-card" data-testid="article-failure-card">
-                      <div className="notice-stamp error-stamp" aria-hidden="true">
+                    <div className="article-failure-card bg-surface-raised border border-sheet-border rounded-[2px] p-8 sm:p-9 relative flex flex-col gap-5 min-w-0 w-full max-sm:p-5" data-testid="article-failure-card">
+                      <div className="notice-stamp error-stamp absolute top-6 right-7 border-2 border-vermilion text-vermilion text-xs font-bold px-2 py-0.5 rounded-[2px] rotate-6 opacity-80 font-mono" aria-hidden="true">
                         <span>{WORKBENCH_COPY.splitErrorStamp}</span>
                       </div>
                       <div className="notice-header">
-                        <span className="notice-sub">{WORKBENCH_COPY.splitErrorSub}</span>
-                        <h2 className="notice-title">{WORKBENCH_COPY.splitErrorTitle}</h2>
+                        <span className="notice-sub text-[11px] font-mono text-ink-tertiary uppercase tracking-widest">{WORKBENCH_COPY.splitErrorSub}</span>
+                        <h2 className="notice-title text-xl font-semibold text-ink-primary mt-1 break-words">{WORKBENCH_COPY.splitErrorTitle}</h2>
                       </div>
-                      <blockquote className="notice-verbatim-quote">
+                      <blockquote className="notice-verbatim-quote bg-sheet-bg-alt border-l-3 border-sheet-border p-3.5 px-4.5 text-sm text-ink-primary leading-relaxed not-italic rounded-[2px] break-words">
                         {WORKBENCH_COPY.splitErrorDetails(emptySubState.splitError.message)}
                       </blockquote>
-                      <div className="notice-actions">
-                        <button
+                      <div className="notice-actions flex gap-3 items-center flex-wrap">
+                        <Button
                           type="button"
+                          variant="outline"
+                          size="sm"
                           className="action-btn action-return"
                           onClick={() =>
                             handleReturnToOriginal(
@@ -1658,42 +1773,46 @@ export const App: React.FC = () => {
                           }
                         >
                           {WORKBENCH_COPY.returnToOriginal}
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                           type="button"
+                          variant="destructive"
+                          size="sm"
                           className="action-btn action-retry"
                           onClick={() => handleRetry(emptySubState.splitError?.tabId)}
                         >
                           {WORKBENCH_COPY.retry}
-                        </button>
+                        </Button>
                       </div>
                     </div>
                   )}
 
                   {/* 子视图 4.2: 审校退单卡片（微信提示页或验证页） */}
                   {!emptySubState.splitError && emptySubState.notice && (
-                    <div className="return-notice-card" data-testid="return-notice-card">
-                      <div className="notice-stamp" aria-hidden="true">
+                    <div className="return-notice-card bg-surface-raised border border-sheet-border rounded-[2px] p-8 sm:p-9 relative flex flex-col gap-5 min-w-0 w-full max-sm:p-5" data-testid="return-notice-card">
+                      <div className="notice-stamp absolute top-6 right-7 border-2 border-vermilion text-vermilion text-xs font-bold px-2 py-0.5 rounded-[2px] rotate-6 opacity-80 font-mono" aria-hidden="true">
                         <span>{WORKBENCH_COPY.noticeStamp}</span>
                       </div>
                       <div className="notice-header">
-                        <span className="notice-sub">{WORKBENCH_COPY.noticeSub}</span>
-                        <h2 className="notice-title">
+                        <span className="notice-sub text-[11px] font-mono text-ink-tertiary uppercase tracking-widest">{WORKBENCH_COPY.noticeSub}</span>
+                        <h2 className="notice-title text-xl font-semibold text-ink-primary mt-1 break-words">
                           {emptySubState.notice.kind === 'captcha'
                             ? WORKBENCH_COPY.captchaTitle
                             : WORKBENCH_COPY.wechatNoticeTitle}
                         </h2>
                       </div>
 
-                      <blockquote className="notice-verbatim-quote">
+                      <blockquote className="notice-verbatim-quote bg-sheet-bg-alt border-l-3 border-sheet-border p-3.5 px-4.5 text-sm text-ink-primary leading-relaxed not-italic rounded-[2px] break-words">
                         {emptySubState.notice.kind === 'captcha'
                           ? WORKBENCH_COPY.captchaDetails
                           : WORKBENCH_COPY.quoteNotice(emptySubState.notice.noticeText)}
                       </blockquote>
 
-                      <div className="notice-actions">
-                        <button
+                      <div className="notice-actions flex gap-3 items-center flex-wrap">
+                        <Button
                           type="button"
+                          variant="outline"
+                          size="sm"
                           className="action-btn action-return"
                           onClick={() =>
                             handleReturnToOriginal(
@@ -1705,27 +1824,29 @@ export const App: React.FC = () => {
                           }
                         >
                           {WORKBENCH_COPY.returnToOriginal}
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                           type="button"
+                          variant="destructive"
+                          size="sm"
                           className="action-btn action-retry"
                           onClick={() => handleRetry(emptySubState.notice?.tabId)}
                         >
                           {WORKBENCH_COPY.retry}
-                        </button>
+                        </Button>
                       </div>
                     </div>
                   )}
 
                   {/* 子视图 4.3: 默认空状态 - 3 步指引 */}
                   {!emptySubState.splitError && !emptySubState.notice && (
-                    <div className="empty-state-view" data-testid="empty-state-view">
-                      <h1 className="empty-headline" ref={focusEmptyRef} tabIndex={-1}>
-                        <span className="empty-headline-accent"></span>
+                    <div className="empty-state-view my-auto min-w-0" data-testid="empty-state-view">
+                      <h1 className="empty-headline text-[22px] font-semibold tracking-tight mb-6 text-ink-primary flex items-center gap-3" ref={focusEmptyRef} tabIndex={-1}>
+                        <span className="empty-headline-accent inline-block w-1 h-[22px] bg-vermilion rounded-[1px]"></span>
                         {WORKBENCH_COPY.emptyHeadline}
                       </h1>
 
-                      <div className="steps-container">
+                      <div className="steps-container bg-surface-raised border border-sheet-border rounded-[3px] p-6 sm:px-7 relative before:content-['清洗前置指引'] before:absolute before:-top-2.5 before:left-5 before:bg-sheet-bg before:px-2 before:text-[11px] before:text-ink-secondary before:font-medium">
                         <div
                           className="rendered-steps"
                           dangerouslySetInnerHTML={{ __html: renderedStepsHtml }}
