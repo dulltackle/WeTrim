@@ -1625,6 +1625,20 @@ export const App: React.FC = () => {
 
             {/* 右侧版心 */}
             <section className="main-bed flex-1 px-12 pt-12 pb-16 flex flex-col justify-start min-w-0 max-sm:px-4 max-sm:py-6">
+              {/* 检查结果汇总预览模态对话框（原生 <dialog> showModal() - Issue #31 & Issue #32） */}
+              {session && viewMode === 'cleaning' && !isReadOnly && (
+                <PreviewDialog
+                  isOpen={isPreviewOpen}
+                  snapshot={session.snapshot}
+                  onClose={handleClosePreview}
+                  onJumpToBlock={handleJumpToBlockFromPreview}
+                  onRecoverExcluded={handleRecoverExcludedFromPreview}
+                  onJumpToEmptyBlock={handleJumpToBlockFromPreview}
+                  onExport={handlePreviewExport}
+                  exportProgressText={exportProgressText}
+                />
+              )}
+
               {/* 态 1: 清洗态 或 候选确认态（模态签条压在清洗页之上，旧会话照常渲染在背后并压暗，满足 §8.5「先呈现已有会话」） */}
               {session && (viewMode === 'cleaning' || viewMode === 'candidateConfirm') && (
                 <div
@@ -1697,20 +1711,6 @@ export const App: React.FC = () => {
                   onReturnToOriginal={() =>
                     handleReturnToOriginal(undefined, candidateSnapshot.source.url)
                   }
-                />
-              )}
-
-              {/* 检查结果汇总预览模态对话框（压在清洗页之上，原生 <dialog> showModal() - Issue #31 & Issue #32） */}
-              {session && viewMode === 'cleaning' && !isReadOnly && (
-                <PreviewDialog
-                  isOpen={isPreviewOpen}
-                  snapshot={session.snapshot}
-                  onClose={handleClosePreview}
-                  onJumpToBlock={handleJumpToBlockFromPreview}
-                  onRecoverExcluded={handleRecoverExcludedFromPreview}
-                  onJumpToEmptyBlock={handleJumpToBlockFromPreview}
-                  onExport={handlePreviewExport}
-                  exportProgressText={exportProgressText}
                 />
               )}
 

@@ -970,5 +970,14 @@ const BlockListInner = forwardRef<BlockListHandle, BlockListProps>(
   }
 );
 
-export const BlockList = React.memo(BlockListInner);
+export const BlockList = React.memo(BlockListInner, (prev, next) => {
+  return (
+    prev.blocks === next.blocks &&
+    prev.filter === next.filter &&
+    prev.onFilterChange === next.onFilterChange &&
+    prev.onSearchStateChange === next.onSearchStateChange &&
+    prev.onFocusFallback === next.onFocusFallback &&
+    prev.tabPanelLabelledBy === next.tabPanelLabelledBy
+  );
+});
 BlockList.displayName = 'BlockList';

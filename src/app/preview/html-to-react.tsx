@@ -166,11 +166,13 @@ export function renderFragmentWithImages(fragment: DocumentFragment): React.Reac
     const container = (fragment.ownerDocument ?? document).createElement('div');
     container.appendChild(fragment);
     return (
-      <div
-        className="block-rendered-content"
-        data-testid="block-rendered-content"
-        dangerouslySetInnerHTML={{ __html: container.innerHTML }}
-      />
+      <div className="block-rendered-content" data-testid="block-rendered-content">
+        <div
+          key="chunk-0"
+          className="block-rendered-chunk"
+          dangerouslySetInnerHTML={{ __html: container.innerHTML }}
+        />
+      </div>
     );
   }
   return renderChildNodesWithImages(fragment);
@@ -179,6 +181,7 @@ export function renderFragmentWithImages(fragment: DocumentFragment): React.Reac
 /**
  * 把 root 的直接子节点按「含图 / 不含图」分段：连续的不含图节点合并成一个 innerHTML 分片，
  * 含图节点转成带 ImagePresentation 的 React 树。
+ * 针对长文性能优化：通过原位节点迁移（appendChild）避免沉重的 Range / cloneContents 计算。
  */
 function renderChildNodesWithImages(root: HTMLElement | DocumentFragment): React.ReactNode {
   const doc = root.ownerDocument ?? document;
@@ -191,48 +194,42 @@ function renderChildNodesWithImages(root: HTMLElement | DocumentFragment): React
   });
 
   const nodes: React.ReactNode[] = [];
-  const total = root.childNodes.length;
-  let chunkStart: Node | null = null;
-  let chunkEnd: Node | null = null;
+  const children = Array.from(root.childNodes);
+  let chunkContainer: HTMLDivElement | null = null;
+  let chunkIndex = 0;
 
-  const flushRangeChunk = (chunkIndex: number) => {
-    if (chunkStart && chunkEnd) {
-      const range = doc.createRange();
-      range.setStartBefore(chunkStart);
-      range.setEndAfter(chunkEnd);
-      const container = doc.createElement('div');
-      container.appendChild(range.cloneContents());
-      const chunkHtml = container.innerHTML;
-      if (chunkHtml) {
+  const flushChunk = () => {
+    if (chunkContainer && chunkContainer.hasChildNodes()) {
+      const html = chunkContainer.innerHTML;
+      if (html) {
         nodes.push(
           <div
-            key={`chunk-${chunkIndex}`}
+            key={`chunk-${chunkIndex++}`}
             className="block-rendered-chunk"
-            dangerouslySetInnerHTML={{ __html: chunkHtml }}
+            dangerouslySetInnerHTML={{ __html: html }}
           />
         );
       }
-      chunkStart = null;
-      chunkEnd = null;
+      chunkContainer = null;
     }
   };
 
-  for (let i = 0; i < total; i++) {
-    const child = root.childNodes[i];
-    const hasImg = imgHosts.has(child);
-
-    if (hasImg) {
-      flushRangeChunk(i);
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i];
+    if (imgHosts.has(child)) {
+      flushChunk();
       const rNode = domNodeToReact(child, `r-${i}`);
       if (rNode !== null && rNode !== undefined) {
         nodes.push(rNode);
       }
     } else {
-      if (!chunkStart) chunkStart = child;
-      chunkEnd = child;
+      if (!chunkContainer) {
+        chunkContainer = doc.createElement('div');
+      }
+      chunkContainer.appendChild(child);
     }
   }
-  flushRangeChunk(total);
+  flushChunk();
 
   return (
     <div className="block-rendered-content" data-testid="block-rendered-content">
