@@ -8,6 +8,8 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { currentMarkdown, type Block } from '../../shared/types';
 import { truncateGraphemes } from '../../shared/grapheme';
 import { renderMarkdown } from '../preview/render';
@@ -29,9 +31,35 @@ export interface BlockItemProps {
   registerFlush?: (id: string, flush: ((finishEditing?: boolean) => void) | null) => void;
 }
 
+const NOTE_MARKER_CODE_CLASSES: Record<string, string> = {
+  'table-degraded': 'bg-amber-subtle border-amber/45 text-amber-ink',
+  'richmedia-placeholder': 'bg-prussian-blue-subtle border-prussian-blue/35 text-prussian-blue',
+  'convert-failed': 'bg-vermilion-subtle border-vermilion/35 text-vermilion',
+};
+
+const NOTE_CARD_CODE_CLASSES: Record<string, { card: string; badge: string }> = {
+  'table-degraded': {
+    card: 'bg-amber-subtle border-amber/35 text-ink-primary',
+    badge: 'bg-amber text-ink-primary',
+  },
+  'richmedia-placeholder': {
+    card: 'bg-prussian-blue-subtle border-prussian-blue/25 text-ink-primary',
+    badge: 'bg-prussian-blue text-ink-inverse',
+  },
+  'convert-failed': {
+    card: 'bg-vermilion-subtle border-vermilion/25 text-ink-primary',
+    badge: 'bg-vermilion text-ink-inverse',
+  },
+};
+
+const HEADING_EDITOR_FONT_CLASS: Record<number, string> = {
+  1: 'text-[20px]',
+  2: 'text-[18px]',
+  3: 'text-[16px]',
+};
 
 /**
- * 依据 Issue #24, #25, #27 & 设计简报：
+ * 依据 Issue #24, #25, #27, #30, #73 & 设计简报：
  * - 默认真实阅读态：renderMarkdown 渲染 currentMarkdown(block)
  * - 所有块都可编辑：点击「编辑 Markdown」原地展开源码 <textarea>，初始类型与切块不改变
  * - 空字符串 '' 是有效编辑，用 ?? 不用 ||，不回退到初始内容
@@ -40,6 +68,7 @@ export interface BlockItemProps {
  * - 还原内容：单块编辑区与常驻 meta 操作行均提供，二次内联确认，不改动保留/剔除状态
  * - 纯键盘可达与焦点保持：完成编辑后焦点平稳回落该块，不跳顶
  * - 临时展开（isTempExpanded）：搜索命中折叠剔除块时临时展开，离开后自动收起
+ * - 编辑器随输入调整高度，固定字号使用静态映射，运行时高度通过 CSS 变量 --editor-height 消费
  */
 export const BlockItem = memo(
   forwardRef<HTMLDivElement, BlockItemProps>(({ block, isEditing, onStartEdit, onFinishEdit, onToggle, onUpdate, isTempExpanded, registerFlush, imageSelection }, ref) => {
@@ -146,13 +175,12 @@ export const BlockItem = memo(
       itemContainerRef.current?.scrollIntoView({ block: 'start', behavior: 'instant' });
     }, [imageSelection, isEditing, isExpanded]);
 
-    // 编辑区随内容自动增高：rows 只能按显式换行符计数，无法反映自动折行占用的视觉行数，
-    // 需要按 scrollHeight 撑高文本框，避免折行内容被压缩进过矮的编辑区
+    // 编辑区随内容自动增高：运行时高度通过 CSS 变量 --editor-height 消费
     useLayoutEffect(() => {
       const el = textareaRef.current;
       if (isEditing && el) {
-        el.style.height = 'auto';
-        el.style.height = `${el.scrollHeight}px`;
+        el.style.setProperty('--editor-height', 'auto');
+        el.style.setProperty('--editor-height', `${el.scrollHeight}px`);
       }
     }, [isEditing, localValue, isExpanded]);
 
@@ -262,15 +290,10 @@ export const BlockItem = memo(
       block.type === 'heading' && block.headingLevel ? ` H${block.headingLevel}` : '';
 
     // 编辑区字号随块类型贴近渲染态量级，避免标题块切入编辑态时字号骤降
-    const HEADING_EDITOR_FONT_SIZE: Record<number, string> = {
-      1: '20px',
-      2: '18px',
-      3: '16px',
-    };
-    const editorFontSize =
+    const editorFontClass =
       block.type === 'heading'
-        ? HEADING_EDITOR_FONT_SIZE[block.headingLevel ?? 0] ?? '15px'
-        : '15px';
+        ? HEADING_EDITOR_FONT_CLASS[block.headingLevel ?? 0] ?? 'text-[15px]'
+        : 'text-[15px]';
 
     // 实时状态计算：在编辑态下以 localValue 为准，阅读态以 currentMarkdown 为准
     const effectiveMarkdown = isEditing ? localValue : currentMarkdown(block);
@@ -317,14 +340,18 @@ export const BlockItem = memo(
     const marginNoteMarkers =
       block.notes.length > 0 ? (
         <div
-          className="block-margin-note-markers"
+          className="block-margin-note-markers absolute top-2.5 right-[calc(100%+60px)] flex flex-col items-end gap-1 pointer-events-auto z-10 max-[720px]:static max-[720px]:flex-row max-[720px]:flex-wrap max-[720px]:items-center max-[720px]:gap-1.5 max-[720px]:mt-1 max-[720px]:mb-0.5"
           data-testid="block-margin-note-markers"
           aria-hidden="true"
         >
           {block.notes.map((note, idx) => (
             <span
               key={`${note.code}-${idx}`}
-              className={`margin-note-marker marker-code-${note.code}`}
+              className={cn(
+                "margin-note-marker border text-[11px] font-semibold px-1.5 py-[1px] rounded-sm leading-[1.4] whitespace-nowrap tracking-[0.02em] shadow-xs",
+                `marker-code-${note.code}`,
+                NOTE_MARKER_CODE_CLASSES[note.code] ?? 'bg-surface-muted border-sheet-border text-ink-secondary'
+              )}
               title={note.message}
               data-note-code={note.code}
             >
@@ -337,14 +364,14 @@ export const BlockItem = memo(
     // 整体块提示图标与浮层
     const compositeTip = isComposite ? (
       <span
-        className="composite-block-tip-trigger"
+        className="composite-block-tip-trigger relative inline-flex items-center justify-center text-ink-tertiary hover:text-prussian-blue focus-visible:text-prussian-blue focus-visible:outline-1 focus-visible:outline-prussian-blue cursor-help min-w-[24px] min-h-[24px] -my-1 -mx-0.5 rounded-sm group"
         data-testid="composite-block-tip"
         tabIndex={0}
         role="img"
         aria-label={BLOCK_COPY.compositeTip}
       >
         <svg
-          className="tip-icon"
+          className="tip-icon block size-[13px]"
           viewBox="0 0 16 16"
           width="13"
           height="13"
@@ -360,7 +387,10 @@ export const BlockItem = memo(
           <circle cx="8" cy="4.75" r="0.5" fill="currentColor" />
         </svg>
         {/* 可见浮层只给视觉用户；读屏已经从 aria-label 读到同一句，避免重复朗读 */}
-        <span className="tip-tooltip" aria-hidden="true">
+        <span
+          className="tip-tooltip absolute bottom-[calc(100%+6px)] left-1/2 -translate-x-1/2 bg-ink-primary text-ink-inverse text-[11px] leading-tight px-2 py-1 rounded-sm whitespace-nowrap pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus:opacity-100 group-focus:visible group-focus-visible:opacity-100 group-focus-visible:visible transition-all duration-150 z-30 shadow-md after:content-[''] after:absolute after:top-full after:left-1/2 after:-translate-x-1/2 after:border-4 after:border-solid after:border-[var(--ink-primary)_transparent_transparent_transparent]"
+          aria-hidden="true"
+        >
           {BLOCK_COPY.compositeTip}
         </span>
       </span>
@@ -368,28 +398,31 @@ export const BlockItem = memo(
 
     // 内联二次确认条
     const inlineRestoreConfirm = (
-      <div className="restore-confirm-inline" data-testid="restore-confirm-inline">
-        <span className="restore-confirm-tip">
+      <div className="restore-confirm-inline inline-flex items-center gap-1.5 px-2 py-0.5 bg-amber-subtle border border-amber-border rounded-sm" data-testid="restore-confirm-inline">
+        <span className="restore-confirm-tip text-[11px] text-amber-ink font-medium whitespace-nowrap">
           {BLOCK_COPY.restoreConfirmTip}
         </span>
-        <button
+        <Button
           type="button"
-          className="block-action-btn block-action-confirm-restore"
+          size="sm"
+          className="block-action-btn block-action-confirm-restore h-auto min-h-[26px] px-2.5 py-[3px] rounded-sm text-xs font-semibold text-ink-inverse bg-vermilion border border-vermilion hover:bg-vermilion-strong hover:border-vermilion-strong shadow-none"
           data-testid="block-action-confirm-restore"
           aria-label={BLOCK_COPY.confirmRestoreAria(block.order)}
           onClick={handleConfirmRestore}
         >
           {BLOCK_COPY.confirmRestore}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
-          className="block-action-btn block-action-cancel-restore"
+          variant="outline"
+          size="sm"
+          className="block-action-btn block-action-cancel-restore h-auto min-h-[26px] px-2.5 py-[3px] rounded-sm text-xs font-normal text-ink-secondary bg-surface-raised border-sheet-border hover:bg-surface-muted hover:text-ink-primary shadow-none"
           data-testid="block-action-cancel-restore"
           aria-label={BLOCK_COPY.cancelRestoreAria(block.order)}
           onClick={handleCancelRestore}
         >
           {BLOCK_COPY.cancelRestore}
-        </button>
+        </Button>
       </div>
     );
 
@@ -399,9 +432,11 @@ export const BlockItem = memo(
         <div
           ref={setRefs}
           tabIndex={-1}
-          className={`block-item block-excluded block-collapsed ${
-            isLocallyEdited ? 'block-is-edited' : ''
-          } ${isLocallyEmpty ? 'block-is-empty' : ''}`}
+          className={cn(
+            "block-item block-excluded block-collapsed relative block w-full min-w-0 [contain:inline-size_layout_style] [scroll-margin-top:0] rounded-sm transition-colors duration-150 px-3.5 py-1.5 opacity-85 bg-sheet-bg border border-sheet-border hover:border-ink-secondary focus:outline-none focus-visible:outline-2 focus-visible:outline-prussian-blue focus-visible:outline-offset-1",
+            isLocallyEdited && "block-is-edited",
+            isLocallyEmpty && "block-is-empty border-dashed"
+          )}
           data-testid="block-item"
           data-block-id={block.id}
           data-block-type={block.type}
@@ -427,12 +462,16 @@ export const BlockItem = memo(
             </div>
           )}
 
-          <div className="block-item-meta block-collapsed-summary-bar">
-            <span className="block-order-badge" data-testid="block-order-badge">
+          <div className="block-item-meta block-collapsed-summary-bar flex items-center gap-2 w-full min-w-0 text-[11px]">
+            <span className="block-order-badge font-mono font-semibold text-ink-tertiary min-w-[32px]" data-testid="block-order-badge">
               #{block.order}
             </span>
             <span
-              className={`block-type-badge block-type-${block.type}`}
+              className={cn(
+                "block-type-badge text-xs font-semibold px-1.5 py-[1px] rounded-sm border border-sheet-border bg-surface-muted text-ink-secondary",
+                `block-type-${block.type}`,
+                block.type === 'unknown' && "border-dashed"
+              )}
               data-testid="block-type-badge"
             >
               {typeLabel}
@@ -440,17 +479,17 @@ export const BlockItem = memo(
             </span>
             {compositeTip}
             {isLocallyEdited && (
-              <span className="block-edited-badge" data-testid="block-edited-badge">
+              <span className="block-edited-badge text-[11px] font-semibold px-1.5 py-[1px] rounded-sm bg-amber-subtle text-amber-ink border border-amber-border font-mono" data-testid="block-edited-badge">
                 {BLOCK_COPY.editedBadge}
               </span>
             )}
             {isLocallyEmpty && (
-              <span className="block-empty-badge" data-testid="block-empty-badge">
+              <span className="block-empty-badge text-[11px] font-medium px-1.5 py-[1px] rounded-sm bg-surface-muted text-ink-secondary border border-sheet-border font-mono" data-testid="block-empty-badge">
                 {BLOCK_COPY.emptyBadge}
               </span>
             )}
             <span
-              className="block-status-tag status-excluded"
+              className="block-status-tag status-excluded ml-auto text-[11px] font-mono text-vermilion font-semibold"
               data-testid="block-status-tag"
             >
               {BLOCK_COPY.statusExcluded}
@@ -459,75 +498,83 @@ export const BlockItem = memo(
             {/* 折叠摘要带小图（Issue #30 设计简报 §3）：剔除折叠图片块放行高小图与 alt */}
             {block.type === 'image' && imageInfo?.src ? (
               <span
-                className="block-summary-image-preview"
+                className="block-summary-image-preview inline-flex items-center gap-2 min-w-0 flex-1 overflow-hidden"
                 data-testid="block-summary-image-preview"
               >
                 {failedCollapsedThumbSrc !== imageInfo.src && (
                   <img
                     src={imageInfo.src}
                     alt={imageInfo.alt || IMAGE_COPY.defaultImageAlt}
-                    className="block-collapsed-thumb"
+                    className="block-collapsed-thumb size-[22px] object-cover rounded-sm border border-sheet-border bg-sheet-bg shrink-0 m-0"
                     data-testid="block-collapsed-thumb"
                     loading="lazy"
                     decoding="async"
                     onError={() => setFailedCollapsedThumbSrc(imageInfo.src)}
                   />
                 )}
-                <span className="block-collapsed-alt" data-testid="block-collapsed-alt">
+                <span className="block-collapsed-alt text-xs text-ink-secondary overflow-hidden text-ellipsis whitespace-nowrap" data-testid="block-collapsed-alt">
                   {imageInfo.alt || IMAGE_COPY.defaultImageAlt}
                 </span>
               </span>
             ) : (
-              <span className="block-summary-preview" data-testid="block-summary-preview">
+              <span className="block-summary-preview flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-xs text-ink-secondary px-1" data-testid="block-summary-preview">
                 {summaryPreview}
               </span>
             )}
 
-            <div className="block-item-actions">
-              <button
+            <div className="block-item-actions flex items-center gap-1.5 ml-auto">
+              <Button
                 type="button"
-                className="block-toggle-btn block-action-restore"
+                variant="outline"
+                size="sm"
+                className="block-toggle-btn block-action-restore h-auto min-h-[26px] px-2.5 py-[3px] rounded-sm text-xs font-semibold text-prussian-blue border-prussian-blue-border bg-prussian-blue-subtle hover:bg-prussian-blue-subtle-hover hover:text-prussian-blue-strong hover:border-prussian-blue shadow-none"
                 data-testid="block-action-restore"
                 aria-label={BLOCK_COPY.restoreIncludedAria(block.order)}
                 onClick={handleToggle}
               >
                 {BLOCK_COPY.restoreIncluded}
-              </button>
+              </Button>
 
               {isLocallyEdited && (
                 isConfirmingRestore ? (
                   inlineRestoreConfirm
                 ) : (
-                  <button
+                  <Button
                     type="button"
-                    className="block-action-btn block-action-restore-content"
+                    variant="outline"
+                    size="sm"
+                    className="block-action-btn block-action-restore-content h-auto min-h-[26px] px-2.5 py-[3px] rounded-sm text-xs font-medium text-vermilion bg-vermilion-subtle border border-vermilion-border hover:bg-vermilion-subtle-hover hover:text-vermilion-strong hover:border-vermilion shadow-none"
                     data-testid="block-action-restore-content"
                     aria-label={BLOCK_COPY.restoreContentAria(block.order)}
                     onClick={handleStartRestore}
                   >
                     {BLOCK_COPY.restoreContent}
-                  </button>
+                  </Button>
                 )
               )}
 
-              <button
+              <Button
                 type="button"
-                className="block-action-btn block-action-expand"
+                variant="outline"
+                size="sm"
+                className="block-action-btn block-action-expand h-auto min-h-[26px] px-2.5 py-[3px] rounded-sm text-xs font-medium text-ink-secondary bg-surface-muted hover:bg-surface-hover hover:text-ink-primary border-sheet-border shadow-none"
                 data-testid="block-action-expand"
                 aria-label={BLOCK_COPY.expandAria(block.order)}
                 onClick={() => setIsExpanded(true)}
               >
                 {BLOCK_COPY.expand}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
-                className="block-action-btn block-action-edit"
+                variant="outline"
+                size="sm"
+                className="block-action-btn block-action-edit h-auto min-h-[26px] px-2.5 py-[3px] rounded-sm text-xs font-medium text-ink-secondary bg-surface-muted hover:bg-surface-hover hover:text-ink-primary hover:border-ink-secondary border-sheet-border shadow-none"
                 data-testid="block-action-edit"
                 aria-label={BLOCK_COPY.editAria(block.order)}
                 onClick={handleStartEdit}
               >
                 {BLOCK_COPY.edit}
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -538,45 +585,51 @@ export const BlockItem = memo(
     let contentNode: React.ReactNode;
     if (isEditing) {
       contentNode = (
-        <div className="block-editor" data-testid="block-editor">
+        <div className="block-editor flex flex-col gap-2 mt-1.5 w-full" data-testid="block-editor">
           <textarea
             ref={textareaRef}
-            className="block-editor-textarea"
+            className={cn(
+              "block-editor-textarea w-full min-h-[80px] max-h-[600px] overflow-y-auto px-3 py-2 border border-sheet-border rounded-sm bg-sheet-bg text-ink-primary font-mono leading-relaxed resize-y box-border transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-prussian-blue focus:border-prussian-blue focus:bg-surface-raised h-[var(--editor-height,auto)]",
+              editorFontClass
+            )}
             data-testid="block-editor-textarea"
-            style={{ fontSize: editorFontSize }}
             value={localValue}
             onChange={handleTextareaChange}
             aria-label={BLOCK_COPY.editAria(block.order)}
             autoFocus
           />
-          <div className="block-editor-toolbar" data-testid="block-editor-toolbar">
+          <div className="block-editor-toolbar flex items-center justify-end gap-2 pt-0.5" data-testid="block-editor-toolbar">
             {isLocallyEdited && !isConfirmingRestore && (
-              <button
+              <Button
                 type="button"
-                className="block-action-btn block-action-restore-content"
+                variant="outline"
+                size="sm"
+                className="block-action-btn block-action-restore-content h-auto min-h-[26px] px-2.5 py-[3px] rounded-sm text-xs font-medium text-vermilion bg-vermilion-subtle border border-vermilion-border hover:bg-vermilion-subtle-hover hover:text-vermilion-strong hover:border-vermilion shadow-none"
                 data-testid="block-action-restore-content"
                 aria-label={BLOCK_COPY.restoreContentAria(block.order)}
                 onClick={handleStartRestore}
               >
                 {BLOCK_COPY.restoreContent}
-              </button>
+              </Button>
             )}
             {isConfirmingRestore && inlineRestoreConfirm}
-            <button
+            <Button
               type="button"
-              className="block-action-btn block-action-finish-edit"
+              variant="default"
+              size="sm"
+              className="block-action-btn block-action-finish-edit h-auto min-h-[26px] px-2.5 py-[3px] rounded-sm text-xs font-semibold bg-prussian-blue text-ink-inverse hover:bg-prussian-blue-strong border-prussian-blue shadow-none"
               data-testid="block-action-finish-edit"
               aria-label={BLOCK_COPY.finishEditAria(block.order)}
               onClick={handleFinishEdit}
             >
               {BLOCK_COPY.finishEdit}
-            </button>
+            </Button>
           </div>
         </div>
       );
     } else if (isLocallyEmpty) {
       contentNode = (
-        <div className="block-empty-placeholder" data-testid="block-empty-placeholder">
+        <div className="block-empty-placeholder text-[13px] text-ink-tertiary italic px-1 py-2 cursor-text" data-testid="block-empty-placeholder">
           {BLOCK_COPY.emptyContent}
         </div>
       );
@@ -588,11 +641,13 @@ export const BlockItem = memo(
       <div
         ref={setRefs}
         tabIndex={-1}
-        className={`block-item ${
-          block.included ? 'block-included' : 'block-excluded block-expanded'
-        } ${isLocallyEdited ? 'block-is-edited' : ''} ${
-          isLocallyEmpty ? 'block-is-empty' : ''
-        } ${isEditing ? 'block-is-editing' : ''}`}
+        className={cn(
+          "block-item relative block w-full min-w-0 [contain:inline-size_layout_style] [scroll-margin-top:0] rounded-sm transition-colors duration-150 px-3.5 py-2.5 focus:outline-none focus-visible:outline-2 focus-visible:outline-prussian-blue focus-visible:outline-offset-1 border border-sheet-border hover:border-ink-secondary",
+          block.included ? "block-included bg-surface-raised" : "block-excluded block-expanded opacity-85 bg-sheet-bg",
+          isLocallyEdited && "block-is-edited",
+          isLocallyEmpty && "block-is-empty border-dashed",
+          isEditing && "block-is-editing border-prussian-blue shadow-[0_1px_3px_color-mix(in_srgb,var(--prussian-blue)_8%,transparent)]"
+        )}
         data-testid="block-item"
         data-block-id={block.id}
         data-block-type={block.type}
@@ -611,12 +666,16 @@ export const BlockItem = memo(
         {marginNoteMarkers}
 
         {/* 周边文字状态徽章与操作条 */}
-        <div className="block-item-meta">
-          <span className="block-order-badge" data-testid="block-order-badge">
+        <div className="block-item-meta flex items-center gap-2 text-[11px] min-w-0">
+          <span className="block-order-badge font-mono font-semibold text-ink-tertiary min-w-[32px]" data-testid="block-order-badge">
             #{block.order}
           </span>
           <span
-            className={`block-type-badge block-type-${block.type}`}
+            className={cn(
+              "block-type-badge text-xs font-semibold px-1.5 py-[1px] rounded-sm border border-sheet-border bg-surface-muted text-ink-secondary",
+              `block-type-${block.type}`,
+              block.type === 'unknown' && "border-dashed"
+            )}
             data-testid="block-type-badge"
           >
             {typeLabel}
@@ -624,54 +683,63 @@ export const BlockItem = memo(
           </span>
           {compositeTip}
           {isLocallyEdited && (
-            <span className="block-edited-badge" data-testid="block-edited-badge">
+            <span className="block-edited-badge text-[11px] font-semibold px-1.5 py-[1px] rounded-sm bg-amber-subtle text-amber-ink border border-amber-border font-mono" data-testid="block-edited-badge">
               {BLOCK_COPY.editedBadge}
             </span>
           )}
           {isLocallyEmpty && (
-            <span className="block-empty-badge" data-testid="block-empty-badge">
+            <span className="block-empty-badge text-[11px] font-medium px-1.5 py-[1px] rounded-sm bg-surface-muted text-ink-secondary border border-sheet-border font-mono" data-testid="block-empty-badge">
               {BLOCK_COPY.emptyBadge}
             </span>
           )}
           <span
-            className={`block-status-tag ${block.included ? 'status-included' : 'status-excluded'}`}
+            className={cn(
+              "block-status-tag ml-auto text-[11px] font-mono",
+              block.included ? "status-included text-ok-ink font-semibold" : "status-excluded text-vermilion font-semibold"
+            )}
             data-testid="block-status-tag"
           >
             {block.included ? BLOCK_COPY.statusIncluded : BLOCK_COPY.statusExcluded}
           </span>
 
-          <div className="block-item-actions">
+          <div className="block-item-actions flex items-center gap-1.5 ml-auto">
             {block.included ? (
-              <button
+              <Button
                 type="button"
-                className="block-toggle-btn block-action-exclude"
+                variant="outline"
+                size="sm"
+                className="block-toggle-btn block-action-exclude h-auto min-h-[26px] px-2.5 py-[3px] rounded-sm text-xs font-medium text-ink-secondary bg-surface-raised border-sheet-border hover:text-vermilion hover:border-vermilion hover:bg-vermilion-subtle shadow-none"
                 data-testid="block-action-exclude"
                 aria-label={BLOCK_COPY.excludeAria(block.order)}
                 onClick={handleToggle}
               >
                 {BLOCK_COPY.exclude}
-              </button>
+              </Button>
             ) : (
               <>
-                <button
+                <Button
                   type="button"
-                  className="block-toggle-btn block-action-restore"
+                  variant="outline"
+                  size="sm"
+                  className="block-toggle-btn block-action-restore h-auto min-h-[26px] px-2.5 py-[3px] rounded-sm text-xs font-semibold text-prussian-blue border-prussian-blue-border bg-prussian-blue-subtle hover:bg-prussian-blue-subtle-hover hover:text-prussian-blue-strong hover:border-prussian-blue shadow-none"
                   data-testid="block-action-restore"
                   aria-label={BLOCK_COPY.restoreIncludedAria(block.order)}
                   onClick={handleToggle}
                 >
                   {BLOCK_COPY.restoreIncluded}
-                </button>
+                </Button>
                 {!isEditing && (
-                  <button
+                  <Button
                     type="button"
-                    className="block-action-btn block-action-collapse"
+                    variant="outline"
+                    size="sm"
+                    className="block-action-btn block-action-collapse h-auto min-h-[26px] px-2.5 py-[3px] rounded-sm text-xs font-medium text-ink-secondary bg-surface-muted hover:bg-surface-hover hover:text-ink-primary border-sheet-border shadow-none"
                     data-testid="block-action-collapse"
                     aria-label={BLOCK_COPY.collapseAria(block.order)}
                     onClick={() => setIsExpanded(false)}
                   >
                     {BLOCK_COPY.collapse}
-                  </button>
+                  </Button>
                 )}
               </>
             )}
@@ -681,29 +749,33 @@ export const BlockItem = memo(
               isConfirmingRestore ? (
                 inlineRestoreConfirm
               ) : (
-                <button
+                <Button
                   type="button"
-                  className="block-action-btn block-action-restore-content"
+                  variant="outline"
+                  size="sm"
+                  className="block-action-btn block-action-restore-content h-auto min-h-[26px] px-2.5 py-[3px] rounded-sm text-xs font-medium text-vermilion bg-vermilion-subtle border border-vermilion-border hover:bg-vermilion-subtle-hover hover:text-vermilion-strong hover:border-vermilion shadow-none"
                   data-testid="block-action-restore-content"
                   aria-label={BLOCK_COPY.restoreContentAria(block.order)}
                   onClick={handleStartRestore}
                 >
                   {BLOCK_COPY.restoreContent}
-                </button>
+                </Button>
               )
             )}
 
             {/* 编辑入口：完成编辑按钮已在编辑区工具栏提供，此处编辑态下不重复渲染 */}
             {!isEditing && (
-              <button
+              <Button
                 type="button"
-                className="block-action-btn block-action-edit"
+                variant="outline"
+                size="sm"
+                className="block-action-btn block-action-edit h-auto min-h-[26px] px-2.5 py-[3px] rounded-sm text-xs font-medium text-ink-secondary bg-surface-muted hover:bg-surface-hover hover:text-ink-primary hover:border-ink-secondary border-sheet-border shadow-none"
                 data-testid="block-action-edit"
                 aria-label={BLOCK_COPY.editAria(block.order)}
                 onClick={handleStartEdit}
               >
                 {BLOCK_COPY.edit}
-              </button>
+              </Button>
             )}
           </div>
         </div>
@@ -712,21 +784,31 @@ export const BlockItem = memo(
         {block.notes.length > 0 && (
           <div
             id={`block-notes-${block.id}`}
-            className="block-notes"
+            className="block-notes flex flex-col gap-1.5 my-1.5"
             data-testid="block-notes"
           >
-            {block.notes.map((note, idx) => (
-              <div
-                key={`${note.code}-${idx}`}
-                id={`block-note-${block.id}-${idx}`}
-                className={`block-note note-code-${note.code}`}
-              >
-                <span className="note-badge">
-                  {NOTES_COPY.shortBadges[note.code] || NOTES_COPY.shortBadges.fallback}
-                </span>
-                <span className="note-message">{note.message}</span>
-              </div>
-            ))}
+            {block.notes.map((note, idx) => {
+              const codeStyle = NOTE_CARD_CODE_CLASSES[note.code] ?? {
+                card: 'bg-canvas-bg border-sheet-border text-ink-primary',
+                badge: 'bg-black/8 text-ink-primary',
+              };
+              return (
+                <div
+                  key={`${note.code}-${idx}`}
+                  id={`block-note-${block.id}-${idx}`}
+                  className={cn(
+                    "block-note flex items-center gap-2 text-xs px-2.5 py-1.5 rounded-sm leading-normal border",
+                    `note-code-${note.code}`,
+                    codeStyle.card
+                  )}
+                >
+                  <span className={cn("note-badge font-bold text-[11px] uppercase px-[5px] py-[1px] rounded-sm shrink-0", codeStyle.badge)}>
+                    {NOTES_COPY.shortBadges[note.code] || NOTES_COPY.shortBadges.fallback}
+                  </span>
+                  <span className="note-message flex-1 min-w-0">{note.message}</span>
+                </div>
+              );
+            })}
           </div>
         )}
 

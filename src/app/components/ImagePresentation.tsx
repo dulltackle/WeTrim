@@ -5,6 +5,8 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { IMAGE_COPY } from '../copy/image-presentation';
 import { SEARCH_IGNORE_ATTR } from '../search/text-search';
 
@@ -117,7 +119,7 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({ src, alt, onClose }
 };
 
 /**
- * 依据 Issue #30 与设计简报：
+ * 依据 Issue #30, #73 与设计简报：
  * 清洗页专用的图片呈现层：
  * - 正常时直接把图片资源的远程 URL 放进 <img src> 显示缩略图；清洗期不 fetch 图片字节
  * - 限高缩略图：保留态下图片在版心内按原比例显示，限最大高度（约半屏，min(50vh, 480px)）
@@ -187,7 +189,7 @@ export const ImagePresentation = memo<ImagePresentationProps>(
 
     return (
       <div
-        className={`image-presentation-block ${className}`}
+        className={cn("image-presentation-block relative my-2.5 max-w-full [overflow-anchor:auto]", className)}
         data-testid="image-presentation"
         data-image-status={status}
         data-is-tall={isTall ? 'true' : 'false'}
@@ -195,32 +197,34 @@ export const ImagePresentation = memo<ImagePresentationProps>(
         {/* 失败或重试中原位占位卡片 */}
         {(status === 'error' || status === 'retrying') && (
           <div
-            className="image-error-card"
+            className="image-error-card flex flex-col gap-2 px-4 py-3 bg-vermilion-subtle border border-vermilion/30 rounded-sm my-2 max-w-[480px]"
             data-testid="image-error-card"
             aria-live="polite"
             {...searchIgnoreProps}
           >
-            <div className="image-error-header">
-              <span className="image-error-badge">!</span>
-              <span className="image-error-title">{IMAGE_COPY.loadFailed}</span>
+            <div className="image-error-header flex items-center gap-2">
+              <span className="image-error-badge inline-flex items-center justify-center size-4 rounded-full bg-vermilion text-ink-inverse text-[11px] font-bold leading-none shrink-0">!</span>
+              <span className="image-error-title text-[13px] font-semibold text-vermilion">{IMAGE_COPY.loadFailed}</span>
             </div>
-            <div className="image-error-url-row">
-              {domain && <span className="image-error-domain">{domain}</span>}
-              <span className="image-error-path" title={src}>
+            <div className="image-error-url-row flex items-center flex-wrap gap-1.5 text-[11px] font-mono text-ink-secondary">
+              {domain && <span className="image-error-domain font-semibold text-ink-primary bg-black/4 px-1.5 py-px rounded-sm">{domain}</span>}
+              <span className="image-error-path text-ink-tertiary [word-break:break-all]" title={src}>
                 {path}
               </span>
             </div>
-            <div className="image-error-actions">
-              <button
+            <div className="image-error-actions flex items-center mt-0.5">
+              <Button
                 type="button"
-                className="image-retry-btn"
+                variant="outline"
+                size="sm"
+                className="image-retry-btn h-auto px-3 py-0.5 rounded-sm font-semibold text-xs text-vermilion border-vermilion bg-surface-raised hover:bg-vermilion hover:text-ink-inverse focus-visible:outline-2 focus-visible:outline-vermilion focus-visible:outline-offset-1 disabled:opacity-60 disabled:cursor-not-allowed shadow-none"
                 data-testid="image-retry-btn"
                 disabled={status === 'retrying'}
                 aria-label={IMAGE_COPY.retryAria(alt || domain)}
                 onClick={handleRetry}
               >
                 {status === 'retrying' ? IMAGE_COPY.retrying : IMAGE_COPY.retry}
-              </button>
+              </Button>
             </div>
           </div>
         )}
@@ -231,18 +235,20 @@ export const ImagePresentation = memo<ImagePresentationProps>(
           tabIndex={status === 'loaded' ? 0 : -1}
           role={status === 'loaded' ? 'button' : undefined}
           aria-label={status === 'loaded' ? IMAGE_COPY.openViewerAria(alt) : undefined}
-          className={`image-thumbnail-box ${status === 'loading' ? 'is-loading' : ''} ${
-            status === 'loaded' ? 'is-loaded' : ''
-          } ${status === 'error' || status === 'retrying' ? 'is-hidden-media' : ''} ${
-            isTall ? 'is-tall' : ''
-          }`}
+          className={cn(
+            "image-thumbnail-box relative inline-block max-w-full max-h-[min(50vh,480px)] overflow-hidden rounded-sm border border-transparent cursor-pointer transition-colors duration-150 bg-sheet-bg hover:border-ink-secondary hover:shadow-[0_2px_10px_rgba(0,0,0,0.07)] focus-visible:outline-2 focus-visible:outline-prussian-blue focus-visible:outline-offset-2 focus-visible:border-prussian-blue",
+            status === 'loading' && "is-loading min-h-[120px] min-w-[180px] bg-black/[0.02] border-dashed border-sheet-border",
+            status === 'loaded' && "is-loaded",
+            (status === 'error' || status === 'retrying') && "is-hidden-media absolute size-[1px] p-0 -m-[1px] overflow-hidden [clip:rect(0,0,0,0)] whitespace-nowrap border-0 opacity-0 pointer-events-none",
+            isTall && "is-tall block w-fit"
+          )}
           data-testid="image-thumbnail-box"
           onClick={handleOpenViewer}
           onKeyDown={handleKeyDown}
         >
           {/* 加载中无转圈占位 */}
           {status === 'loading' && (
-            <div className="image-loading-placeholder" data-testid="image-loading-placeholder" />
+            <div className="image-loading-placeholder w-full h-full min-h-[120px] min-w-[180px]" data-testid="image-loading-placeholder" />
           )}
 
           {/* 真实 <img>：原生 URL，loading="lazy" 与 decoding="async" */}
@@ -254,7 +260,10 @@ export const ImagePresentation = memo<ImagePresentationProps>(
             title={title}
             loading={loadAttempts > 0 ? 'eager' : 'lazy'}
             decoding="async"
-            className="image-thumbnail-img"
+            className={cn(
+              "image-thumbnail-img block max-w-full h-auto object-contain object-top rounded-sm !m-0",
+              isTall ? "max-h-none" : "max-h-[min(50vh,480px)]"
+            )}
             data-testid="image-thumbnail-img"
             onLoad={handleLoad}
             onError={handleError}
@@ -263,14 +272,14 @@ export const ImagePresentation = memo<ImagePresentationProps>(
           {/* 超长竖图：底部渐隐与「长图」标记 */}
           {status === 'loaded' && isTall && (
             <div
-              className="image-tall-fade"
+              className="image-tall-fade absolute bottom-0 left-0 right-0 h-[76px] flex items-end justify-center pb-2 pointer-events-none bg-gradient-to-b from-transparent via-[color-mix(in_srgb,var(--sheet-bg)_88%,transparent)] to-[var(--sheet-bg)]"
               data-testid="image-tall-fade"
               aria-hidden="true"
               {...searchIgnoreProps}
             >
-              <span className="image-tall-badge" data-testid="image-tall-badge">
+              <span className="image-tall-badge inline-flex items-center gap-1.5 text-[11px] font-semibold text-ink-primary bg-white/95 border border-sheet-border px-2.5 py-[3px] rounded-sm shadow-sm tracking-[0.02em] pointer-events-auto" data-testid="image-tall-badge">
                 <svg
-                  className="tall-badge-icon"
+                  className="tall-badge-icon text-prussian-blue shrink-0 size-3"
                   viewBox="0 0 16 16"
                   width="12"
                   height="12"

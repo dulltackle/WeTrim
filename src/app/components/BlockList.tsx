@@ -912,7 +912,7 @@ const BlockListInner = forwardRef<BlockListHandle, BlockListProps>(
 
     return (
       <div
-        className="block-list"
+        className="block-list flex flex-col gap-4 mt-2 min-w-0 w-full"
         data-testid="block-list"
         onFocus={handleFocusWithin}
         {...(tabPanelLabelledBy
@@ -920,10 +920,10 @@ const BlockListInner = forwardRef<BlockListHandle, BlockListProps>(
           : {})}
       >
         {/* 块流汇总条：展示总块数（筛选页签在固定顶栏，Issue #29 §3） */}
-        <div className="block-list-summary-bar" data-testid="block-list-summary-bar">
-          <div className="summary-title">
-            <span className="summary-heading">{BLOCK_COPY.listHeading}</span>
-            <span className="summary-total" data-testid="summary-total-blocks">
+        <div className="block-list-summary-bar flex flex-col gap-2.5 bg-surface-raised border border-sheet-border p-[14px_18px] rounded-sm min-w-0" data-testid="block-list-summary-bar">
+          <div className="summary-title flex items-center justify-between text-[13px] text-ink-primary min-w-0">
+            <span className="summary-heading font-semibold tracking-[0.02em]">{BLOCK_COPY.listHeading}</span>
+            <span className="summary-total font-mono text-xs text-ink-secondary" data-testid="summary-total-blocks">
               {BLOCK_COPY.listTotal(totalCount)}
             </span>
           </div>
@@ -932,14 +932,14 @@ const BlockListInner = forwardRef<BlockListHandle, BlockListProps>(
 
         {/* 筛选为空时的非模态说明 */}
         {visibleBlocks.length === 0 && (
-          <div className="block-list-empty-filter" data-testid="block-list-empty-filter">
+          <div className="block-list-empty-filter p-[48px_24px] text-center text-sm text-ink-secondary border border-dashed border-sheet-border rounded-sm bg-sheet-bg my-4" data-testid="block-list-empty-filter">
             {EMPTY_FILTER_MESSAGES[filter]}
           </div>
         )}
 
         {/* 正文块连续流：单栏连续展开，不做虚拟列表，不做分段延迟 */}
         {blocks.length > 0 && (
-          <div className="block-items-stream" data-testid="block-items-stream">
+          <div className="block-items-stream relative block min-w-0 w-full" data-testid="block-items-stream">
             {blockGroups.map(group => {
               const groupHidden = hiddenGroups.has(group[0].id);
               return (
