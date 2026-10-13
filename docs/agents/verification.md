@@ -16,6 +16,14 @@
 
 `chrome-headless-shell` 虽能在沙箱内启动，但不支持 `Extensions.loadUnpacked`，不能替代。
 
+## 中文字体与尺寸断言
+
+涉及中文折行、编辑区高度或阅读态与编辑态对齐的浏览器测试时，先确认环境具备中文字体。PR CI 在准备 Chrome 前安装 `fonts-noto-cjk`；本地复现 Ubuntu CI 的尺寸差异时，也应安装该字体包。缺少中文字体会改变字体回退与字宽，导致相同文字在不同环境中出现不同的折行和高度。
+
+测量前等待页面字体就绪（`await document.fonts.ready`），并固定视口、容器宽度、字号与行高。优先断言内容未裁切（如 `clientHeight >= scrollHeight - 3`）及同一环境内的相对变化，避免将本机的中文行数或像素高度作为跨环境固定值；保留测试实际需要的容差，不以扩大容差掩盖字体或测量错误。
+
+编辑器的动态高度测量顺序与阅读/编辑字体一致性遵循 [ADR-0009 的编辑器约定](../adr/0009-adopt-shadcn-ui-with-wetrim-theme.md#编辑器尺寸与字体约定)。尺寸断言失败时，同时检查中文字体回退、编辑态字体和测量前是否解除旧高度约束。
+
 ## PR 自动检查与本地复现
 
 `.github/workflows/pr-checks.yml` 在 PR 创建、更新、重开时自动运行，也可手动验证。仅有 `contents: read`，不使用 `pull_request_target`、发布凭据或发布命令，不限制提交必须位于 main 历史。

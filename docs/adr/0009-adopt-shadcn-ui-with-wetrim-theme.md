@@ -21,6 +21,12 @@ status: accepted
 - 采用 shadcn/ui、Base UI 与 Tailwind v4。Base UI 是 shadcn 当前默认底层，本项目没有既有 Radix 依赖需要兼容；参见[官方默认底层说明](https://ui.shadcn.com/docs/changelog/2026-07-base-ui-default)。
 - 完成标准包括：通用控件统一、全部应用样式完成迁移及旧规则清理；工作台、编辑态、预览、确认弹窗和飞书设置/保存界面的截图检查；键盘操作、焦点恢复、阅读位置与既有长文性能指标通过。正式交付分别运行 `verify:pr` 和 `verify:feishu`，并补跑受迁移影响的预览与弹窗专项。测试可适配新的 DOM 结构，但保留已有业务断言。
 
+## 编辑器尺寸与字体约定
+
+编辑器通过 `h-[var(--editor-height,auto)]` 等 Tailwind 工具类消费动态高度。每次测量前，必须先显式设置 `el.style.height = 'auto'`，再读取 `el.scrollHeight`；读取布局尺寸时同步触发布局重算（reflow），随后将测得的高度写回 `el.style.height` 与 `--editor-height`。仅修改 CSS 变量不足以保证测量时旧高度约束已解除，可能使编辑区高度被钉死，无法随内容增减。
+
+就地编辑沿用阅读态的字体体系：段落、标题、列表、引用和表格的文本框统一使用 `font-sans`，仅代码块（`code`）使用 `font-mono`。保持字体一致可避免切换编辑态时因字宽改变而重新折行、产生视觉跳跃。涉及中文折行和高度断言时，按[浏览器验证指南](../agents/verification.md#中文字体与尺寸断言)准备字体并测量。
+
 决策来源：2026-10-12 的 grill-with-docs 讨论，用户已确认上述目标、范围、技术选型及验收标准。本文记录已接受的方案；代码迁移的完成情况以实现与验证记录为准。
 
 实现规格：[引入 shadcn/ui 并将全局应用样式迁移至 Tailwind（#70）](https://github.com/dulltackle/WeTrim/issues/70)。
