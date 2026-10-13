@@ -291,11 +291,13 @@ export const BlockItem = memo(
     const levelText =
       block.type === 'heading' && block.headingLevel ? ` H${block.headingLevel}` : '';
 
-    // 编辑区字号随块类型贴近渲染态量级，避免标题块切入编辑态时字号骤降
-    const editorFontClass =
+    // 编辑区字号与字体随块类型贴近渲染态量级，避免切入编辑态时排版骤降或字形跳跃
+    const editorFontClass = cn(
       block.type === 'heading'
         ? HEADING_EDITOR_FONT_CLASS[block.headingLevel ?? 0] ?? 'text-[15px]'
-        : 'text-[15px]';
+        : 'text-[15px]',
+      block.type === 'code' ? 'font-mono' : 'font-sans'
+    );
 
     // 实时状态计算：在编辑态下以 localValue 为准，阅读态以 currentMarkdown 为准
     const effectiveMarkdown = isEditing ? localValue : currentMarkdown(block);
@@ -591,7 +593,7 @@ export const BlockItem = memo(
           <textarea
             ref={textareaRef}
             className={cn(
-              "block-editor-textarea w-full min-h-[80px] max-h-[600px] overflow-y-auto px-3 py-2 border border-sheet-border rounded-sm bg-sheet-bg text-ink-primary font-mono leading-[1.75] resize-y box-border transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-prussian-blue focus:border-prussian-blue focus:bg-surface-raised h-[var(--editor-height,auto)]",
+              "block-editor-textarea w-full min-h-[80px] max-h-[600px] overflow-y-auto px-3 py-2 border border-sheet-border rounded-sm bg-sheet-bg text-ink-primary leading-[1.75] resize-y box-border transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-prussian-blue focus:border-prussian-blue focus:bg-surface-raised h-[var(--editor-height,auto)]",
               editorFontClass
             )}
             data-testid="block-editor-textarea"
