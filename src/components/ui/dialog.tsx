@@ -5,7 +5,19 @@ import { X } from 'lucide-react';
 
 const Dialog = BaseDialog.Root;
 const DialogTrigger = BaseDialog.Trigger;
-const DialogPortal = BaseDialog.Portal;
+// 原生模态内的子弹窗必须留在该模态的顶层子树中，不能默认挂到 inert 的 body 分支。
+const DialogPortalContainerContext = React.createContext<
+  React.ComponentProps<typeof BaseDialog.Portal>['container']
+>(undefined);
+const DialogPortalContainer = DialogPortalContainerContext.Provider;
+const DialogPortal = React.forwardRef<
+  HTMLDivElement,
+  React.ComponentProps<typeof BaseDialog.Portal>
+>(({ container, ...props }, ref) => {
+  const inheritedContainer = React.useContext(DialogPortalContainerContext);
+  return <BaseDialog.Portal ref={ref} container={container ?? inheritedContainer} {...props} />;
+});
+DialogPortal.displayName = 'DialogPortal';
 const DialogClose = BaseDialog.Close;
 
 const DialogBackdrop = React.forwardRef<
@@ -145,6 +157,7 @@ export {
   Dialog,
   DialogTrigger,
   DialogPortal,
+  DialogPortalContainer,
   DialogClose,
   DialogBackdrop,
   DialogOverlay,

@@ -1,6 +1,9 @@
 import React from 'react';
 import { ImagePresentation } from '../components/ImagePresentation';
 
+// Preflight 不提供列表标记；正文和预览共用此排版，保留输入中的内联样式优先级。
+const ARTICLE_CONTENT_CLASS = 'block-rendered-content [&_ol]:list-decimal [&_ul]:list-disc';
+
 /**
  * 将内联 style 字符串解析为 React.CSSProperties 对象，
  * 避免 React 抛出 'The style prop expects a mapping from style properties to values, not a string' 异常。
@@ -135,7 +138,7 @@ export function renderHtmlWithImages(html: string): React.ReactNode {
   if (!html.includes('<img')) {
     return (
       <div
-        className="block-rendered-content"
+        className={ARTICLE_CONTENT_CLASS}
         data-testid="block-rendered-content"
         dangerouslySetInnerHTML={{ __html: html }}
       />
@@ -145,7 +148,7 @@ export function renderHtmlWithImages(html: string): React.ReactNode {
   if (typeof DOMParser === 'undefined') {
     return (
       <div
-        className="block-rendered-content"
+        className={ARTICLE_CONTENT_CLASS}
         data-testid="block-rendered-content"
         dangerouslySetInnerHTML={{ __html: html }}
       />
@@ -166,7 +169,7 @@ export function renderFragmentWithImages(fragment: DocumentFragment): React.Reac
     const container = (fragment.ownerDocument ?? document).createElement('div');
     container.appendChild(fragment);
     return (
-      <div className="block-rendered-content" data-testid="block-rendered-content">
+      <div className={ARTICLE_CONTENT_CLASS} data-testid="block-rendered-content">
         <div
           key="chunk-0"
           className="block-rendered-chunk"
@@ -232,7 +235,7 @@ function renderChildNodesWithImages(root: HTMLElement | DocumentFragment): React
   flushChunk();
 
   return (
-    <div className="block-rendered-content" data-testid="block-rendered-content">
+    <div className={ARTICLE_CONTENT_CLASS} data-testid="block-rendered-content">
       {nodes}
     </div>
   );

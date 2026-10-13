@@ -89,54 +89,28 @@
   --margin-track-width: 84px;
 }
 
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
+@layer base {
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background-color: var(--canvas-bg);
+    color: var(--ink-primary);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 32px 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
 
-/* 屏幕阅读器辅助专用类 */
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-
-body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-  background-color: var(--canvas-bg);
-  color: var(--ink-primary);
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 32px 16px;
-  line-height: 1.6;
-  -webkit-font-smoothing: antialiased;
-  overflow-x: hidden;
-}
-
-#root {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  min-width: 0;
-}
-
-.app-container {
-  width: 100%;
-  max-width: 840px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  min-width: 0;
+  #root {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 0;
+  }
 }
 
 @keyframes fadeIn {
@@ -149,51 +123,6 @@ body {
   from { opacity: 0; }
   to { opacity: 1; }
 }
-
-
-
-/* 主校验纸张 */
-.proof-sheet {
-  width: 100%;
-  max-width: 840px;
-  background: var(--sheet-bg);
-  border: 1px solid var(--sheet-border);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.02);
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  border-radius: 2px;
-  min-width: 0;
-}
-
-/* 套版色标条与顶端校对标 */
-.registration-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 16px;
-  border-bottom: 1px solid var(--sheet-border);
-  background-color: rgba(0, 0, 0, 0.01);
-}
-
-.cmyk-swatches {
-  display: flex;
-  gap: 4px;
-}
-
-.cmyk-swatch {
-  width: 14px;
-  height: 8px;
-  border-radius: 1px;
-}
-
-.cmyk-swatch-cyan { background-color: var(--cmyk-cyan); }
-.cmyk-swatch-magenta { background-color: var(--cmyk-magenta); }
-.cmyk-swatch-yellow { background-color: var(--cmyk-yellow); }
-.cmyk-swatch-black { background-color: var(--cmyk-black); }
-.cmyk-swatch-vermilion { background-color: var(--vermilion); }
-.cmyk-swatch-prussian { background-color: var(--prussian-blue); }
-
 
 /* 套准十字线 */
 .reg-cross {
@@ -229,52 +158,7 @@ body {
 .reg-bottom-left { bottom: -10px; left: -10px; }
 .reg-bottom-right { bottom: -10px; right: -10px; }
 
-/* 校验两栏工作布局：左侧预留批注栏，右侧正文版心 */
-.sheet-body {
-  display: flex;
-  min-height: 540px;
-  min-width: 0;
-  width: 100%;
-}
-
-/* 左侧页边批注栏 */
-.margin-track {
-  width: var(--margin-track-width);
-  flex-shrink: 0;
-  border-right: 1px dashed var(--sheet-border);
-  padding: 24px 12px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16px;
-  background-color: rgba(0, 0, 0, 0.005);
-}
-
-
-
-
-/* 右侧版心 */
-.main-bed {
-  flex: 1;
-  padding: 48px 48px 64px;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-start;
-  min-width: 0;
-}
-
 /* 渲染的三步指引 Markdown 内容 */
-.steps-container::before {
-  content: "清洗前置指引";
-  position: absolute;
-  top: -10px;
-  left: 20px;
-  background: var(--sheet-bg);
-  padding: 0 8px;
-  font-size: 11px;
-  color: var(--ink-secondary);
-  font-weight: 500;
-}
 
 .rendered-steps ol {
   padding-left: 20px;
@@ -315,9 +199,6 @@ body {
   display: block;
 }
 
-/* 底部防差错与自检证明栏 */
-
-
 /* ==========================================================================
    Issue #16 UI 状态样式：夹签、审读签条、退单与键盘可达
    ========================================================================== */
@@ -348,102 +229,6 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 
-
-
-/* 体量概览网格 */
-.volume-stats-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-  gap: 12px;
-  min-width: 0;
-  width: 100%;
-}
-
-.stat-card {
-  background: var(--surface-raised);
-  border: 1px solid var(--sheet-border);
-  padding: 12px 16px;
-  border-radius: 2px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-
-.stat-label {
-  font-size: 11px;
-  color: var(--ink-tertiary);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-}
-
-.stat-value {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--ink-primary);
-  font-variant-numeric: tabular-nums;
-}
-
-
-.action-btn {
-  appearance: none;
-  font-size: 13px;
-  font-weight: 500;
-  padding: 8px 18px;
-  border-radius: 2px;
-  cursor: pointer;
-  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
-  font-family: inherit;
-}
-
-.action-return {
-  background-color: var(--surface-raised);
-  border: 1px solid var(--sheet-border);
-  color: var(--ink-primary);
-}
-
-.action-return:hover {
-  border-color: var(--ink-secondary);
-  background-color: var(--surface-muted);
-}
-
-.action-retry {
-  background-color: var(--vermilion);
-  border: 1px solid var(--vermilion);
-  color: var(--ink-inverse);
-}
-
-.action-retry:hover {
-  background-color: var(--vermilion-strong);
-  border-color: var(--vermilion-strong);
-}
-
-.action-btn:focus-visible,
-.clip-close-btn:focus-visible {
-  outline: 2px solid var(--vermilion);
-  outline-offset: 2px;
-}
-
-/* 占位提示 */
-.content-outline-placeholder {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 18px;
-  background: rgba(0, 0, 0, 0.02);
-  border: 1px dashed var(--sheet-border);
-  border-radius: 2px;
-  font-size: 12px;
-  color: var(--ink-secondary);
-}
-
-.outline-bar {
-  width: 3px;
-  height: 16px;
-  background-color: var(--sheet-border);
-}
-
-
-
 /* ==========================================================================
    Issue #17, #73: 切块列表展示样式 (BlockList & BlockItem)
    ========================================================================== */
@@ -451,11 +236,6 @@ body {
 .block-filter-group + .block-filter-group,
 .block-filter-group > .block-item + .block-item {
   margin-top: 8px;
-}
-
-.block-item {
-  contain: inline-size layout style;
-  scroll-margin-top: 0;
 }
 
 /* 预览打开时背景清洗长列表整体跳过渲染（彻底避免 600 块参与 showModal 布局） */
@@ -495,39 +275,6 @@ body {
 ::highlight(search-hit-current) {
   background-color: var(--vermilion); /* 当前处朱红底 */
   color: var(--ink-inverse);
-}
-
-
-/* 5. 换稿通知单与候选确认 (Candidate Confirm Modal - Issue #28) */
-.candidate-stamp {
-  border-color: var(--amber);
-  color: var(--amber-ink);
-}
-
-/* 只读副本提示（ARCHITECTURE.md §4.6） */
-.read-only-note {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 16px;
-  padding: 8px 14px;
-  border: 1px solid var(--sheet-border);
-  border-radius: 2px;
-  background-color: var(--surface-raised);
-  font-size: 13px;
-  color: var(--ink-primary);
-  line-height: 1.5;
-}
-
-.read-only-note .note-badge {
-  background-color: var(--ink-secondary);
-  color: var(--ink-inverse);
-}
-
-.read-only-note-text {
-  flex: 1 1 240px;
-  min-width: 0;
 }
 
 .empty-headline {
@@ -689,8 +436,6 @@ body {
   margin: 6px 0;
 }
 
-
-
 /* 滚动锚定保障（Issue #30 简报 §6） */
 .block-rendered-content,
 .block-items-stream,
@@ -698,78 +443,11 @@ body {
   overflow-anchor: auto;
 }
 
-/* 6. 检查结果汇总预览 (Preview Modal - Issue #31) */
-.action-preview {
-  background-color: var(--prussian-blue);
-  border: 1px solid var(--prussian-blue);
-  color: var(--ink-inverse);
-}
-
-.action-preview:hover {
-  background-color: var(--prussian-blue-strong);
-  border-color: var(--prussian-blue-strong);
-}
-
-
 /* 预览长文排版优化：按分片与呈现层跳过视口外排版计算，大幅提升模态打开性能 */
 .preview-article-content .block-rendered-chunk,
 .preview-article-content .image-presentation-block {
   content-visibility: auto;
   contain-intrinsic-size: auto 300px;
-}
-
-
-/* 导出期间的图片下载进度（Issue #33） */
-.export-progress {
-  font-size: 13px;
-  color: var(--ink-secondary);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  margin-right: 12px;
-}
-
-.nav-toolbar-actions .export-progress {
-  margin-right: 4px;
-}
-
-/* 顶栏操作按钮导出样式 (Issue #32) */
-.action-export {
-  background-color: var(--vermilion);
-  color: var(--ink-inverse);
-  border-color: var(--vermilion);
-}
-
-.action-export:hover {
-  background-color: var(--vermilion-strong);
-  border-color: var(--vermilion-strong);
-}
-
-.action-export:focus-visible {
-  outline: 2px solid var(--vermilion);
-  outline-offset: 2px;
-}
-
-@media (max-width: 720px) {
-  .header-nav-toolbar {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
-  }
-  .nav-toolbar-main {
-    width: 100%;
-  }
-  .nav-toolbar-actions {
-    width: 100%;
-    justify-content: flex-end;
-  }
-  /* 窄屏批注栏收起与版心边距适配（Issue #30 设计简报 §6）；放在文件末尾，靠源码顺序而不是 !important 覆盖基础规则 */
-  .margin-track {
-    display: none;
-  }
-  .main-bed {
-    padding: 24px 16px 40px;
-  }
-
 }
 
 /* 放在文件末尾：必须排在各元素的 animation 简写之后，否则会被简写重置 */

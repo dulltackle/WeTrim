@@ -1326,11 +1326,11 @@ export const App: React.FC = () => {
           {session && viewMode === 'cleaning' && !isReadOnly && (
             <>
             <nav
-              className="header-nav-toolbar w-full flex justify-between items-center mt-2 pt-2 border-t border-dashed border-sheet-border gap-3 min-w-0"
+              className="header-nav-toolbar w-full flex justify-between items-center mt-2 pt-2 border-t border-dashed border-sheet-border gap-3 min-w-0 max-[720px]:flex-col max-[720px]:items-start max-[720px]:gap-2"
               data-testid="header-nav-toolbar"
               aria-label={WORKBENCH_COPY.navAriaLabel}
             >
-              <div className="nav-toolbar-main flex items-center gap-2 flex-wrap flex-1 min-w-0">
+              <div className="nav-toolbar-main flex items-center gap-2 flex-wrap flex-1 min-w-0 max-[720px]:w-full">
                 {/* 搜索框 */}
                 <div className="search-box relative inline-flex items-center min-w-[130px] max-w-[180px]" data-testid="search-box">
                   <input
@@ -1525,7 +1525,7 @@ export const App: React.FC = () => {
               </div>
 
               {/* 右侧操作区：检查结果、导出与回到原文看看（Issue #31 & Issue #32） */}
-              <div className="nav-toolbar-actions flex items-center gap-2 shrink-0">
+              <div className="nav-toolbar-actions flex items-center gap-2 shrink-0 max-[720px]:w-full max-[720px]:justify-end">
                 <Button
                   type="button"
                   variant="outline"
@@ -1545,7 +1545,7 @@ export const App: React.FC = () => {
                 )}
                 <Button
                   type="button"
-                  variant="default"
+                  variant="destructive"
                   size="sm"
                   className="action-btn action-export font-medium h-7 px-3 text-xs"
                   data-testid="action-export"
@@ -1621,10 +1621,10 @@ export const App: React.FC = () => {
 
           <div className="sheet-body flex min-h-[540px] min-w-0 w-full">
             {/* 左侧页边批注栏：只是批注标记的对齐轨道，真实批注由各内容块自己输出并关联到读屏 */}
-            <div className="margin-track w-[84px] shrink-0 border-r border-dashed border-sheet-border py-6 px-3 flex flex-col items-center gap-4 bg-black/[0.005]" aria-hidden="true"></div>
+            <div className="margin-track w-[84px] shrink-0 border-r border-dashed border-sheet-border py-6 px-3 flex flex-col items-center gap-4 bg-black/[0.005] max-[720px]:hidden" aria-hidden="true"></div>
 
             {/* 右侧版心 */}
-            <section className="main-bed flex-1 px-12 pt-12 pb-16 flex flex-col justify-start min-w-0 max-sm:px-4 max-sm:py-6">
+            <section className="main-bed flex-1 px-12 pt-12 pb-16 flex flex-col justify-start min-w-0 max-[720px]:px-4 max-[720px]:pt-6 max-[720px]:pb-10">
               {/* 检查结果汇总预览模态对话框（原生 <dialog> showModal() - Issue #31 & Issue #32） */}
               {session && viewMode === 'cleaning' && !isReadOnly && (
                 <PreviewDialog
@@ -1848,7 +1848,7 @@ export const App: React.FC = () => {
 
                       <div className="steps-container bg-surface-raised border border-sheet-border rounded-[3px] p-6 sm:px-7 relative before:content-['清洗前置指引'] before:absolute before:-top-2.5 before:left-5 before:bg-sheet-bg before:px-2 before:text-[11px] before:text-ink-secondary before:font-medium">
                         <div
-                          className="rendered-steps"
+                          className="rendered-steps [&_ol]:list-decimal"
                           dangerouslySetInnerHTML={{ __html: renderedStepsHtml }}
                         />
                       </div>

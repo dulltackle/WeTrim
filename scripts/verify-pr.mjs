@@ -17,6 +17,7 @@ const stages = [
   ['核心 #27', 'npm', ['run', 'verify:issue27']],
   ['核心 #38', 'npm', ['run', 'verify:issue38']],
   ['核心 #39', 'npm', ['run', 'verify:issue39']],
+  ['样式迁移与预览内原图', 'node', ['test/verify-ui-migration.mjs']],
 ];
 const results = stages.map(([name]) => ({ name, status: '未执行' }));
 const report = () => {

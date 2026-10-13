@@ -722,6 +722,9 @@ async function run() {
 
     await page.keyboard.press('Escape');
     await page.waitForFunction(() => !document.querySelector('[data-testid="preview-dialog"]')?.hasAttribute('open'));
+    // 关闭提交后的焦点与滚动恢复是异步的；完成后再设置下一场景的深处阅读位置。
+    await page.waitForFunction(() => document.activeElement?.getAttribute('data-testid') === 'action-preview');
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 
     // --------------------------------------------------------------------------
     // Test 9: 返回清洗后滚动位置与编辑状态不丢失（沿用 Test 8 的 600 块长文）

@@ -9,6 +9,7 @@ import { PREVIEW_COPY } from '../copy/preview';
 import { EXPORT_COPY } from '../copy/export';
 import { CloseIcon } from './CloseIcon';
 import { Button } from '@/components/ui/button';
+import { DialogPortalContainer } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 
 export interface DegradationItem {
@@ -248,7 +249,9 @@ export const PreviewDialog: React.FC<PreviewDialogProps> = ({
     degradationSummary,
   } = cachedData;
 
+  // 不在原生模态上隔离 layout：其内部 Portal 的 fixed 原图查看器需要以视口为包含块。
   return (
+    <DialogPortalContainer value={dialogRef}>
     <dialog
       ref={dialogRef}
       className={cn(
@@ -256,7 +259,7 @@ export const PreviewDialog: React.FC<PreviewDialogProps> = ({
         'w-[min(840px,calc(100vw-32px))] h-[min(92vh,960px)] max-h-[calc(100vh-32px)]',
         'bg-sheet-bg text-ink-primary border border-sheet-border rounded-[3px]',
         'shadow-[0_16px_48px_rgba(0,0,0,0.18),0_2px_8px_rgba(0,0,0,0.08)]',
-        'overflow-hidden flex flex-col [contain:layout] p-0 focus:outline-none',
+        'overflow-hidden flex flex-col p-0 focus:outline-none',
         'backdrop:bg-ink-primary/50 backdrop:backdrop-blur-[1.5px]'
       )}
       data-testid="preview-dialog"
@@ -536,5 +539,6 @@ export const PreviewDialog: React.FC<PreviewDialogProps> = ({
             </div>
           </div>
     </dialog>
+    </DialogPortalContainer>
   );
 };

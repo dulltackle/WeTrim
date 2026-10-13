@@ -1,7 +1,6 @@
 import React, {
   memo,
   useCallback,
-  useLayoutEffect,
   useRef,
   useState,
 } from 'react';
@@ -58,9 +57,10 @@ interface ImageViewerModalProps {
   src: string;
   alt: string;
   onClose: () => void;
+  returnFocus: React.RefObject<HTMLDivElement | null>;
 }
 
-const ImageViewerModal: React.FC<ImageViewerModalProps> = ({ src, alt, onClose }) => {
+const ImageViewerModal: React.FC<ImageViewerModalProps> = ({ src, alt, onClose, returnFocus }) => {
   const closeBtnRef = useRef<HTMLButtonElement | null>(null);
 
   return (
@@ -75,12 +75,14 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({ src, alt, onClose }
               className={popupProps.className}
               onCancel={(e) => {
                 e.preventDefault();
+                e.stopPropagation();
                 onClose();
               }}
               {...searchIgnoreProps}
             />
           )}
           initialFocus={closeBtnRef}
+          finalFocus={returnFocus}
           className={cn(
             'image-viewer-overlay fixed inset-0 z-50 w-full h-full max-w-none max-h-none m-0 p-0 border-0',
             'bg-ink-primary/88 text-ink-inverse flex flex-col items-center justify-between',
@@ -188,7 +190,6 @@ export const ImagePresentation = memo<ImagePresentationProps>(
     // 关闭全图浮层并恢复焦点至缩略图
     const handleCloseViewer = useCallback(() => {
       setViewerOpen(false);
-      triggerContainerRef.current?.focus();
     }, []);
 
     const handleKeyDown = useCallback(
@@ -314,7 +315,7 @@ export const ImagePresentation = memo<ImagePresentationProps>(
 
         {/* 看原图浮层 */}
         {viewerOpen && (
-          <ImageViewerModal src={src} alt={alt} onClose={handleCloseViewer} />
+          <ImageViewerModal src={src} alt={alt} onClose={handleCloseViewer} returnFocus={triggerContainerRef} />
         )}
       </div>
     );
