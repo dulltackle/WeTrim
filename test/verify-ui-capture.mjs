@@ -10,7 +10,7 @@ if(!Number.isInteger(ticket)||ticket<71||ticket>77)throw new Error('请通过 --
 const checkout=process.cwd(),baseline=option('--baseline');
 const target=baseline?path.resolve(baseline):checkout;
 const commit=execFileSync('git',['rev-parse','HEAD'],{cwd:checkout,encoding:'utf8'}).trim();
-const evidence={ticket,scenario:Number(scenario)||null,dirty:!baseline && execFileSync('git',['status','--porcelain'],{cwd:checkout,encoding:'utf8'}).trim().length>0,phase:baseline?'迁移前':'迁移后',commit:baseline?(option('--baseline-ref')||'外部基线，请结合调用方记录核对版本'):commit,buildFiles:fs.readdirSync(path.join(target,'dist/assets')).filter(f=>/\.(css|js)$/.test(f))};
+const evidence={ticket,scenario:Number(scenario)||null,keyboardFocus:args.includes('--keyboard-focus'),dirty:!baseline && execFileSync('git',['status','--porcelain'],{cwd:checkout,encoding:'utf8'}).trim().length>0,phase:baseline?'迁移前':'迁移后',commit:baseline?(option('--baseline-ref')||'外部基线，请结合调用方记录核对版本'):commit,buildFiles:fs.readdirSync(path.join(target,'dist/assets')).filter(f=>/\.(css|js)$/.test(f))};
 const output=path.resolve(process.env.WETRIM_ARTIFACTS||'artifacts/ui-migration',`${evidence.phase==='迁移前'?'before':'after'}-${ticket}-${Date.now()}`);
 fs.mkdirSync(output,{recursive:true});
 let source=fs.readFileSync(path.join(checkout,scenario ? `test/verify-issue${Number(scenario)}.mjs` : `scripts/capture-issue${ticket}.mjs`),'utf8')
@@ -58,6 +58,7 @@ async function launchChrome(options){
     await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
     await Promise.all(document.getAnimations().filter(animation=>animation.effect?.getTiming().iterations!==Infinity).map(animation=>animation.finished.catch(()=>{})));
    });
+   if(captureEvidence.keyboardFocus && await page.$('dialog[open]')) await page.keyboard.press('Tab');
    const state=await page.evaluate(()=>({csp:window.__captureCsp||[],width:innerWidth,scrollWidth:document.documentElement.scrollWidth,status:[...document.querySelectorAll('[role=status]')].map(e=>e.textContent),focus:document.activeElement?.getAttribute('data-testid')||document.activeElement?.id||document.activeElement?.tagName}));
    const result=await shot(options);captureWrite(options.path+'.json',JSON.stringify({...captureEvidence,state,errors},null,2));
    if(state.csp.length||errors.length||state.scrollWidth>state.width)throw new Error('截图场景存在 CSP、页面错误或横向溢出，见截图旁的 JSON');
