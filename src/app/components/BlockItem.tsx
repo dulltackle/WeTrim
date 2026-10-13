@@ -179,8 +179,10 @@ export const BlockItem = memo(
     useLayoutEffect(() => {
       const el = textareaRef.current;
       if (isEditing && el) {
-        el.style.setProperty('--editor-height', 'auto');
-        el.style.setProperty('--editor-height', `${el.scrollHeight}px`);
+        el.style.height = 'auto';
+        const scrollH = el.scrollHeight;
+        el.style.height = `${scrollH}px`;
+        el.style.setProperty('--editor-height', `${scrollH}px`);
       }
     }, [isEditing, localValue, isExpanded]);
 
@@ -589,7 +591,7 @@ export const BlockItem = memo(
           <textarea
             ref={textareaRef}
             className={cn(
-              "block-editor-textarea w-full min-h-[80px] max-h-[600px] overflow-y-auto px-3 py-2 border border-sheet-border rounded-sm bg-sheet-bg text-ink-primary font-mono leading-relaxed resize-y box-border transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-prussian-blue focus:border-prussian-blue focus:bg-surface-raised h-[var(--editor-height,auto)]",
+              "block-editor-textarea w-full min-h-[80px] max-h-[600px] overflow-y-auto px-3 py-2 border border-sheet-border rounded-sm bg-sheet-bg text-ink-primary font-mono leading-[1.75] resize-y box-border transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-prussian-blue focus:border-prussian-blue focus:bg-surface-raised h-[var(--editor-height,auto)]",
               editorFontClass
             )}
             data-testid="block-editor-textarea"
