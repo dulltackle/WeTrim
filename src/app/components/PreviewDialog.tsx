@@ -3,7 +3,7 @@ import type { ArticleSnapshot, Block } from '../../shared/types';
 import { currentMarkdown } from '../../shared/types';
 import { buildFrontMatter, parseFrontMatterDate, stripBoundaryEmptyLines, type ResultFile } from '../export/build-markdown';
 import { renderMarkdownToFragment } from '../preview/render';
-import { renderFragmentWithImages } from '../preview/html-to-react';
+import { renderFragmentWithImages, ARTICLE_TYPOGRAPHY_CLASSES } from '../preview/html-to-react';
 import { truncateGraphemes } from '../../shared/grapheme';
 import { PREVIEW_COPY } from '../copy/preview';
 import { EXPORT_COPY } from '../copy/export';
@@ -475,7 +475,7 @@ export const PreviewDialog: React.FC<PreviewDialogProps> = ({
                   </div>
 
                   {/* 正文 Markdown 渲染 */}
-                  <div className="preview-article-content [contain:layout]" data-testid="preview-article-content">
+                  <div className={`${ARTICLE_TYPOGRAPHY_CLASSES} preview-article-content [contain:layout]`} data-testid="preview-article-content">
                     {renderedBodyNode}
                   </div>
                 </div>

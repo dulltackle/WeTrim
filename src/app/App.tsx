@@ -1602,7 +1602,7 @@ export const App: React.FC = () => {
         )}
 
         {/* 主校样纸张 */}
-        <main className="proof-sheet w-full max-w-[840px] bg-sheet-bg border border-sheet-border shadow-[0_4px_20px_rgba(0,0,0,0.04),0_1px_3px_rgba(0,0,0,0.02)] relative flex flex-col rounded-[2px] min-w-0">
+        <main className="proof-sheet [overflow-anchor:auto] w-full max-w-[840px] bg-sheet-bg border border-sheet-border shadow-[0_4px_20px_rgba(0,0,0,0.04),0_1px_3px_rgba(0,0,0,0.02)] relative flex flex-col rounded-[2px] min-w-0">
           {/* 四角套准十字线 */}
           <div className={`reg-cross reg-top-left ${REGISTRATION_CROSS_CLASSES} -top-2.5 -left-2.5`} aria-hidden="true"></div>
           <div className={`reg-cross reg-top-right ${REGISTRATION_CROSS_CLASSES} -top-2.5 -right-2.5`} aria-hidden="true"></div>

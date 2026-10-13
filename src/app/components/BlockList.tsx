@@ -10,6 +10,8 @@ import React, {
 } from 'react';
 import type { Block } from '../../shared/types';
 import { BlockItem } from './BlockItem';
+import { ARTICLE_TYPOGRAPHY_CLASSES } from '../preview/html-to-react';
+import { FILTER_VISIBILITY_CLASSES } from './block-visibility';
 import { useAppContext } from '../state/session-context';
 import {
   SEARCH_IGNORE_ATTR,
@@ -205,7 +207,7 @@ const BlockListInner = forwardRef<BlockListHandle, BlockListProps>(
     // 固定分组只减少筛选时的布局失效范围，所有块仍一次性挂载。
     const blockGroups = useMemo(() => {
       const groups: Block[][] = [];
-      for (let i = 0; i < blocks.length; i += 32) groups.push(blocks.slice(i, i + 32));
+      for (let i = 0; i < blocks.length; i += 4) groups.push(blocks.slice(i, i + 4));
       return groups;
     }, [blocks]);
     const hiddenGroups = useMemo(() => new Set(blockGroups.filter(group => group.every(block =>
@@ -226,8 +228,8 @@ const BlockListInner = forwardRef<BlockListHandle, BlockListProps>(
       for (const [id, el] of itemRefs.current) {
         if (!visibleIds.has(id)) flushRegistryRef.current.get(id)?.(true);
         const hidden = !visibleIds.has(id) && !hiddenGroups.has(id);
-        if (el.hidden !== hidden) {
-          el.hidden = hidden;
+        if (el.hasAttribute('data-filter-hidden') !== hidden) {
+          el.toggleAttribute('data-filter-hidden', hidden);
           if (hidden) {
             el.setAttribute('aria-hidden', 'true');
             el.removeAttribute('tabindex');
@@ -270,6 +272,8 @@ const BlockListInner = forwardRef<BlockListHandle, BlockListProps>(
             + (parseFloat(getComputedStyle(el).scrollMarginTop) || 0);
         }
         const rect = el.getBoundingClientRect();
+        // 单栏块流按文档顺序连续排列，越过视口底边后无需测量剩余数百块。
+        if (rect.top >= vBottom) break;
         if (rect.bottom > vTop && rect.top < vBottom) {
           visibleIds.push(b.id);
         }
@@ -939,11 +943,11 @@ const BlockListInner = forwardRef<BlockListHandle, BlockListProps>(
 
         {/* 正文块连续流：单栏连续展开，不做虚拟列表，不做分段延迟 */}
         {blocks.length > 0 && (
-          <div className="block-items-stream relative block min-w-0 w-full" data-testid="block-items-stream">
+          <div className={`block-items-stream [overflow-anchor:auto] relative block min-w-0 w-full ${ARTICLE_TYPOGRAPHY_CLASSES}`} data-testid="block-items-stream">
             {blockGroups.map(group => {
               const groupHidden = hiddenGroups.has(group[0].id);
               return (
-                <div className="block-filter-group" key={group[0].id} hidden={groupHidden}
+                <div className={`block-filter-group block w-full [contain:layout_style] [&+.block-filter-group]:mt-2 [&>.block-item+.block-item]:mt-2 ${FILTER_VISIBILITY_CLASSES}`} key={group[0].id} data-filter-hidden={groupHidden || undefined}
                   aria-hidden={groupHidden || undefined}>
                   {group.map((b) => (
                     <BlockItem

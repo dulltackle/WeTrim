@@ -82,7 +82,7 @@ try {
         await api.processCaptureResult(capture);
         await settle(() => q('block-action-edit'));
         const load = performance.now() - start;
-        const count = [...document.querySelectorAll('[data-testid="block-item"]')].filter(el=>!el.closest('[hidden]')).length;
+        const count = [...document.querySelectorAll('[data-testid="block-item"]')].filter(el=>!el.closest('[data-filter-hidden]')).length;
         const warning = !!q('long-article-note');
         await api.sessionSaveQueue.flush();
         const toggle = await measure(() => q('block-action-exclude').click(), () => q('block-item').dataset.blockIncluded === 'false');
@@ -101,16 +101,16 @@ try {
         // 保留与剔除均有实际内容，覆盖重新挂载整篇的回程。
         q('block-action-exclude').click();
         await settle(() => q('block-item').dataset.blockIncluded === 'false');
-        const filterOut = await measure(() => q('filter-tab-excluded').click(), () => [...document.querySelectorAll('[data-testid="block-item"]')].filter(el=>!el.closest('[hidden]')).length === 1);
-        const filterAll = await measure(() => q('filter-tab-all').click(), () => [...document.querySelectorAll('[data-testid="block-item"]')].filter(el=>!el.closest('[hidden]')).length === count);
+        const filterOut = await measure(() => q('filter-tab-excluded').click(), () => [...document.querySelectorAll('[data-testid="block-item"]')].filter(el=>!el.closest('[data-filter-hidden]')).length === 1);
+        const filterAll = await measure(() => q('filter-tab-all').click(), () => [...document.querySelectorAll('[data-testid="block-item"]')].filter(el=>!el.closest('[data-filter-hidden]')).length === count);
         // 另测分散剔除，避免只覆盖能整组隐藏的单个剔除块场景。
         const current = api.getState().session;
         const mixed = { ...current, revision: current.revision + 1, snapshot: { ...current.snapshot,
           blocks: current.snapshot.blocks.map((block, i) => ({ ...block, included: i % 7 !== 0 })) } };
         api.dispatch({type:'SET_NEW_SESSION',payload:mixed});
         await settle(() => api.getState().session.revision === mixed.revision);
-        const filterMixedOut = await measure(() => q('filter-tab-excluded').click(), () => [...document.querySelectorAll('[data-testid="block-item"]')].filter(el=>!el.closest('[hidden]')).length === Math.ceil(count/7));
-        const filterMixedAll = await measure(() => q('filter-tab-all').click(), () => [...document.querySelectorAll('[data-testid="block-item"]')].filter(el=>!el.closest('[hidden]')).length === count);
+        const filterMixedOut = await measure(() => q('filter-tab-excluded').click(), () => [...document.querySelectorAll('[data-testid="block-item"]')].filter(el=>!el.closest('[data-filter-hidden]')).length === Math.ceil(count/7));
+        const filterMixedAll = await measure(() => q('filter-tab-all').click(), () => [...document.querySelectorAll('[data-testid="block-item"]')].filter(el=>!el.closest('[data-filter-hidden]')).length === count);
         await api.sessionSaveQueue.flush();
         const session = { ...api.getState().session, revision: api.getState().session.revision + 1,
           savedAt: new Date().toISOString() };
