@@ -10,7 +10,6 @@ import React, {
 } from 'react';
 import type { Block } from '../../shared/types';
 import { BlockItem, type BlockItemProps } from './BlockItem';
-import { ARTICLE_TYPOGRAPHY_CLASSES } from '../preview/html-to-react';
 import { FILTER_VISIBILITY_CLASSES } from './block-visibility';
 import type { SessionAction } from '../state/session-reducer';
 import {
@@ -952,7 +951,7 @@ const BlockListInner = forwardRef<BlockListHandle, BlockListProps>(
 
         {/* 正文块连续流：单栏连续展开，不做虚拟列表，不做分段延迟 */}
         {blocks.length > 0 && (
-          <div className={`block-items-stream [overflow-anchor:auto] relative block min-w-0 w-full ${ARTICLE_TYPOGRAPHY_CLASSES}`} data-testid="block-items-stream">
+          <div className="block-items-stream [overflow-anchor:auto] relative block min-w-0 w-full" data-testid="block-items-stream">
             {blocks.map(block => <BlockFlowItem key={block.id} block={block}
               isEditing={editingBlockId === block.id} isTempExpanded={tempExpandedBlockId === block.id}
               imageSelection={imageSelection?.blockId === block.id ? imageSelection : undefined}

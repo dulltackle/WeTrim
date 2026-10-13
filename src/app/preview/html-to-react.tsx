@@ -1,18 +1,40 @@
 import React from 'react';
 import { ImagePresentation } from '../components/ImagePresentation';
 
-// Preflight 不提供列表标记；正文和预览共用此排版，保留输入中的内联样式优先级。
-const ARTICLE_CONTENT_CLASS = 'block-rendered-content text-ink-primary text-[15px] leading-[1.75] break-words [overflow-wrap:break-word] min-w-0 cursor-text [overflow-anchor:auto] [&_a]:cursor-text [&_pre]:cursor-text [&_code]:cursor-text [&>*:first-child]:mt-0 [&>*:last-child]:mb-0';
+// 排版直接附到净化后的呈现节点，避免全文后代选择器扫描；这些类不会进入 Markdown 或保存正文。
+const ARTICLE_CONTENT_CLASS = 'block-rendered-content text-ink-primary text-[15px] leading-[1.75] break-words [overflow-wrap:break-word] min-w-0 cursor-text [overflow-anchor:auto] [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded-[2px] [&_img]:block [&_img]:my-1.5';
 
-// 在正文父容器上应用一次后代排版，避免每个内容块重复数百个工具类 token。
-export const ARTICLE_TYPOGRAPHY_CLASSES = [
-  '[&_.block-rendered-content_p]:my-1.5 [&_.block-rendered-content_h1]:text-[22px] [&_.block-rendered-content_h1]:font-bold [&_.block-rendered-content_h1]:leading-[1.4] [&_.block-rendered-content_h1]:mt-2.5 [&_.block-rendered-content_h1]:mb-1.5 [&_.block-rendered-content_h2]:text-[19px] [&_.block-rendered-content_h2]:font-semibold [&_.block-rendered-content_h2]:leading-[1.4] [&_.block-rendered-content_h2]:mt-2 [&_.block-rendered-content_h2]:mb-1.5',
-  '[&_.block-rendered-content_h3]:text-[17px] [&_.block-rendered-content_h3]:font-semibold [&_.block-rendered-content_h3]:leading-[1.4] [&_.block-rendered-content_h3]:mt-2 [&_.block-rendered-content_h3]:mb-1 [&_.block-rendered-content_:is(h4,h5,h6)]:text-[15px] [&_.block-rendered-content_:is(h4,h5,h6)]:font-semibold [&_.block-rendered-content_:is(h4,h5,h6)]:leading-[1.4] [&_.block-rendered-content_:is(h4,h5,h6)]:mt-1.5 [&_.block-rendered-content_:is(h4,h5,h6)]:mb-1',
-  '[&_.block-rendered-content_ul]:list-disc [&_.block-rendered-content_ol]:list-decimal [&_.block-rendered-content_:is(ul,ol)]:pl-6 [&_.block-rendered-content_:is(ul,ol)]:my-1.5 [&_.block-rendered-content_li]:mb-1 [&_.block-rendered-content_blockquote]:border-l-[3px] [&_.block-rendered-content_blockquote]:border-sheet-border [&_.block-rendered-content_blockquote]:py-2 [&_.block-rendered-content_blockquote]:px-4 [&_.block-rendered-content_blockquote]:bg-sheet-bg-alt [&_.block-rendered-content_blockquote]:text-ink-secondary [&_.block-rendered-content_blockquote]:my-2 [&_.block-rendered-content_blockquote]:rounded-[2px]',
-  '[&_.block-rendered-content_table]:w-full [&_.block-rendered-content_table]:border-collapse [&_.block-rendered-content_table]:text-[13px] [&_.block-rendered-content_table]:leading-[1.5] [&_.block-rendered-content_table]:my-2 [&_.block-rendered-content_table]:overflow-x-auto [&_.block-rendered-content_table]:block [&_.block-rendered-content_:is(th,td)]:border [&_.block-rendered-content_:is(th,td)]:border-sheet-border [&_.block-rendered-content_:is(th,td)]:py-1.5 [&_.block-rendered-content_:is(th,td)]:px-2.5 [&_.block-rendered-content_:is(th,td)]:text-left [&_.block-rendered-content_th]:bg-surface-muted [&_.block-rendered-content_th]:font-semibold',
-  '[&_.block-rendered-content_pre]:bg-surface-muted [&_.block-rendered-content_pre]:border [&_.block-rendered-content_pre]:border-sheet-border [&_.block-rendered-content_pre]:py-2.5 [&_.block-rendered-content_pre]:px-3.5 [&_.block-rendered-content_pre]:rounded-[2px] [&_.block-rendered-content_pre]:overflow-x-auto [&_.block-rendered-content_pre]:font-mono [&_.block-rendered-content_pre]:text-[13px] [&_.block-rendered-content_pre]:leading-[1.5] [&_.block-rendered-content_pre]:my-2 [&_.block-rendered-content_code]:font-mono [&_.block-rendered-content_code]:text-[13px] [&_.block-rendered-content_code]:bg-black/[0.04] [&_.block-rendered-content_code]:py-px [&_.block-rendered-content_code]:px-1 [&_.block-rendered-content_code]:rounded-[2px] [&_.block-rendered-content_pre_code]:bg-transparent [&_.block-rendered-content_pre_code]:p-0',
-  '[&_.block-rendered-content_hr]:border-0 [&_.block-rendered-content_hr]:border-t [&_.block-rendered-content_hr]:border-sheet-border [&_.block-rendered-content_hr]:my-3 [&_.block-rendered-content_:where(img)]:max-w-full [&_.block-rendered-content_:where(img)]:h-auto [&_.block-rendered-content_:where(img)]:rounded-[2px] [&_.block-rendered-content_:where(img)]:block [&_.block-rendered-content_:where(img)]:my-1.5',
-].join(' ');
+const ARTICLE_TAG_CLASSES: Record<string, string> = {
+  p: 'my-1.5',
+  h1: 'text-[22px] font-bold leading-[1.4] mt-2.5 mb-1.5',
+  h2: 'text-[19px] font-semibold leading-[1.4] mt-2 mb-1.5',
+  h3: 'text-[17px] font-semibold leading-[1.4] mt-2 mb-1',
+  h4: 'text-[15px] font-semibold leading-[1.4] mt-1.5 mb-1',
+  h5: 'text-[15px] font-semibold leading-[1.4] mt-1.5 mb-1',
+  h6: 'text-[15px] font-semibold leading-[1.4] mt-1.5 mb-1',
+  ul: 'list-disc pl-6 my-1.5',
+  ol: 'list-decimal pl-6 my-1.5',
+  li: 'mb-1',
+  blockquote: 'border-l-[3px] border-sheet-border py-2 px-4 bg-sheet-bg-alt text-ink-secondary my-2 rounded-[2px]',
+  table: 'w-full border-collapse text-[13px] leading-[1.5] my-2 overflow-x-auto block',
+  th: 'border border-sheet-border py-1.5 px-2.5 text-left bg-surface-muted font-semibold',
+  td: 'border border-sheet-border py-1.5 px-2.5 text-left',
+  pre: 'bg-surface-muted border border-sheet-border py-2.5 px-3.5 rounded-[2px] overflow-x-auto font-mono text-[13px] leading-[1.5] my-2 cursor-text',
+  code: 'font-mono text-[13px] bg-black/[0.04] py-px px-1 rounded-[2px] cursor-text',
+  hr: 'border-0 border-t border-sheet-border my-3',
+  a: 'cursor-text',
+};
+const ARTICLE_TAG_SELECTOR = Object.keys(ARTICLE_TAG_CLASSES).join(',');
+
+function decorateArticleMarkup(root: HTMLElement | DocumentFragment): void {
+  for (const el of root.querySelectorAll(ARTICLE_TAG_SELECTOR)) {
+    const tag = el.tagName.toLowerCase();
+    const classes = tag === 'code' && el.closest('pre')
+      ? 'font-mono text-[13px] bg-transparent p-0 rounded-[2px] cursor-text'
+      : ARTICLE_TAG_CLASSES[tag];
+    el.setAttribute('class', [el.getAttribute('class'), classes].filter(Boolean).join(' '));
+  }
+}
 
 /**
  * 将内联 style 字符串解析为 React.CSSProperties 对象，
@@ -139,21 +161,10 @@ function domNodeToReact(node: Node, key: string): React.ReactNode {
  * 依据 Issue #30：
  * 清洗页专用的渲染层。保持 renderMarkdown 方言输出不变的前提下，
  * 将含图片的 HTML 转换为带 ImagePresentation 呈现层的 React 虚拟 DOM。
- * 不含图片的块快速走 dangerouslySetInnerHTML 保证极致性能。
+ * 新调用优先直接传净化片段，避免 HTML 序列化与重复解析。
  */
 export function renderHtmlWithImages(html: string): React.ReactNode {
   if (!html) return null;
-
-  // 不含图片的普通文本块：直接走原生 innerHTML 快速路径
-  if (!html.includes('<img')) {
-    return (
-      <div
-        className={ARTICLE_CONTENT_CLASS}
-        data-testid="block-rendered-content"
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
-    );
-  }
 
   if (typeof DOMParser === 'undefined') {
     return (
@@ -167,17 +178,21 @@ export function renderHtmlWithImages(html: string): React.ReactNode {
 
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, 'text/html');
+  decorateArticleMarkup(doc.body);
   return renderChildNodesWithImages(doc.body);
 }
 
 /**
- * 整篇预览用：直接消费 renderMarkdownToFragment 的净化结果，不再重复解析 HTML。
+ * 正文和预览共用：直接消费 renderMarkdownToFragment 的净化结果，不再重复解析 HTML。
+ * chunked=false 用于单个内容块；预览保留不含图分片，交由浏览器缓存绘制。
  */
-export function renderFragmentWithImages(fragment: DocumentFragment): React.ReactNode {
+export function renderFragmentWithImages(fragment: DocumentFragment, chunked = true): React.ReactNode {
   if (!fragment.firstChild) return null;
+  decorateArticleMarkup(fragment);
   if (!fragment.querySelector('img')) {
     const container = (fragment.ownerDocument ?? document).createElement('div');
     container.appendChild(fragment);
+    if (!chunked) return <div className={ARTICLE_CONTENT_CLASS} data-testid="block-rendered-content" dangerouslySetInnerHTML={{ __html: container.innerHTML }} />;
     return (
       <div className={ARTICLE_CONTENT_CLASS} data-testid="block-rendered-content">
         <div

@@ -117,6 +117,10 @@ try {
   assert(markdown.includes('3.  步骤三') || /3\.\s+步骤三/.test(markdown), '列表编号必须保留在 Markdown 中');
   assert(markdown.includes('https://example.test/illustration.svg'), '原图地址必须保留');
   assert(!markdown.includes('block-rendered-content'), '应用排版不能写入 Markdown');
+  assert(!markdown.includes('my-1.5') && !markdown.includes('list-decimal'), '呈现节点的排版工具类不能写入 Markdown');
+  assert(await page.evaluate(() => window.__wetrim.getState().session.snapshot.blocks.every(block =>
+    !block.originalHtml.includes('my-1.5') && !block.originalHtml.includes('list-decimal')
+  )), '呈现排版不能改写原始文章块');
   await page.keyboard.press('Escape');
   await page.waitForSelector(preview, { hidden: true });
   await page.waitForFunction(() => document.activeElement?.getAttribute('data-testid') === 'action-preview');

@@ -12,8 +12,8 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { currentMarkdown, type Block } from '../../shared/types';
 import { truncateGraphemes } from '../../shared/grapheme';
-import { renderMarkdown } from '../preview/render';
-import { renderHtmlWithImages } from '../preview/html-to-react';
+import { renderMarkdownToFragment } from '../preview/render';
+import { renderFragmentWithImages } from '../preview/html-to-react';
 import { IMAGE_COPY, NOTES_COPY } from '../copy/image-presentation';
 import { BLOCK_COPY } from '../copy/block';
 import { SEARCH_IGNORE_ATTR } from '../search/text-search';
@@ -313,13 +313,13 @@ export const BlockItem = memo(
 
     const isCollapsed = !block.included && !isExpanded && !isTempExpanded;
 
-    // 展开态渲染内容缓存：顶层 Hook 调用，折叠态跳过渲染，非折叠态缓存 marked 解析结果
-    const renderedHtml = useMemo(
-      () => (!isLocallyEmpty && !isCollapsed ? renderMarkdown(effectiveMarkdown) : ''),
+    // 一次净化直接生成呈现片段，避免正文字符串再次解析；折叠块仍跳过排版。
+    const renderedNode = useMemo(
+      () => (!isLocallyEmpty && !isCollapsed
+        ? renderFragmentWithImages(renderMarkdownToFragment(effectiveMarkdown), false)
+        : null),
       [isLocallyEmpty, isCollapsed, effectiveMarkdown]
     );
-    // 含图片时要经 DOMParser 转成 React 树，同样按渲染结果缓存
-    const renderedNode = useMemo(() => renderHtmlWithImages(renderedHtml), [renderedHtml]);
 
     // 图片块元数据解析：折叠态显示行高小缩略图与 alt 文案
     const imageInfo = useMemo(() => {

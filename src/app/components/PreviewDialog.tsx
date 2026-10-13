@@ -3,7 +3,7 @@ import type { ArticleSnapshot, Block } from '../../shared/types';
 import { currentMarkdown } from '../../shared/types';
 import { buildFrontMatter, parseFrontMatterDate, stripBoundaryEmptyLines, type ResultFile } from '../export/build-markdown';
 import { renderMarkdownToFragment } from '../preview/render';
-import { renderFragmentWithImages, ARTICLE_TYPOGRAPHY_CLASSES } from '../preview/html-to-react';
+import { renderFragmentWithImages } from '../preview/html-to-react';
 import { truncateGraphemes } from '../../shared/grapheme';
 import { PREVIEW_COPY } from '../copy/preview';
 import { EXPORT_COPY } from '../copy/export';
@@ -436,7 +436,7 @@ export const PreviewDialog: React.FC<PreviewDialogProps> = ({
                   </div>
 
                   {/* 正文 Markdown 渲染 */}
-                  <div className={`${ARTICLE_TYPOGRAPHY_CLASSES} preview-article-content [contain:layout] [&_.block-rendered-chunk]:[content-visibility:auto] [&_.block-rendered-chunk]:[contain-intrinsic-size:auto_300px] [&_.image-presentation-block]:[content-visibility:auto] [&_.image-presentation-block]:[contain-intrinsic-size:auto_300px]`} data-testid="preview-article-content">
+                  <div className={`preview-article-content [contain:layout] [&_.block-rendered-chunk]:[content-visibility:auto] [&_.block-rendered-chunk]:[contain-intrinsic-size:auto_300px] [&_.image-presentation-block]:[content-visibility:auto] [&_.image-presentation-block]:[contain-intrinsic-size:auto_300px]`} data-testid="preview-article-content">
                     {renderedBodyNode}
                   </div>
                 </div>
