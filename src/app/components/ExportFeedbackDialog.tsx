@@ -1,8 +1,9 @@
-import React, { useLayoutEffect, useRef } from 'react';
+import React, { useRef } from 'react';
 import { EXPORT_COPY } from '../copy/export';
 import { CloseIcon } from './CloseIcon';
 import { PREVIEW_COPY } from '../copy/preview';
 import { Button } from '@/components/ui/button';
+import { DialogSurface } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 
 export interface ExportFeedback {
@@ -28,28 +29,6 @@ export const ExportFeedbackDialog: React.FC<ExportFeedbackDialogProps> = ({
 
   const isOpen = feedback?.isOpen ?? false;
 
-  useLayoutEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-
-    if (isOpen) {
-      if (!dialog.open) {
-        dialog.showModal();
-      }
-      confirmBtnRef.current?.focus();
-    } else {
-      if (dialog.open) {
-        dialog.close();
-      }
-    }
-
-    return () => {
-      if (dialog && dialog.open) {
-        dialog.close();
-      }
-    };
-  }, [isOpen]);
-
   if (!isOpen || !feedback) {
     return null;
   }
@@ -70,14 +49,15 @@ export const ExportFeedbackDialog: React.FC<ExportFeedbackDialogProps> = ({
       : 'empty-stamp border-ink-secondary text-ink-secondary';
 
   return (
-    <dialog
+    <DialogSurface
       ref={dialogRef}
+      open={isOpen}
+      initialFocus={confirmBtnRef}
+      onDismiss={onClose}
+      aria-labelledby="export-feedback-title"
+      aria-describedby="export-feedback-desc"
       className="export-dialog fixed inset-0 m-auto p-0 w-[min(540px,calc(100vw-32px))] bg-sheet-bg border border-sheet-border rounded-sm text-ink-primary overflow-hidden shadow-xl backdrop:bg-ink-primary/50 backdrop:backdrop-blur-[1.5px] open:flex open:flex-col"
       data-testid="export-dialog"
-      onCancel={(e) => {
-        e.preventDefault();
-        onClose();
-      }}
     >
       <div className="export-dialog-header px-5 py-3.5 border-b border-sheet-border bg-surface-raised flex items-center justify-between">
         <div className="export-title-group flex items-center gap-2.5">
@@ -90,7 +70,7 @@ export const ExportFeedbackDialog: React.FC<ExportFeedbackDialogProps> = ({
           >
             {stampText}
           </span>
-          <h2 className="export-dialog-title text-base font-semibold text-ink-primary leading-snug" data-testid="export-dialog-title">
+          <h2 id="export-feedback-title" className="export-dialog-title text-base font-semibold text-ink-primary leading-snug" data-testid="export-dialog-title">
             {title}
           </h2>
         </div>
@@ -108,7 +88,7 @@ export const ExportFeedbackDialog: React.FC<ExportFeedbackDialogProps> = ({
       </div>
 
       <div className="export-dialog-body p-5 sm:p-6 bg-surface-raised text-sm leading-relaxed text-ink-secondary" data-testid="export-dialog-body">
-        <p className="export-dialog-desc break-all whitespace-pre-wrap m-0" data-testid="export-dialog-desc">
+        <p id="export-feedback-desc" className="export-dialog-desc break-all whitespace-pre-wrap m-0" data-testid="export-dialog-desc">
           {desc}
         </p>
       </div>
@@ -143,6 +123,6 @@ export const ExportFeedbackDialog: React.FC<ExportFeedbackDialogProps> = ({
             : EXPORT_COPY.btnConfirmSuccess}
         </Button>
       </div>
-    </dialog>
+    </DialogSurface>
   );
 };

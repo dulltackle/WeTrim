@@ -1,8 +1,9 @@
-import React, { useLayoutEffect, useRef } from 'react';
+import React, { useRef } from 'react';
 import type { ImageDecision, ImageEditTarget, UnlocalizedImage } from '../export/unlocalized-images';
 import { EXPORT_COPY } from '../copy/export';
 import { CloseIcon } from './CloseIcon';
 import { Button } from '@/components/ui/button';
+import { DialogSurface } from '@/components/ui/dialog';
 
 export function UnlocalizedImagesDialog({ images, onDecision, onLocate, onBack }: {
   images: UnlocalizedImage[];
@@ -14,24 +15,16 @@ export function UnlocalizedImagesDialog({ images, onDecision, onLocate, onBack }
   const backRef = useRef<HTMLButtonElement>(null);
   const invalidCount = images.filter(i => !i.canKeepExternal).reduce((sum, i) => sum + i.locations.length, 0);
 
-  useLayoutEffect(() => {
-    const dialog = dialogRef.current;
-    dialog?.showModal();
-    backRef.current?.focus();
-    return () => dialog?.close();
-  }, []);
-
   return (
-    <dialog
+    <DialogSurface
       ref={dialogRef}
+      open
+      initialFocus={backRef}
+      onDismiss={() => onDecision('cancel')}
       className="export-dialog unlocalized-dialog fixed inset-0 m-auto p-0 w-[min(720px,calc(100vw-32px))] max-h-[calc(100dvh-32px)] bg-sheet-bg border border-sheet-border rounded-sm text-ink-primary overflow-hidden shadow-xl backdrop:bg-ink-primary/50 backdrop:backdrop-blur-[1.5px] open:flex open:flex-col"
       data-testid="unlocalized-dialog"
       aria-labelledby="unlocalized-title"
       aria-describedby="unlocalized-desc"
-      onCancel={(event) => {
-        event.preventDefault();
-        onDecision('cancel');
-      }}
     >
       <div className="export-dialog-header px-5 py-3.5 border-b border-sheet-border bg-surface-raised flex items-center justify-between shrink-0 gap-4">
         <h2 id="unlocalized-title" className="export-dialog-title text-base font-semibold text-ink-primary leading-snug">
@@ -142,6 +135,6 @@ export function UnlocalizedImagesDialog({ images, onDecision, onLocate, onBack }
           {EXPORT_COPY.keepExternal}
         </Button>
       </div>
-    </dialog>
+    </DialogSurface>
   );
 }
