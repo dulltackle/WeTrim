@@ -154,7 +154,7 @@ export const App: React.FC = () => {
     setUnlocalizedImages(null);
     resolve?.(decision);
   };
-  // 等两层原生对话框都卸载后，再让块流打开编辑器，避免焦点被模态归还覆盖。
+  // 等两层对话框都卸载后，再让块流打开编辑器，避免焦点被模态归还覆盖。
   useEffect(() => {
     if (imageEditTarget && !unlocalizedImages && !isPreviewOpen) {
       blockListRef.current?.editImageReference(imageEditTarget);
@@ -167,7 +167,7 @@ export const App: React.FC = () => {
   const [exportProgress, setExportProgress] = useState<FetchProgress | null>(null);
   // 顶栏导出请求计数：flush 防抖编辑后要等新快照提交，再在 effect 里用最新内容导出
   const [toolbarExportRequest, setToolbarExportRequest] = useState(0);
-  // 预览关闭后要执行的焦点/定位动作：模态 <dialog> 打开期间背后清洗页是 inert 的，
+  // 预览关闭后要执行的焦点/定位动作：模态打开期间背后清洗页不能接收焦点，
   // 聚焦必须等对话框真正关闭（提交后）再做，否则 focus() 无效且会被对话框的焦点归还覆盖
   const afterPreviewCloseRef = useRef<(() => void) | null>(null);
   useEffect(() => {
@@ -1627,7 +1627,7 @@ export const App: React.FC = () => {
 
             {/* 右侧版心 */}
             <section className="main-bed flex-1 px-12 pt-12 pb-16 flex flex-col justify-start min-w-0 max-[720px]:px-4 max-[720px]:pt-6 max-[720px]:pb-10">
-              {/* 检查结果汇总预览模态对话框（原生 <dialog> showModal() - Issue #31 & Issue #32） */}
+              {/* 检查结果汇总预览模态对话框（共享 Base UI，Issue #31 与 #32） */}
               {session && viewMode === 'cleaning' && !isReadOnly && (
                 <PreviewDialog
                   isOpen={isPreviewOpen}
@@ -1644,7 +1644,7 @@ export const App: React.FC = () => {
               {/* 态 1: 清洗态 或 候选确认态（模态签条压在清洗页之上，旧会话照常渲染在背后并压暗，满足 §8.5「先呈现已有会话」） */}
               {session && (viewMode === 'cleaning' || viewMode === 'candidateConfirm') && (
                 <div
-                  className={`manuscript-slip flex flex-col gap-6 min-w-0 w-full animate-manuscript motion-reduce:animate-still ${isPreviewOpen ? 'is-preview-active [content-visibility:hidden]' : ''}`}
+                  className="manuscript-slip flex flex-col gap-6 min-w-0 w-full animate-manuscript motion-reduce:animate-still"
                   data-testid="manuscript-slip"
                   inert={isReadOnly}
                 >
@@ -1688,6 +1688,7 @@ export const App: React.FC = () => {
 
                   {/* 正文块流列表：ADR-0005 唯一渲染入口 */}
                   <BlockList
+                    dispatch={dispatch}
                     ref={blockListRef}
                     blocks={session.snapshot.blocks}
                     filter={currentFilter}
@@ -1701,7 +1702,7 @@ export const App: React.FC = () => {
                 </div>
               )}
 
-              {/* 态 2: 换稿通知单模态签条（压在清洗页之上，原生 <dialog> showModal()） */}
+              {/* 态 2: 换稿通知单模态签条（压在清洗页之上） */}
               {viewMode === 'candidateConfirm' && candidateSnapshot && session && !isReadOnly && (
                 <CandidateConfirmDialog
                   candidateSnapshot={candidateSnapshot}

@@ -10,7 +10,6 @@ import React, {
 } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { FILTER_VISIBILITY_CLASSES } from './block-visibility';
 import { currentMarkdown, type Block } from '../../shared/types';
 import { truncateGraphemes } from '../../shared/grapheme';
 import { renderMarkdown } from '../preview/render';
@@ -438,7 +437,7 @@ export const BlockItem = memo(
           ref={setRefs}
           tabIndex={-1}
           className={cn(
-            FILTER_VISIBILITY_CLASSES,
+
             "block-item block-excluded block-collapsed relative block w-full min-w-0 [contain:inline-size_layout_style] [scroll-margin-top:0] rounded-sm transition-colors duration-150 px-3.5 py-1.5 opacity-85 bg-sheet-bg border border-sheet-border hover:border-ink-secondary focus:outline-none focus-visible:outline-2 focus-visible:outline-prussian-blue focus-visible:outline-offset-1",
             isLocallyEdited && "block-is-edited",
             isLocallyEmpty && "block-is-empty border-dashed"
@@ -648,7 +647,7 @@ export const BlockItem = memo(
         ref={setRefs}
         tabIndex={-1}
         className={cn(
-          FILTER_VISIBILITY_CLASSES,
+
           "block-item relative block w-full min-w-0 [contain:inline-size_layout_style] [scroll-margin-top:0] rounded-sm transition-colors duration-150 px-3.5 py-2.5 focus:outline-none focus-visible:outline-2 focus-visible:outline-prussian-blue focus-visible:outline-offset-1 border border-sheet-border hover:border-ink-secondary",
           block.included ? "block-included bg-surface-raised" : "block-excluded block-expanded opacity-85 bg-sheet-bg",
           isLocallyEdited && "block-is-edited",

@@ -2,11 +2,10 @@ import React from 'react';
 import { ImagePresentation } from '../components/ImagePresentation';
 
 // Preflight 不提供列表标记；正文和预览共用此排版，保留输入中的内联样式优先级。
-const ARTICLE_CONTENT_CLASS = 'block-rendered-content text-ink-primary text-[15px] leading-[1.75] break-words [overflow-wrap:break-word] min-w-0 cursor-text [overflow-anchor:auto] [&_a]:cursor-text [&_pre]:cursor-text [&_code]:cursor-text';
+const ARTICLE_CONTENT_CLASS = 'block-rendered-content text-ink-primary text-[15px] leading-[1.75] break-words [overflow-wrap:break-word] min-w-0 cursor-text [overflow-anchor:auto] [&_a]:cursor-text [&_pre]:cursor-text [&_code]:cursor-text [&>*:first-child]:mt-0 [&>*:last-child]:mb-0';
 
 // 在正文父容器上应用一次后代排版，避免每个内容块重复数百个工具类 token。
 export const ARTICLE_TYPOGRAPHY_CLASSES = [
-  '[&_.block-rendered-content>*:first-child]:mt-0 [&_.block-rendered-content>.block-rendered-chunk:first-child>*:first-child]:mt-0 [&_.block-rendered-content>*:last-child]:mb-0 [&_.block-rendered-content>.block-rendered-chunk:last-child>*:last-child]:mb-0',
   '[&_.block-rendered-content_p]:my-1.5 [&_.block-rendered-content_h1]:text-[22px] [&_.block-rendered-content_h1]:font-bold [&_.block-rendered-content_h1]:leading-[1.4] [&_.block-rendered-content_h1]:mt-2.5 [&_.block-rendered-content_h1]:mb-1.5 [&_.block-rendered-content_h2]:text-[19px] [&_.block-rendered-content_h2]:font-semibold [&_.block-rendered-content_h2]:leading-[1.4] [&_.block-rendered-content_h2]:mt-2 [&_.block-rendered-content_h2]:mb-1.5',
   '[&_.block-rendered-content_h3]:text-[17px] [&_.block-rendered-content_h3]:font-semibold [&_.block-rendered-content_h3]:leading-[1.4] [&_.block-rendered-content_h3]:mt-2 [&_.block-rendered-content_h3]:mb-1 [&_.block-rendered-content_:is(h4,h5,h6)]:text-[15px] [&_.block-rendered-content_:is(h4,h5,h6)]:font-semibold [&_.block-rendered-content_:is(h4,h5,h6)]:leading-[1.4] [&_.block-rendered-content_:is(h4,h5,h6)]:mt-1.5 [&_.block-rendered-content_:is(h4,h5,h6)]:mb-1',
   '[&_.block-rendered-content_ul]:list-disc [&_.block-rendered-content_ol]:list-decimal [&_.block-rendered-content_:is(ul,ol)]:pl-6 [&_.block-rendered-content_:is(ul,ol)]:my-1.5 [&_.block-rendered-content_li]:mb-1 [&_.block-rendered-content_blockquote]:border-l-[3px] [&_.block-rendered-content_blockquote]:border-sheet-border [&_.block-rendered-content_blockquote]:py-2 [&_.block-rendered-content_blockquote]:px-4 [&_.block-rendered-content_blockquote]:bg-sheet-bg-alt [&_.block-rendered-content_blockquote]:text-ink-secondary [&_.block-rendered-content_blockquote]:my-2 [&_.block-rendered-content_blockquote]:rounded-[2px]',
@@ -183,7 +182,7 @@ export function renderFragmentWithImages(fragment: DocumentFragment): React.Reac
       <div className={ARTICLE_CONTENT_CLASS} data-testid="block-rendered-content">
         <div
           key="chunk-0"
-          className="block-rendered-chunk"
+          className="block-rendered-chunk [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
           dangerouslySetInnerHTML={{ __html: container.innerHTML }}
         />
       </div>
@@ -247,7 +246,13 @@ function renderChildNodesWithImages(root: HTMLElement | DocumentFragment): React
 
   return (
     <div className={ARTICLE_CONTENT_CLASS} data-testid="block-rendered-content">
-      {nodes}
+      {nodes.map((node, index) => {
+        if (!React.isValidElement<{ className?: string }>(node) || node.props.className !== 'block-rendered-chunk') return node;
+        // 首尾分片显式标记，避免双层结构伪类在插入 Portal 时使整个文章子树失效。
+        return React.cloneElement(node, { className: 'block-rendered-chunk' +
+          (index === 0 ? ' [&>*:first-child]:mt-0' : '') +
+          (index === nodes.length - 1 ? ' [&>*:last-child]:mb-0' : '') });
+      })}
     </div>
   );
 }

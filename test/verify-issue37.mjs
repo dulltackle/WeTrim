@@ -103,7 +103,7 @@ try {
         await settle(() => q('block-item').dataset.blockIncluded === 'false');
         const filterOut = await measure(() => q('filter-tab-excluded').click(), () => [...document.querySelectorAll('[data-testid="block-item"]')].filter(el=>!el.closest('[data-filter-hidden]')).length === 1);
         const filterAll = await measure(() => q('filter-tab-all').click(), () => [...document.querySelectorAll('[data-testid="block-item"]')].filter(el=>!el.closest('[data-filter-hidden]')).length === count);
-        // 另测分散剔除，避免只覆盖能整组隐藏的单个剔除块场景。
+        // 另测分散剔除，覆盖多个布局缓存容器同时切换。
         const current = api.getState().session;
         const mixed = { ...current, revision: current.revision + 1, snapshot: { ...current.snapshot,
           blocks: current.snapshot.blocks.map((block, i) => ({ ...block, included: i % 7 !== 0 })) } };
@@ -159,7 +159,10 @@ try {
   await page.setViewport({width:1280,height:900});
   await page.reload();
   await page.waitForSelector('[data-testid="long-article-note"]');
+  await page.evaluate(() => { const id=window.__wetrim.getState().session.snapshot.blocks[39].id; window.__wetrim.blockListRef.current.focusBlock(id); });
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   await page.click('[data-block-order="40"] [data-testid="block-action-edit"]');
+  await page.waitForSelector('[data-testid="block-editor-textarea"]');
   await page.type('[data-testid="block-editor-textarea"]','隐藏前的编辑');
   await page.click('[data-testid="filter-tab-excluded"]');
   await page.waitForFunction(() => !document.querySelector('[data-testid="block-editor-textarea"]'));
@@ -172,9 +175,9 @@ try {
     return {focused,height:document.body.scrollHeight,
       text:window.__wetrim.getState().session.snapshot.blocks[39].editedMarkdown};
   });
-  assert.equal(hiddenState.focused,false,'整组及混合组隐藏的块与控件不能获得焦点');
-  assert(hiddenState.height<2000,'筛选掉的组不留下正文高度');
-  assert(hiddenState.text.includes('隐藏前的编辑'),'隐藏整组前保存编辑');
+  assert.equal(hiddenState.focused,false,'隐藏的块与控件不能获得焦点');
+  assert(hiddenState.height<2000,'筛选掉的块不留下正文高度');
+  assert(hiddenState.text.includes('隐藏前的编辑'),'隐藏前保存编辑');
   await page.click('[data-testid="filter-tab-all"]');
   await page.waitForFunction(() => document.querySelector('[data-block-order="40"]').textContent.includes('隐藏前的编辑'));
   console.log('✓ 1000 块可继续取舍并恢复提示；1 块含 1001 个图片资源不触发提示');

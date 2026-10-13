@@ -9,10 +9,10 @@ import React, {
   useState,
 } from 'react';
 import type { Block } from '../../shared/types';
-import { BlockItem } from './BlockItem';
+import { BlockItem, type BlockItemProps } from './BlockItem';
 import { ARTICLE_TYPOGRAPHY_CLASSES } from '../preview/html-to-react';
 import { FILTER_VISIBILITY_CLASSES } from './block-visibility';
-import { useAppContext } from '../state/session-context';
+import type { SessionAction } from '../state/session-reducer';
 import {
   SEARCH_IGNORE_ATTR,
   BlockPlainTextCache,
@@ -85,6 +85,7 @@ export interface BlockListHandle {
 }
 
 export interface BlockListProps {
+  dispatch: React.Dispatch<SessionAction>;
   blocks: Block[];
   filter?: BlockFilterMode;
   onFilterChange?: (filter: BlockFilterMode) => void;
@@ -106,10 +107,29 @@ function preferredScrollBehavior(): ScrollBehavior {
 /** 块流作为筛选页签 tabpanel 时的元素 id，供页签的 aria-controls 引用 */
 export const BLOCK_LIST_PANEL_ID = 'block-list-panel';
 
+type BlockFlowItemProps = Pick<BlockItemProps, 'onStartEdit' | 'onFinishEdit' | 'onToggle' | 'onUpdate' | 'registerFlush'> & {
+  block: Block;
+  isEditing: boolean;
+  isTempExpanded: boolean;
+  imageSelection?: ImageEditTarget;
+  getRef: (id: string) => React.RefCallback<HTMLDivElement>;
+};
+
+const FLOW_CONTAINER_CLASSES = `block-filter-group block w-full [contain:layout_style] [&+.block-filter-group]:mt-2 ${FILTER_VISIBILITY_CLASSES}`;
+
+// 每块有独立的布局缓存容器，筛选不改变块内布局；所有 DOM 始终挂载。
+const BlockFlowItem = React.memo(({ block, isEditing, isTempExpanded, imageSelection, getRef, ...actions }: BlockFlowItemProps) => (
+  <div className={FLOW_CONTAINER_CLASSES}>
+    <BlockItem block={block} {...actions} isEditing={isEditing} isTempExpanded={isTempExpanded}
+      imageSelection={imageSelection} ref={getRef(block.id)} />
+  </div>
+));
+
 const BlockListInner = forwardRef<BlockListHandle, BlockListProps>(
   (
     {
       blocks,
+      dispatch,
       filter: controlledFilter,
       onFilterChange,
       onSearchStateChange,
@@ -118,7 +138,6 @@ const BlockListInner = forwardRef<BlockListHandle, BlockListProps>(
     },
     ref
   ) => {
-    const { dispatch } = useAppContext();
     const [imageSelection, setImageSelection] = useState<ImageEditTarget | null>(null);
     const flushRegistryRef = useRef(new Map<string, (finishEditing?: boolean) => void>());
     const [editingBlockId, setEditingBlockId] = useState<string | null>(null);
@@ -204,16 +223,6 @@ const BlockListInner = forwardRef<BlockListHandle, BlockListProps>(
       return blocks;
     }, [blocks, filter]);
 
-    // 固定分组只减少筛选时的布局失效范围，所有块仍一次性挂载。
-    const blockGroups = useMemo(() => {
-      const groups: Block[][] = [];
-      for (let i = 0; i < blocks.length; i += 4) groups.push(blocks.slice(i, i + 4));
-      return groups;
-    }, [blocks]);
-    const hiddenGroups = useMemo(() => new Set(blockGroups.filter(group => group.every(block =>
-      filter === 'included' ? !block.included : filter === 'excluded' ? block.included : false
-    )).flatMap(group => group.map(block => block.id))), [blockGroups, filter]);
-
     const blocksRef = useRef(blocks);
     blocksRef.current = blocks;
     const filterRef = useRef(filter);
@@ -223,23 +232,19 @@ const BlockListInner = forwardRef<BlockListHandle, BlockListProps>(
 
     // 筛选仅批量切换可见性，不重建全文组件；DOM 操作仍收敛在块列表接缝。
     // 放在阅读锚点恢复前执行，确保锚点读取的是筛选后的布局。
-    useLayoutEffect(() => {
-      const visibleIds = new Set(visibleBlocks.map(block => block.id));
-      for (const [id, el] of itemRefs.current) {
-        if (!visibleIds.has(id)) flushRegistryRef.current.get(id)?.(true);
-        const hidden = !visibleIds.has(id) && !hiddenGroups.has(id);
-        if (el.hasAttribute('data-filter-hidden') !== hidden) {
-          el.toggleAttribute('data-filter-hidden', hidden);
-          if (hidden) {
-            el.setAttribute('aria-hidden', 'true');
-            el.removeAttribute('tabindex');
-          } else {
-            el.removeAttribute('aria-hidden');
-            el.tabIndex = -1;
-          }
+    const applyFilterVisibility = useCallback((nextFilter: BlockFilterMode, currentBlocks: Block[]) => {
+      for (const block of currentBlocks) {
+        const hidden = nextFilter === 'included' ? !block.included : nextFilter === 'excluded' ? block.included : false;
+        if (hidden) flushRegistryRef.current.get(block.id)?.(true);
+        const container = itemRefs.current.get(block.id)?.parentElement;
+        if (container && container.hasAttribute('data-filter-hidden') !== hidden) {
+          container.toggleAttribute('data-filter-hidden', hidden);
+          if (hidden) container.setAttribute('aria-hidden', 'true');
+          else container.removeAttribute('aria-hidden');
         }
       }
-    }, [visibleBlocks, hiddenGroups]);
+    }, []);
+    useLayoutEffect(() => applyFilterVisibility(filter, blocks), [filter, blocks, applyFilterVisibility]);
 
     // ADR-0005 接缝：块的滚动、聚焦与视口可见性判断只在这三处访问 DOM，搜索与序号定位都经由它们完成
     const scrollToBlock = useCallback((id: string) => {
@@ -268,8 +273,10 @@ const BlockListInner = forwardRef<BlockListHandle, BlockListProps>(
         const el = itemRefs.current.get(b.id);
         if (!el) continue;
         if (vTop === null) {
-          vTop = (parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0)
-            + (parseFloat(getComputedStyle(el).scrollMarginTop) || 0);
+          vTop = Math.max(
+            parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0,
+            parseFloat(getComputedStyle(el).scrollMarginTop) || 0
+          );
         }
         const rect = el.getBoundingClientRect();
         // 单栏块流按文档顺序连续排列，越过视口底边后无需测量剩余数百块。
@@ -639,6 +646,8 @@ const BlockListInner = forwardRef<BlockListHandle, BlockListProps>(
           }
         }
 
+        // 先保存旧编辑并同步可见性，随后提交筛选状态；新编辑器聚焦时目标已可见。
+        applyFilterVisibility(nextFilter, blocks);
         if (!isControlledFilter) {
           setInternalFilter(nextFilter);
         }
@@ -676,7 +685,7 @@ const BlockListInner = forwardRef<BlockListHandle, BlockListProps>(
           }, 0);
         }
       },
-      [blocks, filter, isControlledFilter, onFilterChange, executeSearch, locateOrder, queryVisible]
+      [blocks, filter, isControlledFilter, onFilterChange, executeSearch, locateOrder, queryVisible, applyFilterVisibility]
     );
 
     // 块取舍切换处理（在筛选视图下剔除/恢复导致块从视图消失时，焦点平稳前移）
@@ -944,29 +953,11 @@ const BlockListInner = forwardRef<BlockListHandle, BlockListProps>(
         {/* 正文块连续流：单栏连续展开，不做虚拟列表，不做分段延迟 */}
         {blocks.length > 0 && (
           <div className={`block-items-stream [overflow-anchor:auto] relative block min-w-0 w-full ${ARTICLE_TYPOGRAPHY_CLASSES}`} data-testid="block-items-stream">
-            {blockGroups.map(group => {
-              const groupHidden = hiddenGroups.has(group[0].id);
-              return (
-                <div className={`block-filter-group block w-full [contain:layout_style] [&+.block-filter-group]:mt-2 [&>.block-item+.block-item]:mt-2 ${FILTER_VISIBILITY_CLASSES}`} key={group[0].id} data-filter-hidden={groupHidden || undefined}
-                  aria-hidden={groupHidden || undefined}>
-                  {group.map((b) => (
-                    <BlockItem
-                      key={b.id}
-                      block={b}
-                      isEditing={editingBlockId === b.id}
-                      onStartEdit={handleStartEdit}
-                      onFinishEdit={handleFinishEdit}
-                      onToggle={handleToggleBlock}
-                      onUpdate={handleUpdateBlock}
-                      registerFlush={registerFlush}
-                      imageSelection={imageSelection?.blockId === b.id ? imageSelection : undefined}
-                      isTempExpanded={tempExpandedBlockId === b.id}
-                      ref={getRefCallback(b.id)}
-                    />
-                  ))}
-                </div>
-              );
-            })}
+            {blocks.map(block => <BlockFlowItem key={block.id} block={block}
+              isEditing={editingBlockId === block.id} isTempExpanded={tempExpandedBlockId === block.id}
+              imageSelection={imageSelection?.blockId === block.id ? imageSelection : undefined}
+              onStartEdit={handleStartEdit} onFinishEdit={handleFinishEdit} onToggle={handleToggleBlock}
+              onUpdate={handleUpdateBlock} registerFlush={registerFlush} getRef={getRefCallback} />)}
           </div>
         )}
       </div>
@@ -976,6 +967,7 @@ const BlockListInner = forwardRef<BlockListHandle, BlockListProps>(
 
 export const BlockList = React.memo(BlockListInner, (prev, next) => {
   return (
+    prev.dispatch === next.dispatch &&
     prev.blocks === next.blocks &&
     prev.filter === next.filter &&
     prev.onFilterChange === next.onFilterChange &&
