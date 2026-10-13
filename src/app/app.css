@@ -1,6 +1,10 @@
 @import "tailwindcss";
 
 @theme {
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --color-registration-hairline: var(--registration-hairline);
+  --animate-manuscript: fadeInSlip 0.2s ease-out;
+  --animate-still: fadeInStill 0.2s ease-out;
   --color-canvas-bg: var(--canvas-bg);
   --color-sheet-bg: var(--sheet-bg);
   --color-sheet-bg-alt: var(--sheet-bg-alt);
@@ -89,30 +93,6 @@
   --margin-track-width: 84px;
 }
 
-@layer base {
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-    background-color: var(--canvas-bg);
-    color: var(--ink-primary);
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 32px 16px;
-    line-height: 1.6;
-    -webkit-font-smoothing: antialiased;
-    overflow-x: hidden;
-  }
-
-  #root {
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    min-width: 0;
-  }
-}
-
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(-2px); }
   to { opacity: 1; transform: translateY(0); }
@@ -124,85 +104,6 @@
   to { opacity: 1; }
 }
 
-/* 套准十字线 */
-.reg-cross {
-  position: absolute;
-  width: 20px;
-  height: 20px;
-  pointer-events: none;
-}
-
-.reg-cross::before,
-.reg-cross::after {
-  content: "";
-  position: absolute;
-  background-color: var(--registration-hairline);
-}
-
-.reg-cross::before {
-  top: 9px;
-  left: 0;
-  width: 20px;
-  height: 1px;
-}
-
-.reg-cross::after {
-  top: 0;
-  left: 9px;
-  width: 1px;
-  height: 20px;
-}
-
-.reg-top-left { top: -10px; left: -10px; }
-.reg-top-right { top: -10px; right: -10px; }
-.reg-bottom-left { bottom: -10px; left: -10px; }
-.reg-bottom-right { bottom: -10px; right: -10px; }
-
-/* 渲染的三步指引 Markdown 内容 */
-
-.rendered-steps ol {
-  padding-left: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.rendered-steps li {
-  color: var(--ink-primary);
-  font-size: 15px;
-  line-height: 1.6;
-}
-
-.rendered-steps li strong {
-  color: var(--ink-primary);
-  font-weight: 600;
-}
-
-.icon-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  vertical-align: middle;
-  background-color: var(--vermilion-subtle);
-  border: 1px solid color-mix(in srgb, var(--vermilion) 25%, transparent);
-  color: var(--vermilion);
-  padding: 1px 8px;
-  border-radius: 3px;
-  font-size: 13px;
-  font-weight: 600;
-  margin: 0 4px;
-}
-
-.icon-badge img {
-  width: 14px;
-  height: 14px;
-  display: block;
-}
-
-/* ==========================================================================
-   Issue #16 UI 状态样式：夹签、审读签条、退单与键盘可达
-   ========================================================================== */
-
 @keyframes slideInNote {
   from {
     opacity: 0;
@@ -212,16 +113,6 @@
     opacity: 1;
     transform: translateY(0) scale(1);
   }
-}
-
-/* 2. 稿件审读签条 (Manuscript Slip) */
-.manuscript-slip {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-  animation: fadeInSlip 0.2s ease-out;
-  min-width: 0;
-  width: 100%;
 }
 
 @keyframes fadeInSlip {
@@ -238,10 +129,6 @@
   margin-top: 8px;
 }
 
-/* 预览打开时背景清洗长列表整体跳过渲染（彻底避免 600 块参与 showModal 布局） */
-.manuscript-slip.is-preview-active {
-  content-visibility: hidden;
-}
 
 /* 标志性交互：页边校对刻痕 (Issue #29 §3) */
 .block-item[data-has-hit="true"]::before {
@@ -277,24 +164,6 @@
   color: var(--ink-inverse);
 }
 
-.empty-headline {
-  font-size: 22px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  margin-bottom: 24px;
-  color: var(--ink-primary);
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.empty-headline-accent {
-  display: inline-block;
-  width: 4px;
-  height: 22px;
-  background-color: var(--vermilion);
-  border-radius: 1px;
-}
 .block-item > .block-rendered-content,
 .block-item > .block-rendered-content :where(a, pre, code),
 .block-empty-placeholder {
@@ -450,15 +319,6 @@
   contain-intrinsic-size: auto 300px;
 }
 
-/* 放在文件末尾：必须排在各元素的 animation 简写之后，否则会被简写重置 */
-@media (prefers-reduced-motion: reduce) {
-  .search-wrapped-toast,
-  .order-jump-popover,
-  .margin-clip-note,
-  .manuscript-slip {
-    animation-name: fadeInStill;
-  }
-}
 
 /* 筛选保留正文的横向尺寸与布局缓存，只把隐藏内容的占高归零。
  * 隐藏内容由 content-visibility 隔离输入与读屏，同时明确设置 aria-hidden。

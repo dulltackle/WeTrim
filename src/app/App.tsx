@@ -77,6 +77,8 @@ import { RecoveryPanel } from './components/RecoveryPanel';
 import { CloseIcon } from './components/CloseIcon';
 import { Button } from '@/components/ui/button';
 
+const REGISTRATION_CROSS_CLASSES = "absolute size-5 pointer-events-none before:content-[''] before:absolute before:top-[9px] before:left-0 before:w-5 before:h-px before:bg-registration-hairline after:content-[''] after:absolute after:top-0 after:left-[9px] after:w-px after:h-5 after:bg-registration-hairline";
+
 const SAVE_STATUS_COPY = WORKBENCH_COPY.saveStatus;
 const FILTER_TAB_ORDER: BlockFilterMode[] = ['all', 'included', 'excluded'];
 
@@ -1602,10 +1604,10 @@ export const App: React.FC = () => {
         {/* 主校样纸张 */}
         <main className="proof-sheet w-full max-w-[840px] bg-sheet-bg border border-sheet-border shadow-[0_4px_20px_rgba(0,0,0,0.04),0_1px_3px_rgba(0,0,0,0.02)] relative flex flex-col rounded-[2px] min-w-0">
           {/* 四角套准十字线 */}
-          <div className="reg-cross reg-top-left" aria-hidden="true"></div>
-          <div className="reg-cross reg-top-right" aria-hidden="true"></div>
-          <div className="reg-cross reg-bottom-left" aria-hidden="true"></div>
-          <div className="reg-cross reg-bottom-right" aria-hidden="true"></div>
+          <div className={`reg-cross reg-top-left ${REGISTRATION_CROSS_CLASSES} -top-2.5 -left-2.5`} aria-hidden="true"></div>
+          <div className={`reg-cross reg-top-right ${REGISTRATION_CROSS_CLASSES} -top-2.5 -right-2.5`} aria-hidden="true"></div>
+          <div className={`reg-cross reg-bottom-left ${REGISTRATION_CROSS_CLASSES} -bottom-2.5 -left-2.5`} aria-hidden="true"></div>
+          <div className={`reg-cross reg-bottom-right ${REGISTRATION_CROSS_CLASSES} -bottom-2.5 -right-2.5`} aria-hidden="true"></div>
 
           {/* 顶部色标条：纯印刷装饰，不承载信息 */}
           <div className="registration-bar flex items-center justify-between px-4 py-2 border-b border-sheet-border bg-black/[0.01]" aria-hidden="true">
@@ -1642,7 +1644,7 @@ export const App: React.FC = () => {
               {/* 态 1: 清洗态 或 候选确认态（模态签条压在清洗页之上，旧会话照常渲染在背后并压暗，满足 §8.5「先呈现已有会话」） */}
               {session && (viewMode === 'cleaning' || viewMode === 'candidateConfirm') && (
                 <div
-                  className={`manuscript-slip flex flex-col gap-6 min-w-0 w-full ${isPreviewOpen ? 'is-preview-active' : ''}`}
+                  className={`manuscript-slip flex flex-col gap-6 min-w-0 w-full animate-manuscript motion-reduce:animate-still ${isPreviewOpen ? 'is-preview-active [content-visibility:hidden]' : ''}`}
                   data-testid="manuscript-slip"
                   inert={isReadOnly}
                 >
@@ -1841,14 +1843,14 @@ export const App: React.FC = () => {
                   {/* 子视图 4.3: 默认空状态 - 3 步指引 */}
                   {!emptySubState.splitError && !emptySubState.notice && (
                     <div className="empty-state-view my-auto min-w-0" data-testid="empty-state-view">
-                      <h1 className="empty-headline" ref={focusEmptyRef} tabIndex={-1}>
-                        <span className="empty-headline-accent"></span>
+                      <h1 className="empty-headline text-[22px] font-semibold tracking-[-0.01em] mb-6 text-ink-primary flex items-center gap-3" ref={focusEmptyRef} tabIndex={-1}>
+                        <span className="empty-headline-accent inline-block w-1 h-[22px] bg-vermilion rounded-[1px]"></span>
                         {WORKBENCH_COPY.emptyHeadline}
                       </h1>
 
                       <div className="steps-container bg-surface-raised border border-sheet-border rounded-[3px] p-6 sm:px-7 relative before:content-['清洗前置指引'] before:absolute before:-top-2.5 before:left-5 before:bg-sheet-bg before:px-2 before:text-[11px] before:text-ink-secondary before:font-medium">
                         <div
-                          className="rendered-steps [&_ol]:list-decimal"
+                          className="rendered-steps [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:flex [&_ol]:flex-col [&_ol]:gap-3.5 [&_li]:text-ink-primary [&_li]:text-[15px] [&_li]:leading-[1.6] [&_li_strong]:text-ink-primary [&_li_strong]:font-semibold [&_.icon-badge]:inline-flex [&_.icon-badge]:items-center [&_.icon-badge]:gap-1.5 [&_.icon-badge]:align-middle [&_.icon-badge]:bg-vermilion-subtle [&_.icon-badge]:border [&_.icon-badge]:border-vermilion/25 [&_.icon-badge]:text-vermilion [&_.icon-badge]:px-2 [&_.icon-badge]:py-px [&_.icon-badge]:rounded-[3px] [&_.icon-badge]:text-[13px] [&_.icon-badge]:font-semibold [&_.icon-badge]:mx-1 [&_.icon-badge_img]:size-3.5 [&_.icon-badge_img]:block"
                           dangerouslySetInnerHTML={{ __html: renderedStepsHtml }}
                         />
                       </div>
