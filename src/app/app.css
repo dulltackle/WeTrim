@@ -159,10 +159,3 @@
   background-color: var(--vermilion); /* 当前处朱红底 */
   color: var(--ink-inverse);
 }
-
-/* 预览长文排版优化：按分片与呈现层跳过视口外排版计算，大幅提升模态打开性能 */
-.preview-article-content .block-rendered-chunk,
-.preview-article-content .image-presentation-block {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 300px;
-}

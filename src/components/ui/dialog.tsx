@@ -153,6 +153,40 @@ const DialogDescription = React.forwardRef<
 ));
 DialogDescription.displayName = 'DialogDescription';
 
+interface DialogSurfaceProps extends Omit<React.ComponentProps<typeof BaseDialog.Popup>, 'open' | 'initialFocus' | 'render' | 'ref'> {
+  open: boolean;
+  initialFocus?: React.RefObject<HTMLElement | null>;
+  onDismiss: () => void;
+}
+
+/** 共用 Base UI 模态与主题；关闭、定位仍由业务控制。 */
+const DialogSurface = React.forwardRef<HTMLDialogElement, DialogSurfaceProps>(
+  ({ open, initialFocus, finalFocus = true, onDismiss, className, children, ...props }, ref) => {
+    const element = React.useRef<HTMLDialogElement | null>(null);
+    const setElement = React.useCallback((node: HTMLDivElement | null) => {
+      element.current = node as HTMLDialogElement | null;
+      if (typeof ref === 'function') ref(element.current);
+      else if (ref) ref.current = element.current;
+    }, [ref]);
+    return (
+      <Dialog open={open} modal="trap-focus" disablePointerDismissal onOpenChange={(next) => { if (!next) onDismiss(); }}>
+        <DialogPortal>
+          <DialogBackdrop />
+          <BaseDialog.Popup ref={setElement} render={(popupProps) => <dialog {...popupProps} open onCancel={(event) => {
+              event.preventDefault();
+              onDismiss();
+            }} />} tabIndex={-1} initialFocus={initialFocus} finalFocus={finalFocus}
+            className={cn('fixed inset-0 m-auto p-0 bg-sheet-bg text-ink-primary border border-sheet-border rounded-sm shadow-xl z-50 focus:outline-none', className)}
+            {...props}>
+            <DialogPortalContainer value={element}>{children}</DialogPortalContainer>
+          </BaseDialog.Popup>
+        </DialogPortal>
+      </Dialog>
+    );
+  }
+);
+DialogSurface.displayName = 'DialogSurface';
+
 export {
   Dialog,
   DialogTrigger,
@@ -167,4 +201,5 @@ export {
   DialogFooter,
   DialogTitle,
   DialogDescription,
+  DialogSurface,
 };

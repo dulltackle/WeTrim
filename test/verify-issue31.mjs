@@ -39,6 +39,9 @@ async function run() {
     await worker.evaluate(() => chrome.storage.local.clear());
 
     page = await browser.newPage();
+    if (process.argv.includes('--reduced-motion')) {
+      await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);
+    }
     page.on('console', (msg) => {
       const text = msg.text();
       if (!text.includes('[WeTrim Self-Test]')) {
@@ -684,6 +687,18 @@ async function run() {
 
     const perfResult = await page.evaluate(async () => {
       const btn = document.querySelector('[data-testid="action-preview"]');
+      let initialPreview = null;
+      const observer = new MutationObserver(() => {
+        const dialog = document.querySelector('[data-testid="preview-dialog"][open]');
+        const content = dialog?.querySelector('[data-testid="preview-article-content"]');
+        if (!content) return;
+        initialPreview = {
+          hasLastIncludedBlock: content.textContent.includes('第 599 块合成长文段落内容'),
+          imageCount: content.querySelectorAll('[data-testid="image-thumbnail-box"]').length,
+        };
+        observer.disconnect();
+      });
+      observer.observe(document.body, { subtree: true, childList: true, attributes: true });
       const t0 = performance.now();
       btn.click();
 
@@ -705,8 +720,12 @@ async function run() {
       });
 
       const t1 = performance.now();
-      return { latency: t1 - t0 };
+      observer.disconnect();
+      return { latency: t1 - t0, initialPreview };
     });
+
+    assert.strictEqual(perfResult.initialPreview?.hasLastIncludedBlock, true, '打开即包含最后一个保留块，不能先截取首批正文');
+    assert.strictEqual(perfResult.initialPreview?.imageCount, 12, '打开即挂载全部保留图片，不分帧追加');
 
     console.log(`[Perf @ 4× CPU 600 Blocks] Click-to-draw complete latency: ${perfResult.latency.toFixed(2)} ms (budget ≤ 300 ms)`);
     console.log('口径：从点击「检查结果」按钮时刻起，至 <dialog> 打开且正文 .preview-article-content 挂载完毕，并完成连续两帧 requestAnimationFrame 回调确保 React 提交、样式计算、DOM 布局与像素绘制完成为止的全部端到端耗时。');
@@ -736,11 +755,12 @@ async function run() {
 
     // 取视口内第一个位于顶栏下方的保留块，直接点它的编辑按钮（已在视口内，点击不会引发滚动）
     const t9TargetId = await page.evaluate(() => {
+      const toolbarBottom = document.querySelector('.workbench-header').getBoundingClientRect().bottom;
       for (const el of document.querySelectorAll('[data-testid="block-item"]')) {
         const rect = el.getBoundingClientRect();
         const id = el.getAttribute('data-block-id');
         const block = window.__wetrim.getState().session.snapshot.blocks.find((b) => b.id === id);
-        if (rect.top > 150 && rect.bottom < window.innerHeight && block?.included && block.type === 'paragraph') {
+        if (rect.top > toolbarBottom && rect.bottom < window.innerHeight && block?.included && block.type === 'paragraph') {
           return id;
         }
       }
@@ -750,6 +770,7 @@ async function run() {
 
     await page.click(`[data-block-id="${t9TargetId}"] [data-testid="block-action-edit"]`);
     const t9Textarea = `[data-block-id="${t9TargetId}"] [data-testid="block-editor-textarea"]`;
+
     await page.waitForSelector(t9Textarea);
     await page.type(t9Textarea, '【已落盘的编辑】');
     await new Promise((r) => setTimeout(r, 800)); // 越过 500ms 防抖

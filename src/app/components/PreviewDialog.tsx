@@ -9,7 +9,7 @@ import { PREVIEW_COPY } from '../copy/preview';
 import { EXPORT_COPY } from '../copy/export';
 import { CloseIcon } from './CloseIcon';
 import { Button } from '@/components/ui/button';
-import { DialogPortalContainer } from '@/components/ui/dialog';
+import { DialogSurface } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 
 export interface DegradationItem {
@@ -30,6 +30,101 @@ export interface PreviewDialogProps {
   onExport?: (snapshot: ArticleSnapshot, resultFile: ResultFile) => void;
   /** 导出进行中时的图片下载进度文案；预览是模态对话框，进度需在对话框内显示 */
   exportProgressText?: string | null;
+}
+
+/** 只生成阅读数据，不挂载界面；打开时按快照身份冻结完整结果。 */
+function buildPreviewData(snap: ArticleSnapshot) {
+  // 单次循环同时完成：1. Markdown 拼装（免去二次遍历 600 块）2. 保留/空块统计 3. 降级条目提取
+  const markdownParts: string[] = [];
+  let includedCount = 0;
+  let emptyCount = 0;
+  let allExcluded = true;
+  let firstEmptyBlock: Block | null = null;
+  const degradationItems: DegradationItem[] = [];
+  const typeCountMap: Record<string, number> = {};
+
+  for (let i = 0; i < snap.blocks.length; i++) {
+    const b = snap.blocks[i];
+    if (!b.included) continue;
+    allExcluded = false;
+    const md = currentMarkdown(b);
+    const trimmed = md ? md.trim() : '';
+    if (trimmed === '') {
+      emptyCount++;
+      if (!firstEmptyBlock) {
+        firstEmptyBlock = b;
+      }
+    } else {
+      includedCount++;
+      markdownParts.push(stripBoundaryEmptyLines(md));
+      if (b.notes && b.notes.length > 0) {
+        for (let j = 0; j < b.notes.length; j++) {
+          const note = b.notes[j];
+          const typeName =
+            PREVIEW_COPY.degradationTypeLabels[note.code] ||
+            PREVIEW_COPY.degradationTypeLabels.fallback;
+          typeCountMap[note.code] = (typeCountMap[note.code] || 0) + 1;
+
+          const firstLine = trimmed.split('\n')[0] || '';
+          const summary = truncateGraphemes(firstLine || note.message, 40);
+
+          degradationItems.push({
+            blockOrder: b.order,
+            blockId: b.id,
+            code: note.code,
+            typeName,
+            summary,
+          });
+        }
+      }
+    }
+  }
+
+  const body = markdownParts.join('\n\n');
+  const frontMatter = buildFrontMatter(snap.source);
+  const text = frontMatter ? `${frontMatter}\n\n${body}\n` : (body ? `${body}\n` : '');
+  const resultFile: ResultFile = { frontMatter, body, text };
+
+  // 格式化降级汇总摘要
+  const priorityCodes = ['table-degraded', 'richmedia-placeholder', 'convert-failed'];
+  const summaryParts: string[] = [];
+  for (const code of priorityCodes) {
+    if (typeCountMap[code]) {
+      const typeName = PREVIEW_COPY.degradationTypeLabels[code];
+      summaryParts.push(PREVIEW_COPY.degradationItemCount(typeName, typeCountMap[code]));
+    }
+  }
+  for (const [code, count] of Object.entries(typeCountMap)) {
+    if (!priorityCodes.includes(code)) {
+      const typeName =
+        PREVIEW_COPY.degradationTypeLabels[code] || PREVIEW_COPY.degradationTypeLabels.fallback;
+      summaryParts.push(PREVIEW_COPY.degradationItemCount(typeName, count));
+    }
+  }
+  const hasBody = resultFile.body.trim() !== '';
+  // 整篇正文直接走净化后的 DOM 片段，省掉一次序列化与重新解析（600 块长文下是预览生成的主要开销之一）
+  const renderedBodyNode = hasBody
+    ? renderFragmentWithImages(renderMarkdownToFragment(resultFile.body))
+    : null;
+
+  const { source } = snap;
+  return {
+    header: {
+      title: source.title?.trim() || '',
+      account: source.account?.trim() || '',
+      date: parseFrontMatterDate(source.publishedAt),
+      url: source.url?.trim() || '',
+    },
+    resultFile,
+    hasBody,
+    renderedBodyNode,
+    includedCount,
+    emptyCount,
+    allExcluded,
+    firstEmptyBlock,
+    degradationItems,
+    degradationSummary: summaryParts.join(' · '),
+  };
 }
 
 /**
@@ -54,22 +149,6 @@ export const PreviewDialog: React.FC<PreviewDialogProps> = ({
   const [activeTab, setActiveTab] = useState<'reading' | 'source'>('reading');
   const [hasVisitedSource, setHasVisitedSource] = useState(false);
   const [isDegradationExpanded, setIsDegradationExpanded] = useState(false);
-  // 长文性能优化：超过 50 块时长文首开优先渲染首屏 40 块充盈视口，首帧绘制后无缝呈现全文
-  const [renderAllChunks, setRenderAllChunks] = useState(false);
-
-  React.useEffect(() => {
-    if (isOpen) {
-      if (!renderAllChunks) {
-        const id = requestAnimationFrame(() => {
-          setRenderAllChunks(true);
-        });
-        return () => cancelAnimationFrame(id);
-      }
-    } else {
-      setRenderAllChunks(false);
-    }
-  }, [isOpen]);
-
   // 打开瞬间冻结快照：对话框打开期间即使迟到的保存改写了 snapshot，也不重新生成
   // 使用 ref 同步冻结，首帧渲染即产出缓存，避免 setState 引发二次渲染开销
   const frozenSnapshotRef = useRef<ArticleSnapshot | null>(null);
@@ -80,135 +159,17 @@ export const PreviewDialog: React.FC<PreviewDialogProps> = ({
   }
   const frozenSnapshot = frozenSnapshotRef.current;
 
-  // 打开时从当前内存内容生成一次（对话框打开期间不刷新）
-  const cachedData = useMemo(() => {
-    if (!frozenSnapshot) return null;
-    const snap = frozenSnapshot;
-
-    // 单次循环同时完成：1. Markdown 拼装（免去二次遍历 600 块）2. 保留/空块统计 3. 降级条目提取
-    const markdownParts: string[] = [];
-    let includedCount = 0;
-    let emptyCount = 0;
-    let allExcluded = true;
-    let firstEmptyBlock: Block | null = null;
-    const degradationItems: DegradationItem[] = [];
-    const typeCountMap: Record<string, number> = {};
-
-    for (let i = 0; i < snap.blocks.length; i++) {
-      const b = snap.blocks[i];
-      if (!b.included) continue;
-      allExcluded = false;
-      const md = currentMarkdown(b);
-      const trimmed = md ? md.trim() : '';
-      if (trimmed === '') {
-        emptyCount++;
-        if (!firstEmptyBlock) {
-          firstEmptyBlock = b;
-        }
-      } else {
-        includedCount++;
-        markdownParts.push(stripBoundaryEmptyLines(md));
-        if (b.notes && b.notes.length > 0) {
-          for (let j = 0; j < b.notes.length; j++) {
-            const note = b.notes[j];
-            const typeName =
-              PREVIEW_COPY.degradationTypeLabels[note.code] ||
-              PREVIEW_COPY.degradationTypeLabels.fallback;
-            typeCountMap[note.code] = (typeCountMap[note.code] || 0) + 1;
-
-            const firstLine = trimmed.split('\n')[0] || '';
-            const summary = truncateGraphemes(firstLine || note.message, 40);
-
-            degradationItems.push({
-              blockOrder: b.order,
-              blockId: b.id,
-              code: note.code,
-              typeName,
-              summary,
-            });
-          }
-        }
-      }
-    }
-
-    const body = markdownParts.join('\n\n');
-    const frontMatter = buildFrontMatter(snap.source);
-    const text = frontMatter ? `${frontMatter}\n\n${body}\n` : (body ? `${body}\n` : '');
-    const resultFile: ResultFile = { frontMatter, body, text };
-
-    // 格式化降级汇总摘要
-    const priorityCodes = ['table-degraded', 'richmedia-placeholder', 'convert-failed'];
-    const summaryParts: string[] = [];
-    for (const code of priorityCodes) {
-      if (typeCountMap[code]) {
-        const typeName = PREVIEW_COPY.degradationTypeLabels[code];
-        summaryParts.push(PREVIEW_COPY.degradationItemCount(typeName, typeCountMap[code]));
-      }
-    }
-    for (const [code, count] of Object.entries(typeCountMap)) {
-      if (!priorityCodes.includes(code)) {
-        const typeName =
-          PREVIEW_COPY.degradationTypeLabels[code] || PREVIEW_COPY.degradationTypeLabels.fallback;
-        summaryParts.push(PREVIEW_COPY.degradationItemCount(typeName, count));
-      }
-    }
-    const hasBody = resultFile.body.trim() !== '';
-    const isVeryLong = markdownParts.length > 50;
-    const bodyForRender = isVeryLong && !renderAllChunks
-      ? markdownParts.slice(0, 40).join('\n\n')
-      : resultFile.body;
-    // 整篇正文直接走净化后的 DOM 片段，省掉一次序列化与重新解析（600 块长文下是预览生成的主要开销之一）
-    const renderedBodyNode = hasBody
-      ? renderFragmentWithImages(renderMarkdownToFragment(bodyForRender))
-      : null;
-
-    const { source } = snap;
-    return {
-      header: {
-        title: source.title?.trim() || '',
-        account: source.account?.trim() || '',
-        date: parseFrontMatterDate(source.publishedAt),
-        url: source.url?.trim() || '',
-      },
-      resultFile,
-      hasBody,
-      renderedBodyNode,
-      includedCount,
-      emptyCount,
-      allExcluded,
-      firstEmptyBlock,
-      degradationItems,
-      degradationSummary: summaryParts.join(' · '),
-    };
-  }, [frozenSnapshot, renderAllChunks]);
+  const cachedData = useMemo(() => frozenSnapshot ? buildPreviewData(frozenSnapshot) : null, [frozenSnapshot]);
 
   const dialogRef = useRef<HTMLDialogElement | null>(null);
 
-  // 控制视图状态重置与焦点（在浏览器排版绘制前同步激活 showModal 与聚焦）
+  // 每次打开回到阅读视图，聚焦和关闭由共享弹窗执行。
   useLayoutEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-
     if (isOpen) {
       setActiveTab('reading');
       setHasVisitedSource(false);
       setIsDegradationExpanded(false);
-
-      if (!dialog.open) {
-        dialog.showModal();
-      }
-      readingTabRef.current?.focus();
-    } else {
-      if (dialog.open) {
-        dialog.close();
-      }
     }
-
-    return () => {
-      if (dialog && dialog.open) {
-        dialog.close();
-      }
-    };
   }, [isOpen]);
 
   // 键盘切换 Tab（方向键支持）
@@ -249,24 +210,24 @@ export const PreviewDialog: React.FC<PreviewDialogProps> = ({
     degradationSummary,
   } = cachedData;
 
-  // 不在原生模态上隔离 layout：其内部 Portal 的 fixed 原图查看器需要以视口为包含块。
+  // 不在弹窗上隔离 layout：内部 Portal 的 fixed 原图查看器以视口为包含块。
   return (
-    <DialogPortalContainer value={dialogRef}>
-    <dialog
+    <DialogSurface
       ref={dialogRef}
+      open={isOpen}
+      initialFocus={readingTabRef}
+      finalFocus={false}
+      onDismiss={onClose}
       className={cn(
         'preview-dialog fixed inset-0 m-auto z-50',
         'w-[min(840px,calc(100vw-32px))] h-[min(92vh,960px)] max-h-[calc(100vh-32px)]',
         'bg-sheet-bg text-ink-primary border border-sheet-border rounded-[3px]',
         'shadow-[0_16px_48px_rgba(0,0,0,0.18),0_2px_8px_rgba(0,0,0,0.08)]',
         'overflow-hidden flex flex-col p-0 focus:outline-none',
-        'backdrop:bg-ink-primary/50 backdrop:backdrop-blur-[1.5px]'
+        'backdrop:bg-ink-primary/50'
       )}
       data-testid="preview-dialog"
-      onCancel={(e) => {
-        e.preventDefault();
-        onClose();
-      }}
+      aria-label={PREVIEW_COPY.dialogTitle}
     >
           {/* 1. 标题行 + 统计 + 视图切换 + 降级汇总条（固定顶部） */}
           <div className="preview-dialog-header shrink-0 p-4 sm:px-6 sm:py-3.5 border-b border-sheet-border bg-surface-raised flex flex-col gap-2.5">
@@ -475,7 +436,7 @@ export const PreviewDialog: React.FC<PreviewDialogProps> = ({
                   </div>
 
                   {/* 正文 Markdown 渲染 */}
-                  <div className={`${ARTICLE_TYPOGRAPHY_CLASSES} preview-article-content [contain:layout]`} data-testid="preview-article-content">
+                  <div className={`${ARTICLE_TYPOGRAPHY_CLASSES} preview-article-content [contain:layout] [&_.block-rendered-chunk]:[content-visibility:auto] [&_.block-rendered-chunk]:[contain-intrinsic-size:auto_300px] [&_.image-presentation-block]:[content-visibility:auto] [&_.image-presentation-block]:[contain-intrinsic-size:auto_300px]`} data-testid="preview-article-content">
                     {renderedBodyNode}
                   </div>
                 </div>
@@ -538,7 +499,6 @@ export const PreviewDialog: React.FC<PreviewDialogProps> = ({
               )}
             </div>
           </div>
-    </dialog>
-    </DialogPortalContainer>
+    </DialogSurface>
   );
 };
