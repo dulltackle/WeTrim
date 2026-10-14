@@ -1,7 +1,5 @@
 # WeTrim 产品事实
 
-<!-- impeccable:product-schema 1 -->
-
 本文件是 WeTrim 的产品事实记录：产品层的决定、约束、证据与已知边界都在这里写全。领域术语以根目录 [`GLOSSARY.md`](./GLOSSARY.md) 为准，本文件加粗引用但不重新定义；除它之外，理解本文件不需要读其他文档。
 
 所有决定均来自[决策地图](https://github.com/dulltackle/WeTrim/issues/1)下已关闭的 13 张决策票；正文中的 issue 与 ADR 链接是论证出处，供追溯用，**不是阅读本文件的前置条件**。

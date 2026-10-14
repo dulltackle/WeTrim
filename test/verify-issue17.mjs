@@ -51,6 +51,22 @@ async function runTests() {
 
     const page = await browser.newPage();
     await page.goto(appUrl, { waitUntil: 'networkidle0' });
+    // 新抓取在已有清洗会话时先成为候选快照；确认替换后才能断言新文章。
+    const reloadAndAcceptCapture = async (title) => {
+      await page.goto(appUrl, { waitUntil: 'networkidle0' });
+      await page.waitForFunction(title => {
+        const state = window.__wetrim?.getState();
+        return state?.candidateSnapshot?.source.title === title || state?.session?.snapshot.source.title === title;
+      }, { timeout: 5000 }, title);
+      if (await page.$('[data-testid="candidate-btn-replace"]')) {
+        await page.click('[data-testid="candidate-btn-replace"]');
+      }
+      await page.waitForFunction(title => {
+        const state = window.__wetrim?.getState();
+        return state?.viewMode === 'cleaning' && state.session.snapshot.source.title === title;
+      }, { timeout: 5000 }, title);
+    };
+
 
     // 3. 在浏览器原生 DOMParser 环境中测试 splitBlocks 核心函数
     console.log('==> Testing splitBlocks against the 3 core benchmark articles in browser environment...');
@@ -109,7 +125,7 @@ async function runTests() {
     }, deepHtml);
 
     // 重新加载 app.html 消费 pendingCapture
-    await page.goto(appUrl, { waitUntil: 'networkidle0' });
+    await reloadAndAcceptCapture('每10年换一副骨架：深度长文测试');
     await page.waitForSelector('[data-testid="manuscript-slip"]', { timeout: 5000 });
     await page.waitForSelector('[data-testid="block-list"]', { timeout: 5000 });
 
@@ -155,7 +171,7 @@ async function runTests() {
       });
     }, photoHtml);
 
-    await page.goto(appUrl, { waitUntil: 'networkidle0' });
+    await reloadAndAcceptCapture('神经根型颈椎病的诊疗思路与治疗：图集测试');
     await page.waitForSelector('[data-testid="manuscript-slip"]', { timeout: 5000 });
     await page.waitForSelector('[data-testid="block-list"]', { timeout: 5000 });
 
@@ -199,7 +215,7 @@ async function runTests() {
       });
     }, richHtml);
 
-    await page.goto(appUrl, { waitUntil: 'networkidle0' });
+    await reloadAndAcceptCapture('Advanced Science｜骨修复材料的下一步：复合结构测试');
     await page.waitForSelector('[data-testid="manuscript-slip"]', { timeout: 5000 });
     await page.waitForSelector('[data-testid="block-list"]', { timeout: 5000 });
 
@@ -310,7 +326,7 @@ async function runTests() {
       });
     }, edgeCaseResults.htmlCard);
 
-    await page.goto(appUrl, { waitUntil: 'networkidle0' });
+    await reloadAndAcceptCapture('Card Test');
     await page.waitForSelector('[data-testid="block-item"]');
     const cardBlockTypes = await page.evaluate(() =>
       Array.from(document.querySelectorAll('[data-testid="block-item"]')).map((el) => el.getAttribute('data-block-type'))
@@ -334,7 +350,7 @@ async function runTests() {
       });
     }, edgeCaseResults.htmlSplit);
 
-    await page.goto(appUrl, { waitUntil: 'networkidle0' });
+    await reloadAndAcceptCapture('Split Test');
     await page.waitForSelector('[data-testid="block-item"]');
     const splitBlockTypes = await page.evaluate(() =>
       Array.from(document.querySelectorAll('[data-testid="block-item"]')).map((el) => el.getAttribute('data-block-type'))
@@ -363,7 +379,7 @@ async function runTests() {
       });
     }, edgeCaseResults.htmlNoise);
 
-    await page.goto(appUrl, { waitUntil: 'networkidle0' });
+    await reloadAndAcceptCapture('Noise Test');
     await page.waitForSelector('[data-testid="block-item"]');
     const noiseBlockTypes = await page.evaluate(() =>
       Array.from(document.querySelectorAll('[data-testid="block-item"]')).map((el) => el.getAttribute('data-block-type'))
@@ -387,7 +403,7 @@ async function runTests() {
       });
     }, edgeCaseResults.htmlUnits);
 
-    await page.goto(appUrl, { waitUntil: 'networkidle0' });
+    await reloadAndAcceptCapture('Units Test');
     await page.waitForSelector('[data-testid="block-item"]');
     const unitBlockTypes = await page.evaluate(() =>
       Array.from(document.querySelectorAll('[data-testid="block-item"]')).map((el) => el.getAttribute('data-block-type'))
@@ -416,7 +432,7 @@ async function runTests() {
       });
     }, edgeCaseResults.htmlWord);
 
-    await page.goto(appUrl, { waitUntil: 'networkidle0' });
+    await reloadAndAcceptCapture('Word Test');
     await page.waitForSelector('[data-testid="block-item"]');
     const wordBlockCount = await page.evaluate(() =>
       document.querySelectorAll('[data-testid="block-item"]').length

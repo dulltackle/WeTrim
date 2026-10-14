@@ -29,6 +29,8 @@ jobs:
         run: npm install --global "$(node -p 'require("./package.json").packageManager')"
       - name: 安装锁定依赖
         run: pnpm install --frozen-lockfile
+      - name: 安装中文字体支持
+        run: sudo apt-get update && sudo apt-get install -y fonts-noto-cjk
       - name: 准备锁定的完整版 Chrome
         run: |
           pnpm exec puppeteer browsers install chrome

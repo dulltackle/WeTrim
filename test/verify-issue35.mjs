@@ -120,7 +120,7 @@ try {
   await page.evaluate(() => window.finishClear());
   await page.waitForSelector('[data-testid="empty-state-view"]');
   assert.equal(await stored(), undefined);
-  assert.equal(await page.evaluate(() => document.activeElement.className), 'empty-headline');
+  assert.equal(await page.evaluate(() => document.activeElement.classList.contains('empty-headline')), true);
   await worker.evaluate(() => chrome.runtime.sendMessage({ type: 'pending-capture' }));
   await page.waitForFunction(async () => !(await chrome.storage.local.get('pendingCapture')).pendingCapture);
   assert.equal(await page.$('[data-view-mode="cleaning"]'), null);

@@ -4,14 +4,36 @@ import path from 'node:path';
 import { launchChrome } from './chrome.mjs';
 
 // 默认重放用户保存页面中的原始段落；也可传入整页 HTML 验证原场景。
-const html = fs.readFileSync(process.argv[2] || 'test/fixtures/paragraph-inline.html', 'utf8');
+const args = process.argv.slice(2);
+const slowStartup = args.includes('--slow-startup');
+const html = fs.readFileSync(args.find(arg => arg !== '--slow-startup') || 'test/fixtures/paragraph-inline.html', 'utf8');
 const browser = await launchChrome({ headless: true, enableExtensions: [path.resolve('dist')], args: ['--no-sandbox'] });
 try {
   const target = await browser.waitForTarget(t => t.type() === 'service_worker');
   const page = await browser.newPage();
   await page.setViewport({ width: 1280, height: 1000 });
+  if (slowStartup) {
+    page.setDefaultTimeout(5000);
+    // 模拟 CI 中较慢的会话恢复，确保测试辅助钩子先于工作台就绪。
+    await page.evaluateOnNewDocument(() => {
+      const get = chrome.storage.local.get.bind(chrome.storage.local);
+      chrome.storage.local.get = async (...args) => {
+        const value = await get(...args);
+        if (args[0] === 'currentSession') {
+          window.__paragraphInitialReadDelayed = true;
+          await new Promise(resolve => setTimeout(resolve, 300));
+        }
+        return value;
+      };
+    });
+  }
   await page.goto(`chrome-extension://${new URL(target.url()).host}/app.html`);
   await page.waitForFunction(() => !!window.__wetrim?.buildArticleSnapshot);
+  // 辅助钩子会先暴露；必须等实例仲裁与会话恢复完成，才能注入测试会话。
+  await page.waitForSelector('[data-view-mode="empty"]');
+  if (slowStartup) {
+    assert.equal(await page.evaluate(() => window.__paragraphInitialReadDelayed), true, '延迟恢复场景必须实际执行存储读取');
+  }
   const result = await page.evaluate(html => {
     const doc = new DOMParser().parseFromString(html, 'text/html');
     const content = doc.querySelector('#js_content') || doc.body;
@@ -35,6 +57,8 @@ try {
     return block.initialMarkdown;
   }, targetBlock);
   assert.equal(rendered.replace(/\*/g, ''), result.text, '段落文字必须完整且顺序不变');
+  // 恢复完成后再检查，避免只看到被迟到恢复覆盖前的瞬时内容块。
+  await page.waitForSelector('[data-testid="workbench-header"]');
   await page.waitForSelector('[data-testid="block-item"]');
   const view = await page.evaluate(() => {
     const block = document.querySelector('[data-testid="block-item"]');

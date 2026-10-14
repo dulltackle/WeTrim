@@ -74,7 +74,7 @@ async function run() {
         const vTop = parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop);
         const el = [...document.querySelectorAll('[data-testid="block-item"]')].find((el) => {
           const r = el.getBoundingClientRect();
-          return !el.closest('[hidden]') && r.bottom > vTop && r.top < innerHeight && (included === null || el.dataset.blockIncluded === String(included));
+          return !el.closest('[data-filter-hidden]') && r.bottom > vTop && r.top < innerHeight && (included === null || el.dataset.blockIncluded === String(included));
         });
         return { id: el.dataset.blockId, top: el.getBoundingClientRect().top };
       }, included);

@@ -8,7 +8,8 @@ export async function launchChrome(options) {
   const close = browser.close.bind(browser);
   browser.close = async () => {
     try {
-      const directory = path.resolve(process.env.WETRIM_ARTIFACTS || 'artifacts/pr', path.basename(process.argv[1], '.mjs'));
+      const scriptName = process.argv[1] ? path.basename(process.argv[1], '.mjs') : 'standalone';
+      const directory = path.resolve(process.env.WETRIM_ARTIFACTS || 'artifacts/pr', scriptName);
       await mkdir(directory, { recursive: true });
       for (const [index, page] of (await browser.pages()).entries()) {
         if (page.url().startsWith('chrome-extension://')) {

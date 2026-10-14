@@ -27,6 +27,8 @@ try {
   const doubleClickText = async (selector, word) => {
     const el = await page.waitForSelector(selector);
     await el.scrollIntoView();
+    // 等待滚动后的实际绘制，再按文字坐标双击，避免视口外正文尚未完成排版。
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     const point = await el.evaluate((el, word) => {
       const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
       let node;
@@ -45,6 +47,8 @@ try {
       throw new Error(`找不到可双击文字：${word}`);
     }, word);
     await page.mouse.click(point.x, point.y, { count: 2 });
+    const id = await el.evaluate(el => el.closest('[data-testid="block-item"]').dataset.blockId);
+    await page.waitForSelector(`[data-block-id="${id}"] textarea`);
   };
   await page.waitForSelector(body(1));
   await page.click(`${body(1)} strong`, { count: 2 });
